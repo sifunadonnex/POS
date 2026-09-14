@@ -72,7 +72,10 @@ This session provisioned local PostgreSQL and reran lint, full source/test type-
 
 ## Open items
 
-- Hosting package/runtime versions, owned domain and secure access unavailable; backup/restore arrangements unresolved. Local PostgreSQL setup is complete, not a hosted compatibility or recovery guarantee.
+- User supplied test URL `https://dev.sifulabs.co.ke/` and a Create Application screenshot showing Node.js 22.23.2 (recommended), application mode/root/URL/startup fields and a Passenger log field. Select Node 22.23.2 for the proposed hosted proof; local testing so far used Node 24.15.0, so Node 22 execution remains unverified. Nest core and node-pg-migrate declared engine ranges allow this candidate.
+- Proposed separate application root: `pay-and-go-dev` outside the public document root; confirm it is unused before creation. Production application mode is appropriate for the isolated hosted test, not a claim of live POS readiness. An ESM-compatible CommonJS startup wrapper needs preparation/testing before upload: [CloudLinux documents this Passenger limitation](https://docs.cloudlinux.com/cloudlinuxos/cloudlinux_os_components/#limitations). Do not assume direct Passenger loading of dist/main.js works.
+- Test URL could not be reached by either the web reader or a local HTTPS HEAD request during inspection. This does not establish a DNS/certificate/server diagnosis; HTTPS/routing still need verification. No hosting changes or uploads made.
+- Terminal/SSH availability, exact package limits, hosted PostgreSQL version/TLS, secure access and backup/restore arrangements remain unresolved. Local PostgreSQL setup is complete, not a hosted compatibility or recovery guarantee.
 - Confirm simulated versus real trading, Kenya jurisdiction, M-Pesa/eTIMS workflows, weighted goods and offline launch requirements.
 - Review the starter theme provider's global d shortcut before cashier/scanner input.
 - External Observe telemetry and generic Nest deployment helper remain removed; do not reintroduce without a project decision.

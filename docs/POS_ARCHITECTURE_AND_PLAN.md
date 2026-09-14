@@ -282,6 +282,8 @@ Reuse the shop's existing supported PC, printer/scanner and router where suitabl
 
 ### 10.1 Deployment proof before feature development
 
+Selected test URL: `https://dev.sifulabs.co.ke/` (user supplied). The panel screenshot lists Node.js 22.23.2 and Passenger startup settings. Use that Node version as the hosted test candidate, subject to actual execution and dependency checks; do not use the screenshot's initially selected Node 10. Local verification used Node 24.15.0. Terminal/SSH, hosted PostgreSQL details and HTTPS routing remain unverified. CloudLinux documents a [CommonJS wrapper for ESM applications under Passenger](https://docs.cloudlinux.com/cloudlinuxos/cloudlinux_os_components/#limitations); prepare and test the startup bridge before deployment.
+
 Use an isolated test application/subdomain and test database in the existing account. Deployment requires account access provided through an appropriate secure channel when that step is reached; this document does not record credentials.
 
 1. Select compatible Node.js/NestJS/PostgreSQL versions supported by the account.
