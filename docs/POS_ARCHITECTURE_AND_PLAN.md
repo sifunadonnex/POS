@@ -1,539 +1,447 @@
 # Pay & Go POS — Architecture and Delivery Plan
 
-**Status:** Draft for project planning  
-**Version:** 0.1  
-**Last updated:** 16 July 2026  
-**Initial assumption:** One supermarket in Kenya, with multiple tills and future support for multiple branches.
+**Status:** HostPinnacle deployment proposal for one online test shop
 
-## 1. Purpose
+**Version:** 0.3
 
-This document is the working technical and product reference for the Pay & Go supermarket point-of-sale system. It records the proposed architecture, core business rules, modules, integrations, security controls, delivery phases, and decisions that must be confirmed before implementation.
+**Last updated:** 14 September 2026
 
-Update this document whenever an architectural decision changes. Detailed user stories and screen-level acceptance criteria should be maintained in a separate Product Requirements Document (PRD).
+**Budget objective:** Zero application licence fees and no additional hosting subscription for the first test shop, within the existing HostPinnacle package. Existing hosting/domain renewals still apply.
 
-## 2. Product goals
+**Working assumptions:** One shop in Kenya, one cashier computer initially, one manager using a phone. Confirm these during discovery.
 
-Pay & Go should:
+## 1. Purpose and revision
 
-- Give cashiers a fast, simple checkout experience on Windows computers.
-- Continue processing permitted sales when the store internet connection fails.
-- Give the owner or manager a responsive web dashboard accessible from a phone or computer.
-- Maintain accurate and auditable sales, payments, stock, purchasing, and cashier records.
-- Integrate with M-Pesa and KRA eTIMS.
-- Support thermal printers, barcode scanners, cash drawers, and payment terminals.
-- Start with one supermarket but allow branches and additional tills without a redesign.
-- Protect business, employee, and customer data.
+This is the development reference for Pay & Go. Version 0.3 uses the user's existing HostPinnacle hosting account. The user has confirmed that PostgreSQL and a Node.js application management feature are listed in the hosting panel.
 
-## 3. Key architecture decision
+The initial deployment is an online web application: React/Vite frontend, NestJS backend, and one authoritative PostgreSQL database on HostPinnacle. Cashiers and managers use different screens in the same application through HTTPS.
 
-Use a **hybrid, offline-capable architecture** consisting of:
+Listing the features establishes a deployment candidate, not a tested runtime. Node.js/PostgreSQL versions, application startup, database connectivity, limits, scheduled jobs and backups must be verified through a small deployment test before substantial implementation.
 
-1. A Windows cashier application at each till.
-2. A local store edge server and database on the store network.
-3. A cloud platform for centralized data, integrations, backups, and reporting.
-4. A responsive manager web application for phones and computers.
+The previous local-PC hosting and phone VPN proposal is superseded for this online pilot. A local store service and synchronization remain a future option if checkout must survive internet outages. No Vercel subscription, VPN client, Redis or desktop wrapper is required for the proposed starting deployment.
 
-Use a **modular monolith**, not microservices, for the initial system. Modules should have clear boundaries, but should be deployed as one backend application. This reduces operational cost and complexity while leaving a clean path to separate a module later if scale proves that it is necessary.
+“Free start” means reusing hosting already paid for and using free application technologies. It does not remove hosting renewal, development, internet, hardware, payment or integration costs. Offline checkout is outside the initial hosted test scope; its priority for live trading remains an explicit decision.
 
-## 4. System context
+## 2. What we build first
 
-```text
-SUPERMARKET
-┌────────────────────────────────────────────────────┐
-│ Cashier computers                                  │
-│                                                    │
-│ ┌──────────────────┐       ┌──────────────────┐    │
-│ │ POS Till 1       │       │ POS Till 2       │    │
-│ │ Desktop client   │       │ Desktop client   │    │
-│ │ Local fallback   │       │ Local fallback   │    │
-│ └─────────┬────────┘       └─────────┬────────┘    │
-│           │ Store LAN                │             │
-│ ┌─────────▼──────────────────────────▼───────────┐ │
-│ │ Store Edge Service                            │ │
-│ │ Checkout API, stock, prices, receipt sequence │ │
-│ │ Local PostgreSQL and synchronization outbox   │ │
-│ └──────────────────────┬─────────────────────────┘ │
-│                        │ Fibre with 4G/5G failover │
-└────────────────────────┼───────────────────────────┘
-                         │ Encrypted synchronization
-┌────────────────────────▼───────────────────────────┐
-│ CLOUD PLATFORM                                     │
-│                                                    │
-│ API and business rules                             │
-│ Cloud PostgreSQL, background jobs, audit, backups  │
-│                                                    │
-│ ┌─────────────────────┐  ┌───────────────────────┐ │
-│ │ Manager web app     │  │ Integration adapters  │ │
-│ │ Phone and computer  │  │ M-Pesa, eTIMS, SMS    │ │
-│ └─────────────────────┘  └───────────────────────┘ │
-└────────────────────────────────────────────────────┘
+Build a modular monolith: one backend with clearly separated business modules and one responsive frontend.
+
+- Cashier: fast barcode checkout, basket, cash payment, receipt, and shift closing.
+- Manager: phone dashboard, sales, stock, cashier activity, and exceptions.
+- Stock: product import, opening stock, receiving, adjustments, returns, and stocktake.
+- Controls: permissions, approval limits, audit records, duplicate-request protection, and tested backups.
+- Integrations: simulation first; actual payment and fiscal workflows before live use as applicable.
+
+Quality is measured by correct transactions, quick checkout, clear screens, successful recovery, and understandable reports. More infrastructure is not itself a quality target.
+
+## 3. Architecture for the test shop
+
+```mermaid
+flowchart TD
+    Till["Cashier browser on shop PC"] -->|Internet + HTTPS| App
+    Phone["Manager browser on phone"] -->|Internet + HTTPS| App
+    subgraph Hosting["Existing HostPinnacle hosting account"]
+        App["React static frontend + NestJS API"]
+        App --> DB[("PostgreSQL<br/>Single authoritative database")]
+        Jobs["Bounded scheduled jobs<br/>if supported by package"] --> DB
+        DB --> Backup["Database backup/export"]
+    end
+    Backup --> Copy["Encrypted independent backup copy"]
+    Provider["Payment provider callbacks<br/>when integration is enabled"] -->|HTTPS callback route| App
 ```
 
-### 4.1 Responsibilities
+### 3.1 How this works
 
-| Component | Main responsibilities |
-| --- | --- |
-| Cashier desktop client | Scanning, basket interaction, payment capture, receipt and cash-drawer control, local emergency queue |
-| Store edge service | Local checkout API, current branch prices and stock, till sessions, receipt sequences, offline operation, cloud synchronization |
-| Cloud backend | Central business rules, master data, consolidated reporting, integrations, administration, backup and monitoring |
-| Manager web app | Sales and stock dashboards, approvals, configuration, reports, alerts and reconciliation |
-| Integration workers | Reliable processing of M-Pesa, eTIMS, notifications, exports and retry queues |
+1. Develop and test locally against a separate development PostgreSQL database.
+2. Compile the React frontend and NestJS backend before deployment.
+3. Register the compiled Node.js application with the hosting panel's application manager. Prove the supported startup method and restart behavior.
+4. Prefer one application origin, for example `https://pos.<owned-domain>/`, with the API under `/api`. NestJS can serve the compiled frontend files alongside its API. The actual domain is still to be selected.
+5. Connect the API to a dedicated PostgreSQL database/user using server-side configuration and the provider's required connection settings.
+6. The cashier and manager sign into the same HTTPS application. The manager needs only a browser and internet access; the shop PC can be off.
+7. Store backups independently of the hosting account.
 
-The manager dashboard must display whether branch data is **Live**, **Syncing**, or **Last synchronized at [time]**. Stale data must never look real-time.
+There is one database, with no store/cloud synchronization in this stage. Browser code never connects directly to PostgreSQL or contains database credentials.
 
-## 5. Proposed technology stack
+If the hosting account requires separate frontend/API origins, use owned subdomains, explicit CORS allowlists, and tested session/cookie behavior. Prefer the single-origin deployment to simplify authentication.
 
-| Layer | Default choice | Notes |
+### 3.2 Failure behavior
+
+| Situation | Checkout | Manager on a separate working internet connection |
 | --- | --- | --- |
-| Cashier UI | React + TypeScript | Shared component and validation packages with the web app |
-| Cashier desktop shell | Tauri | Local device access and a smaller footprint than a full browser bundle |
-| Manager web app | Next.js/React responsive PWA | Optimized for phone and desktop browsers |
-| Backend | NestJS + TypeScript | Modular application with a documented REST API |
-| Primary databases | PostgreSQL | Separate store and cloud instances |
-| Till emergency storage | Encrypted SQLite queue | Only for controlled fallback if the edge service is temporarily unavailable |
-| Background jobs | PostgreSQL jobs initially; Redis/BullMQ if needed | Do not introduce Redis until queue volume or scheduling requires it |
-| File storage | S3-compatible object storage | Exports, imports, and supporting files |
-| Deployment | Docker + managed cloud services | Separate development, staging, and production environments |
-| Observability | Structured logs, error tracking, metrics and uptime checks | Include sync, payment, eTIMS and backup alerts |
-
-If the delivery team is substantially stronger in Python, Django may replace NestJS without changing the architecture. The final stack decision should follow a short proof of concept covering printing, scanning, offline synchronization, and deployment.
-
-## 6. Application modules
-
-### 6.1 Identity and access
-
-- Users, roles, branches, tills, and device registrations.
-- Roles: Cashier, Supervisor, Stock Clerk, Purchasing Officer, Accountant, Branch Manager, Owner/System Administrator.
-- Branch-scoped and action-level permissions.
-- Short cashier PIN for till switching and approvals; strong passwords and multi-factor authentication for managers and administrators.
-- Session timeout, device revocation, and account locking.
-
-### 6.2 Product catalogue and pricing
-
-- Products, categories, brands, units of measure, and multiple barcodes.
-- Cost price, selling price, VAT/tax classification, and effective dates.
-- Branch-specific price lists.
-- Scheduled promotions, minimum price, and maximum discount controls.
-- Weighted and variable-price products where required.
-- CSV/Excel import with validation and an error report.
-
-### 6.3 Checkout and sales
-
-- Fast barcode scanning and keyboard-first operation.
-- Product search, quantities, discounts, and supervisor overrides.
-- Hold and resume baskets.
-- Cash, M-Pesa, card, and split payments.
-- Receipt printing, reprinting, and digital receipt option.
-- Returns, refunds, voids, and credit notes.
-- Automatic stock movements and fiscal-document submission.
-
-Paid sales are immutable. A correction must create a linked void, return, refund, or credit note. It must never silently update or delete the original sale.
-
-### 6.4 Inventory
-
-Inventory must use an append-only **stock movement ledger**. Do not treat a directly editable `quantity_on_hand` column as the source of truth.
-
-Movement types include:
-
-- Opening balance
-- Supplier receipt
-- Sale
-- Customer return
-- Wastage or damage
-- Stocktake adjustment
-- Branch transfer
-- Supplier return
-
-Batch and expiry tracking should be optional per product. A calculated stock-balance table may be maintained for performance, but it must be rebuildable from the ledger.
-
-### 6.5 Purchasing
-
-- Suppliers and supplier products.
-- Purchase orders and approval status.
-- Goods received notes.
-- Supplier invoices and purchase returns.
-- Partial receipt handling.
-- Cost history and margin calculation.
-- Reorder suggestions based on minimum stock and sales velocity.
-
-### 6.6 Payments and reconciliation
-
-- Payment attempts separated from completed payments.
-- Unique provider and internal references.
-- Idempotent callbacks and retries.
-- Daily M-Pesa, card, and cash reconciliation.
-- Exception queue for missing, duplicated, underpaid, or overpaid transactions.
-- No card PAN, CVV, or PIN stored by Pay & Go.
-
-### 6.7 Cash and shift management
-
-- Opening float and cashier shift.
-- Cash-in and cash-out with reasons and authorization.
-- Expected versus counted cash.
-- Variance reporting and sign-off.
-- X report during a shift and Z report at closing.
-- Till and branch daily closing.
-
-### 6.8 Reporting and manager dashboard
-
-- Sales today, this week, this month, and custom period.
-- Sales by branch, till, cashier, product, category, and payment method.
-- Gross profit estimate and price/cost changes.
-- Current, low, negative, and out-of-stock items.
-- Expiry and slow-moving product reports.
-- Refund, void, discount, override, and cash-variance reports.
-- Supplier and purchasing reports.
-- M-Pesa, eTIMS, device, and synchronization status.
-- CSV, Excel, and PDF export.
-
-### 6.9 Audit and notifications
+| Hosting and internet working | Available | Available |
+| Store internet unavailable | Cannot finalize sales | Available |
+| Shop PC off or failed | That till unavailable | Available |
+| Hosting API or database unavailable | Cannot finalize sales | Live reports unavailable |
+| Manager phone loses connectivity | Other connected tills unaffected | Show unavailable/stale state |
+| Printer fails after sale commits | Sale remains saved; reprint same receipt | Sale remains visible |
+| Connection drops after submit | Outcome uncertain; query original request ID on reconnect | Committed sale remains visible |
 
-- Append-only audit events for authentication and sensitive business actions.
-- Actor, time, branch, till/device, reason, previous value, and new value where applicable.
-- Alerts for unusual discounts, excessive voids, negative stock, failed sync, failed backups, failed eTIMS submission, and unreconciled payment.
+A cached screen or unfinished basket is not an offline sales system. Never show a sale as completed without a confirmed server commit.
 
-## 7. Core data model
+Before live use, decide whether internet-dependent checkout is acceptable. If it is not, the local-service/synchronization phase becomes a launch requirement rather than a later enhancement.
 
-The initial model should include at least:
+## 4. Free starting stack
 
-- `organizations`, `branches`, `devices`, `tills`
-- `users`, `roles`, `permissions`, `user_branch_roles`
-- `products`, `product_barcodes`, `categories`, `units`
-- `tax_categories`, `price_lists`, `product_prices`, `promotions`
-- `suppliers`, `purchase_orders`, `goods_receipts`, `supplier_invoices`
-- `stock_locations`, `stock_movements`, `stock_balances`, `stocktakes`
-- `till_sessions`, `cash_movements`
-- `sales`, `sale_lines`, `payment_attempts`, `payments`
-- `returns`, `return_lines`, `refunds`
-- `fiscal_documents`, `etims_submissions`
-- `sync_outbox`, `sync_inbox`, `sync_checkpoints`, `sync_conflicts`
-- `audit_events`, `notifications`
+| Purpose | Choice | Starting licence/hosting cost | Reason |
+| --- | --- | --- | --- |
+| Frontend | React + TypeScript + Vite | KES 0 software licence | One responsive app, built into static files |
+| Backend | NestJS + TypeScript on Node.js | KES 0 software licence | Structured modules and shared language |
+| Database | PostgreSQL in existing HostPinnacle account | KES 0 application licence; verify package limits | Transactions, constraints, concurrency, reporting |
+| Styling | Tailwind CSS and a small shared component library | KES 0 software licence | Consistent till and phone screens |
+| Hosting | Existing HostPinnacle account | Target KES 0 additional subscription | Reuse paid capacity; renewal still applies |
+| Authentication | Application users and server sessions in PostgreSQL | KES 0 external authentication subscription | Account and role management within Pay & Go |
+| Jobs | PostgreSQL job records + bounded cron runner, if supported | KES 0 external queue subscription | Durable retries without assuming always-running workers |
+| Receipts | HTML/CSS receipt and installed printer driver | KES 0 extra printing subscription | Validate using actual printer |
+| Reports | SQL reports, charts, CSV, browser print-to-PDF | KES 0 reporting subscription | Covers initial management needs |
+| Backups | PostgreSQL tools + scheduler + encrypted separate copy | KES 0 software licence; storage may cost | Recovery under our control |
+| Development tools | Git, pnpm, local automated tests | KES 0 software licence | Reproducible development and validation |
+| Remote access | Application URL with HTTPS | Included if supported by existing domain/package | Phone browser accesses hosted application directly |
 
-### 7.1 Data rules
+NestJS is MIT-licensed and PostgreSQL permits use without a fee. Paying for enterprise support or managed hosting is optional and separate from using these technologies. [NestJS licence](https://github.com/nestjs/nest/blob/master/LICENSE), [PostgreSQL licence](https://www.postgresql.org/about/licence/)
 
-- Use UUIDv7 or another sortable globally unique ID for distributed records.
-- Store money as integer minor units, never floating-point values.
-- Store quantities as fixed-precision decimals.
-- Store timestamps in UTC and retain the branch timezone for display and business-day calculations.
-- Record tax, price, cost, and product description snapshots on sale lines. Historical receipts must not change when a product is edited.
-- Use database transactions for sale, payment, stock, audit, and outbox writes.
-- Add optimistic version fields to mutable master data.
+Keep NestJS. Cost does not require replacing it. Use supported, compatible versions chosen at implementation and pin dependency versions.
 
-## 8. Sale and payment state model
+Use Vite for the initial internal application; there is no present requirement for public search indexing or server-rendered pages. Next.js remains an option if a later public-facing application needs it.
 
-A sale should follow an explicit state machine, for example:
+Use the provider-managed Node.js and PostgreSQL facilities for the hosted pilot; do not assume root access or Docker support. Local development can use native installations or containers independently of the deployment target.
 
-```text
-DRAFT
-  └─> AWAITING_PAYMENT
-        ├─> PAYMENT_FAILED ─> AWAITING_PAYMENT
-        └─> PAID
-              └─> FISCAL_PENDING
-                    ├─> FISCAL_FAILED (retry/exception queue)
-                    └─> COMPLETED
+## 5. Phone monitoring and hosting compatibility
 
-COMPLETED ─> RETURN/VOID/CREDIT NOTE (new linked document)
-```
+### 5.1 Confirmed context and outstanding checks
 
-Exact fiscal timing and what may be printed during an outage must be confirmed with the chosen eTIMS integration method before this state machine is finalized.
+The user already pays for HostPinnacle hosting and reports PostgreSQL and Node.js application management in the panel. HostPinnacle also advertises Node.js and SSL on its shared-hosting plans. These facts support trying the existing package first. [HostPinnacle shared hosting](https://www.hostpinnacle.co.ke/hosting/shared-hosting/)
 
-## 9. Offline operation and synchronization
+Before considering the environment ready, verify:
 
-### 9.1 Authority model
+- Exact package, currently available control panel, supported Node.js version and application startup mechanism.
+- PostgreSQL version, ability to create a dedicated database/user, connection host/port and required TLS settings.
+- Runtime compatibility with the NestJS version we select.
+- Build/dependency-install method and availability of terminal/SSH or an equivalent deployment workflow.
+- Per-account CPU, memory, process, database connection and storage limits. Do not assume advertised server RAM is dedicated application memory.
+- Process recycling, idle-start latency, restart/log access and request timeouts.
+- Cron availability, minimum frequency and permitted job runtime; do not assume a persistent queue worker is allowed.
+- HTTPS certificate setup, domain/subdomain routing, SPA deep links and no-cache behavior for authenticated API responses.
+- Backup/export tools, retention, restore access and independently downloadable backups.
+- Outbound HTTPS and inbound callback routing before introducing real payment/fiscal integrations.
 
-- The store edge service is operationally authoritative for local sales while disconnected.
-- The cloud is authoritative for consolidated master data, administration, and reporting.
-- Completed transactional records are immutable and replicated, not merged by overwriting.
-- Master-data changes use versions and effective dates.
+These are technical checks, not reasons to buy a higher package before testing. Avoid disturbing unrelated websites or databases in the hosting account.
 
-### 9.2 Synchronization pattern
+### 5.2 Frontend location
 
-1. A business operation and its outbox event are committed in one local database transaction.
-2. A synchronization worker sends pending events to the cloud.
-3. The cloud records the message ID in an inbox before applying it.
-4. Repeated messages return the original result instead of creating duplicates.
-5. The branch records the acknowledgement and advances its checkpoint.
-6. Failed messages retry with exponential backoff.
-7. Non-automatic conflicts enter a visible resolution queue.
+Host the compiled React/Vite frontend on HostPinnacle with the API. No separate frontend hosting subscription is needed if the current account has sufficient capacity.
 
-### 9.3 Offline restrictions
+Vercel remains optional. Its Hobby plan restricts commercial use, so do not budget a supermarket POS on Hobby. A paid commercial Vercel plan would introduce another service and cross-origin configuration if the API remained on HostPinnacle. [Vercel fair-use policy](https://vercel.com/docs/limits/fair-use-guidelines)
 
-- Cash sales may continue when the internet is unavailable, subject to the confirmed eTIMS procedure.
-- A digital payment must not be marked successful solely because a request was initiated.
-- Management changes that cannot be safely reconciled should be disabled while offline.
-- Every offline receipt and transaction must have a locally unique sequence and globally unique ID.
-- The UI must display offline state and the number of queued operations.
+The selected React/Vite frontend produces static files and does not need a development server in production. [Vite static deployment](https://vite.dev/guide/static-deploy.html)
 
-## 10. External integrations
+### 5.3 Dashboard behavior
 
-### 10.1 M-Pesa
+The manager opens the hosted URL from a phone, signs in with MFA, and views authorized reports. No custom phone app, VPN client, or shop-PC connection is required.
 
-Use Safaricom Daraja APIs. The integration must record:
+Poll the API every 30–60 seconds while the dashboard is visible. Show “Last updated at…” and a clear unavailable state after failed requests. Retained figures must be visibly stale. Do not cache sensitive reports indefinitely on shared phones.
 
-- Internal sale and payment-attempt IDs
-- Checkout/request ID
-- M-Pesa receipt number
-- Requested and received amount
-- Masked customer phone number
-- Callback payload and timestamps
-- Confirmation and reconciliation status
+Show sales, payment totals, returns, discounts, cash variance, low stock and the last successful backup. Estimated gross profit requires trustworthy cost data and is not net profit. Begin with read-only remote monitoring; enable administrative changes only with defined permissions and approval rules.
 
-Only a successful callback or a verified reconciliation result may confirm the payment. Callback processing must be idempotent, authenticated where supported, logged, and safe to retry.
+## 6. Core product modules
 
-Reference: [Safaricom Daraja developer portal](https://developer.safaricom.co.ke/apis)
+The following is the product roadmap. Section 12 identifies the first test release; not every feature below must ship together.
 
-### 10.2 Card payments
+| Module | First useful capability | Expansion |
+| --- | --- | --- |
+| Identity | Owner/manager, cashier, stock clerk; action permissions | Additional roles, multiple branches |
+| Catalogue | Products, categories, barcodes, units, prices, tax category, CSV import | Branch price lists and scheduled promotions |
+| Checkout | Scan/search, quantities, basket, hold/resume, cash, receipt/reprint | Split tender, integrated payments, advanced promotions |
+| Returns | Linked return, quantity limits, approval, refund record | Integrated provider refund and credit-note automation |
+| Inventory | Opening stock, append-only movements, receiving, adjustments, stocktake | Transfers, batches, expiry and reorder suggestions |
+| Purchasing | Suppliers and goods received | Purchase orders, partial receipts, supplier invoices/returns |
+| Cash control | Opening float, cash-in/out, close, expected/count/variance | X/Z exports and expanded sign-off workflows |
+| Reporting | Daily sales, cashier/payment totals, low stock, exceptions | Rich exports, trend reports, margin analysis |
+| Audit | User, time, action, reason and relevant before/after values | Separate tamper-resistant storage and alerting |
+| Integrations | Test adapters and clear simulated status | M-Pesa, eTIMS, accounting and messaging |
 
-Use a certified bank or payment-provider terminal. Pay & Go should store only the provider reference, amount, terminal, result, and reconciliation status. It must not store card numbers, CVV, or PIN data.
+Weighted goods, expiry tracking, or split payments move into the first live release if the test shop actually depends on them.
 
-Reference: [PCI DSS document library](https://www.pcisecuritystandards.org/document_library/)
+## 7. Data and transaction rules
 
-### 10.3 KRA eTIMS
+### 7.1 Initial entities
 
-The likely solution is system-to-system integration through OSCU or VSCU. KRA describes VSCU as suitable for invoicing systems that do not always operate online. The project should use a currently certified third-party integrator for the first release unless there is a documented business case for undertaking self-integration and certification.
-
-The internal eTIMS adapter must retain:
-
-- Request and response payloads
-- Internal and KRA invoice identifiers
-- Signature, QR, tax, sequence, and status information
-- Attempts, errors, next retry time, and reconciliation state
-- Links between original invoices and credit notes
-
-The exact offline invoicing, receipt issuance, retry, and credit-note procedure must be signed off with KRA or the selected certified integrator before checkout development is considered complete.
-
-References:
-
-- [KRA eTIMS overview](https://www.kra.go.ke/online-services/etims)
-- [KRA eTIMS solution guidance](https://www.kra.go.ke/business/etims-electronic-tax-invoice-management-system/learn-about-etims/types-of-etims-solutions)
-- [KRA system-to-system information](https://etims.kra.go.ke/main/signup/indexLearnMore)
-
-### 10.4 Accounting and messaging
-
-Accounting export, SMS, email, and WhatsApp are later adapters behind internal interfaces. No checkout transaction should depend synchronously on a messaging service.
-
-## 11. Security, privacy, and compliance
-
-- TLS for all network traffic.
-- Encryption at rest for databases, backups, and till fallback queues.
-- Multi-factor authentication for manager and administrator accounts.
-- Role- and branch-based authorization enforced on the server.
-- Manager reauthentication for refunds, large discounts, price overrides, and sensitive exports.
-- Automatic till locking and device/session revocation.
-- Rate limiting, login throttling, and secure password hashing.
-- Secrets stored in a managed secrets facility, never in source control.
-- Append-only audit trail for sensitive actions.
-- Automated dependency, static-analysis, and vulnerability scans.
-- Separate development, staging, and production data and credentials.
-- Daily backups, point-in-time recovery, off-site copies, and quarterly restore drills.
-- Customer data minimization, documented retention, and controlled exports.
-
-Use OWASP ASVS 5.0 as the application-security verification baseline. Use PCI DSS v4.0.1 requirements where the selected card-payment flow places Pay & Go in scope.
-
-Because the system may process employee, supplier, loyalty, and customer information, assess registration and other obligations under Kenya's Data Protection Act and ODPC guidance before production.
-
-References:
-
-- [OWASP Application Security Verification Standard](https://owasp.org/www-project-application-security-verification-standard/)
-- [Kenya Data Protection Act](https://new.kenyalaw.org/akn/ke/act/2019/24)
-- [ODPC compliance guidance](https://www.odpc.go.ke/data-protection-compliance/)
-
-## 12. Hardware and store network
-
-Each checkout lane should have:
-
-- Supported Windows 11 computer
-- USB barcode scanner
-- 80 mm ESC/POS thermal receipt printer
-- Cash drawer connected through the printer
-- Customer display, if required
-- Separate certified card terminal, if cards are accepted
-- Label printer, if required
-- UPS
-
-The store should have:
-
-- A dedicated edge-server mini PC rather than a cashier's workstation acting as the server
-- Business-grade router and network switch
-- Primary fibre connection with automatic 4G/5G failover
-- UPS for edge server, router, switch, and tills
-- Separate staff/guest Wi-Fi from the POS network
-- Documented replacement and recovery procedure for the edge server
-
-## 13. Environments, deployment, and operations
-
-- `development`: local developer data and simulated integrations.
-- `staging`: production-like environment using provider sandboxes.
-- `production`: restricted access, monitored backups, and controlled releases.
-
-Use automated migrations and backward-compatible deployments. Edge releases must support staged rollout, health checks, rollback, and remote diagnostics. A till must not update itself in the middle of an open transaction or cashier shift without explicit control.
-
-Operational dashboards should monitor:
-
-- API error and response rates
-- Edge and till heartbeat
-- Synchronization lag and queue depth
-- M-Pesa callback age and reconciliation exceptions
-- eTIMS failure and retry count
-- Database capacity and replication health
-- Backup success and last verified restore
-- Printer/device errors where observable
-
-## 14. Delivery plan
-
-### Phase 0 — Discovery and validation (1–2 weeks)
-
-- Observe checkout, receiving, stocktake, return, and closing workflows.
-- Confirm product count, daily transaction volume, number of tills, and future branches.
-- Confirm hardware, weighted products, customer credit, loyalty, and expiry requirements.
-- Confirm M-Pesa shortcode type, card provider, VAT setup, and current eTIMS arrangement.
-- Produce the PRD, wireframes, threat model, data model, and acceptance tests.
-- Build a proof of concept for scanner, printer, cash drawer, and offline sync.
-
-### Phase 1 — Platform foundation (2 weeks)
-
-- Repository, CI/CD, environments, monitoring, and backup setup.
-- Users, roles, branches, tills, and device registration.
-- Product catalogue, prices, taxes, imports, and audit logging.
-- Cloud and edge database foundations.
-
-### Phase 2 — Checkout MVP (3 weeks)
-
-- Barcode checkout and product search.
-- Cash payments, receipts, hold/resume, and cashier shifts.
-- Returns, voids, and supervisor approvals.
-- Local edge service, outbox, idempotency, and offline indicators.
-
-### Phase 3 — Inventory and purchasing (3 weeks)
-
-- Stock ledger, balances, adjustments, and stocktake.
-- Suppliers, purchase orders, goods receipts, and purchase returns.
-- Low-stock, cost, and margin reporting.
-
-### Phase 4 — Integrations and manager dashboard (3–4 weeks)
-
-- M-Pesa initiation, callbacks, and reconciliation.
-- eTIMS adapter, sandbox testing, failure queue, and fiscal documents.
-- Responsive phone dashboard, alerts, reports, and exports.
-- Card payment references and reconciliation if required.
-
-### Phase 5 — Pilot and launch (2 weeks)
-
-- Product and opening-stock migration.
-- Install and pilot on one till.
-- Run controlled parallel checks against the current process.
-- Train cashiers, supervisors, stock staff, and managers.
-- Test power, internet, edge, printer, payment, and eTIMS failures.
-- Reconcile sales, payments, stock, tax, and till closing.
-- Roll out to remaining tills only after pilot exit criteria are met.
-
-**Planning estimate:** 12–16 weeks for an experienced team of three or four people. Provider onboarding, data cleanup, hardware delays, or eTIMS certification/integration may extend the schedule.
-
-## 15. MVP scope
-
-The first production release includes:
-
-- Products, categories, units, barcodes, prices, and VAT
-- Product import
-- Checkout and receipt printing
-- Cash and M-Pesa payments
-- Returns, refunds, and voids
-- Stock ledger, receiving, adjustments, and stocktake
-- Suppliers and basic purchasing
-- Till opening, cash movement, closing, and variance
-- User roles, supervisor approvals, and audit logs
-- Responsive manager dashboard and core reports
-- Edge service, offline cash operation, and cloud synchronization
-- eTIMS integration
-- Automated backups, monitoring, and recovery documentation
-
-Deferred unless discovery makes them essential:
-
-- Loyalty points and customer accounts
-- Customer credit and lay-by
-- Advanced promotion engine
-- E-commerce and delivery orders
-- Accounting-system integration
-- Advanced forecasting
-- Multi-branch transfers
-- Employee scheduling and payroll
-
-## 16. Acceptance and service targets
-
-- A scanned item appears in the basket in under one second on the store LAN.
-- A normal cash checkout completes within five seconds excluding customer handling time.
-- The system supports at least one full business day of permitted offline cash sales.
-- Retried synchronization cannot duplicate a sale, payment, stock movement, or fiscal document.
-- The phone dashboard updates within one minute while the branch is online.
-- Every refund, void, discount, stock adjustment, and cash movement identifies the user and reason.
-- A paid sale cannot be silently edited or deleted.
-- Branch users cannot access unauthorized branch data.
-- Backup failures alert the responsible operator.
-- A documented restore drill successfully recreates the cloud system and a store edge server.
-- Pilot reconciliation produces no unexplained sale, payment, tax, or stock differences.
-
-Performance targets must be load-tested using the confirmed product and transaction volumes before they become contractual service levels.
-
-## 17. Testing strategy
-
-- Unit tests for pricing, taxes, payments, stock, and permissions.
-- Database integration tests for transaction and ledger invariants.
-- Contract tests for M-Pesa and eTIMS adapters.
-- End-to-end tests for checkout, refund, shift closing, and receiving.
-- Hardware tests using the actual scanner, printer, drawer, and terminal models.
-- Failure-injection tests for internet loss, duplicate callbacks, delayed callbacks, service restart, full disk, and power interruption.
-- Synchronization property tests proving idempotency and ordering behavior.
-- Permission and tenant/branch-isolation tests.
-- Security review against OWASP ASVS.
-- Backup restoration and disaster-recovery drills.
-- Cashier usability testing with real product scanning.
-
-## 18. Risks and mitigations
-
-| Risk | Mitigation |
+- Shop, branch, till, user, role, permission, session.
+- Product, barcode, category, unit, tax category, product price.
+- Supplier, goods receipt, receipt line.
+- Stock movement, stock balance, stocktake.
+- Sale, sale line, payment, payment attempt.
+- Return, return line, refund.
+- Cashier shift, cash movement, audit event.
+- Background job and integration document when needed.
+
+Include branch and till identifiers in transactions from the start, using one branch initially. Do not build a multi-tenant billing or subscription system for this pilot.
+
+### 7.2 Rules that remain essential even on a free pilot
+
+- Represent payable currency amounts as integer minor units; use exact decimal arithmetic for quantities, unit pricing, discounts, tax, and rounding.
+- Snapshot description, applied price, cost basis, tax classification/rate, and discount on each sale line.
+- Store UTC timestamps and use Africa/Nairobi for shop business-day reporting.
+- Commit a finalized sale, cash-payment record, stock movements, and audit record atomically in PostgreSQL.
+- For asynchronous external payments, use explicit payment attempts and reconciliation; an external provider cannot participate in the application's database transaction.
+- Use unique request IDs and constraints so retries cannot create duplicate sales/payments.
+- Protect stock and returns against concurrent updates. Define whether insufficient stock blocks checkout or allows a recorded supervisor override.
+- A paid sale cannot be edited or deleted. Corrections create linked returns, refunds, or other approved documents.
+- Print after the database commits. A print failure must not create another sale.
+- Treat product price edits as versioned changes; changing a product must not alter a historical receipt.
+- Derive stock from an append-only movement ledger. Cached balances must be rebuildable.
+- Define a cost method with the shop before presenting profit reports; initially propose weighted-average cost with sale-time cost snapshots.
+- Keep application-level audit records append-only. Privileged hosting/database access can still alter records; stronger independent tamper resistance is a later improvement.
+
+### 7.3 Separate sale, payment, and fiscal states
+
+Track these independently:
+
+| Record | Example states |
 | --- | --- |
-| Internet outage stops sales | Store edge service, local database, 4G/5G failover, UPS |
-| Duplicate M-Pesa callbacks/payments | Idempotency keys, unique provider references, reconciliation |
-| Stock differs between reports and shelves | Append-only stock ledger, controlled adjustments, regular stocktakes |
-| Cashier fraud or untraceable changes | Least privilege, supervisor approval, immutable audit, exception reports |
-| eTIMS outage or rejected invoice | Adapter queue, retry policy, visible exception workflow, certified integrator |
-| Edge-server failure | Dedicated hardware, UPS, monitored backups, documented replacement restore |
-| Corrupt or duplicated offline data | Transactional outbox/inbox, unique IDs, checksums, replayable events |
-| Scope expands before checkout is stable | Enforce MVP boundaries and phase-gate later features |
-| Sensitive data exposure | Data minimization, encryption, access control, secure exports, retention policy |
-| Hardware incompatibility | Proof of concept and approved hardware list before bulk purchase |
+| Sale | Draft, held, finalized, cancelled before completion |
+| Payment attempt | Pending, confirmed, failed, unknown/reconciliation required |
+| Fiscal document | Not applicable to simulation, pending, accepted, rejected |
+| Return/refund | Requested, approved, completed, failed |
 
-## 19. Open decisions before development
+A simulated receipt must say “TEST — NOT A TAX INVOICE.” A pending fiscal submission must never look accepted. Fiscal timing for real sales follows the chosen valid eTIMS workflow.
 
-These must be answered during Phase 0:
+## 8. Internet dependency and future offline operation
 
-1. How many branches and tills exist now, and what is the three-year target?
-2. How many products and transactions are expected per day?
-3. Which Windows computers, scanners, printers, drawers, scales, and card terminals already exist?
-4. Does the supermarket sell weighed, fractional, batch-controlled, or expiry-controlled products?
-5. Which payments are required: cash, M-Pesa Till/PayBill, cards, vouchers, customer credit, or split tender?
-6. What is the current KRA eTIMS solution and who is the approved integrator?
-7. Must prices include VAT, and which product tax categories are used?
-8. Are loyalty, customer records, delivery, wholesale pricing, or credit required in the MVP?
-9. Who may change prices, discount, refund, void, adjust stock, or reopen a closed shift?
-10. Which accounting package, if any, must receive exports?
-11. What reports does the manager currently use to run the business each day?
-12. What internet and power outage duration must the store withstand?
-13. Where will cloud data be hosted, and what data-location/privacy constraints apply?
-14. Who owns production operations, support, backups, hardware replacement, and incident response?
+### 8.1 Online pilot behavior
 
-## 20. Project decision log
+Every login, stock update and sale finalization depends on the hosted API and database being reachable. Browsers may retain an unfinished basket, but cannot complete a sale independently of the server.
 
-Record major decisions here or in separate Architecture Decision Records (ADRs).
+Use a unique request ID for each checkout. On timeout, preserve that ID and show the outcome as unknown. On reconnect, query the result or retry the same idempotent request; never create a new sale or payment merely because a response was lost.
+
+Retain draft baskets only as convenience data, with minimal personal information. On reconnect, revalidate prices, stock, permissions and payment status before finalization. Do not use a service worker to cache success responses to mutation requests.
+
+### 8.2 If offline checkout becomes necessary
+
+Add a local store service and PostgreSQL database accessible by all tills on the store LAN, with hosted reporting retained on HostPinnacle or another suitable service.
+
+This is a separate phase because it introduces two data locations and recovery/conflict handling:
+
+1. Define which operations are locally authoritative and which configuration is centrally managed.
+2. Move branch checkout writes to the local service while connected and disconnected; do not allow two independent writers to the same sale.
+3. Commit sale/payment/stock changes and an outbox event in one local transaction.
+4. Deliver events with retries; atomically deduplicate and apply them to the hosted reporting database.
+5. Acknowledge delivery, retain checkpoints, reconcile totals and display reporting lag.
+6. Design price/configuration versioning, cross-system payment confirmation and fiscal behavior before allowing offline real sales.
+
+Preserve one authoritative writer per business operation. Do not switch between unrelated cloud and local checkouts on network failure without a tested reconciliation design.
+
+The first online test must not be presented as having these offline capabilities. If continuity during internet outages is required for the first live shop, implement and verify this phase before launch.
+
+## 9. Payments and eTIMS: testing versus live sales
+
+### 9.1 Simulated shop
+
+Start with fake cash and simulated M-Pesa/eTIMS adapters. Use isolated test records and clearly marked receipts. No live credentials, real charges, or real fiscal invoices are needed to validate the user experience.
+
+Exercise successful, failed, duplicate, delayed, and unknown payment responses through tests. Using a sandbox does not make the production payment flow free or approved.
+
+### 9.2 M-Pesa
+
+Use Daraja for integration when the core checkout is stable. Confirm the shop's Till/PayBill arrangement and provider onboarding requirements at that point. [Safaricom Daraja](https://developer.safaricom.co.ke/apis)
+
+A manual M-Pesa tender can be included in a controlled live pilot only with a defined verification procedure: authorized staff verify merchant receipt, record the reference and amount, and reconcile it. Clearly distinguish this from API-confirmed payment. A customer screenshot or typed transaction code alone is not confirmation.
+
+Automatic payment initiation/callbacks need a stable public HTTPS callback endpoint. The hosted NestJS API can provide a dedicated callback route if HostPinnacle permits the required requests. Verify reachability, timeouts, security rules and durable callback processing before enabling real automated payments. Browser sessions must not be required for provider callbacks; validate them using the provider-supported controls and reconciliation.
+
+Payment attempts must retain internal IDs, provider references, amount, status and relevant timestamps. Match receipt/amount to the intended sale, deduplicate callbacks, and reconcile uncertainty before retrying a charge.
+
+### 9.3 Cards
+
+Initially record verified transactions from the shop's existing bank terminal, if required. Pay & Go stores the reference and result, never card number, CVV or PIN. Provider fees and applicable PCI obligations depend on the actual arrangement.
+
+### 9.4 eTIMS
+
+KRA supplies eTIMS software for free, while third-party POS integration may incur fees. A paid integrator is therefore no longer an assumed purchase for the simulated pilot. [KRA eTIMS costs and options](https://www.kra.go.ke/helping-tax-payers/faqs/learn-about-etims)
+
+For real customer sales, first determine whether the shop will keep an existing compliant eTIMS process alongside the pilot, use an appropriate KRA-provided solution, or integrate this POS. Have the shop/accountant and KRA or its provider confirm suitability, issuing steps, and reconciliation. Avoid generating duplicate fiscal invoices across the old and new workflows.
+
+“Test shop” does not exempt real trading from fiscal requirements. Before replacing the existing checkout, demonstrate the agreed actual invoice and credit-note workflow. If manual handling cannot keep up with supermarket volume, integration becomes a launch dependency and a budget item.
+
+System-to-system integration through OSCU/VSCU remains the target where needed. Select using current KRA requirements and operating conditions; do not assume an eventual offline mode permits deferred fiscal submission without verifying the applicable process.
+
+## 10. Printing, hardware, and deployment
+
+Reuse the shop's existing supported PC, printer/scanner and router where suitable. The computer runs the browser, not the production database or backend.
+
+- USB barcode scanner using keyboard input where compatible.
+- Existing printer or PDF output for early tests; actual 80 mm receipt printer verified before live use.
+- Browser print dialog initially. Silent printing and automatic cash-drawer control require tested integration on the till computer.
+- A hosted server cannot directly access the cashier's USB printer. Add a local printing bridge or Tauri wrapper only if required by throughput/hardware tests.
+- Use the existing licensed operating system and supported browser.
+- Keep the till awake while trading; turning it off does not stop hosted reporting.
+- A UPS and backup internet connection may improve till availability but involve hardware/connectivity costs.
+
+### 10.1 Deployment proof before feature development
+
+Use an isolated test application/subdomain and test database in the existing account. Deployment requires account access provided through an appropriate secure channel when that step is reached; this document does not record credentials.
+
+1. Select compatible Node.js/NestJS/PostgreSQL versions supported by the account.
+2. Deploy a minimal compiled NestJS application with a static React page and a health endpoint that exposes no secrets.
+3. Connect with a dedicated database user; apply a small migration and confirm an insert/read/rollback.
+4. Set secrets using protected server-side environment/configuration; none may be embedded in the frontend build.
+5. Verify HTTPS, direct browser refresh on application routes, API routing, sessions and manager access from mobile data.
+6. Confirm logs, controlled restart/idle recovery, database connection-pool limits, and backup/restore.
+7. Measure request latency and modest concurrent load on the existing package without disrupting other hosted sites.
+
+### 10.2 Release workflow
+
+Keep local development, hosted testing and live data separate. Build with a pinned dependency lockfile, upload only required runtime assets, and use the provider's supported application startup. Do not serve the application through Vite's development/preview server or a manually open terminal.
+
+Run schema migrations deliberately, take a backup before changes, and use backward-compatible migrations where possible. Keep a previous application build and a documented rollback procedure. Schedule releases outside active checkout; do not assume process managers preserve in-memory tasks.
+
+Use persistent PostgreSQL job records and a bounded, locking cron runner if available. Verify scheduling before relying on automatic retries. Keep database credentials private, limit connection counts to account capacity, and ensure authenticated API responses bypass hosting/CDN caches.
+
+## 11. Security, backups, and operating cost
+
+### 11.1 Essential controls
+
+Use individual accounts, server-side permissions, supervisor approval for sensitive actions, password hashing, protected server sessions, CSRF protection, server-side login throttling, automatic screen lock, and manager MFA with recovery codes.
+
+Keep users and sessions in the application's PostgreSQL database without adding a paid identity subscription. Both cashier and manager login require the hosted service in this version. Store secrets in the hosting environment/protected configuration outside the public web root; a paid secrets service is unnecessary initially.
+
+Use trusted TLS, restricted database access and encrypted backups. Verify the provider's at-rest protection rather than assuming we control the server disks. Never commit credentials or real customer exports to Git. Collect only customer details necessary for the actual payment/invoice workflow.
+
+Retain the original security review references for launch planning: [OWASP ASVS](https://owasp.org/www-project-application-security-verification-standard/), [PCI SSC](https://www.pcisecuritystandards.org/document_library/), [Kenya Data Protection Act](https://new.kenyalaw.org/akn/ke/act/2019/24), [ODPC guidance](https://www.odpc.go.ke/data-protection-compliance/). Revalidate applicable requirements for the actual live configuration.
+
+### 11.2 Backup plan
+
+For simulation, automate a daily PostgreSQL backup using a provider-supported export method, obtain an encrypted copy outside the hosting account, and successfully restore it into a separate test database.
+
+Confirm available tools, backup schedule, retention and restore rights in the actual account. A hosting backup checkbox alone does not establish recoverability. Do not assume root access, continuous WAL archiving, point-in-time recovery or a standby database are included in shared hosting.
+
+For live use, agree the maximum acceptable data loss and recovery time with the shop. Proposed targets remain at most 15 minutes of data loss and restoration within two hours, but they are unproven targets, not features of this package. Daily backups cannot meet the data-loss target. If the provider cannot support the required recovery arrangement, change the hosting/backup design or agree different targets before launch.
+
+Record backup success/failure, monitor capacity, define retention, protect encryption keys separately and test restores. Separate application backups from unrelated account websites. Keep at least one independently accessible copy before real trading.
+
+There is no promise of zero lost transactions after hosting failure. Better database hosting, independent backup storage and recovery support may require a budget.
+
+### 11.3 Cost ledger
+
+| Item | Test-stage assumption | Potential cost |
+| --- | --- | --- |
+| Application and database licences | Open-source components | KES 0 licence fees |
+| Server hosting | Existing HostPinnacle account | Target KES 0 additional subscription; current renewal and limits remain |
+| Remote monitoring | Same hosted application | No separate VPN/remote-access subscription |
+| Domain and HTTPS | Use existing domain/subdomain and available certificate | Confirm domain ownership, certificate setup and renewal costs |
+| Database backup software | Built-in/free tools | Storage or replacement drive if none available |
+| Hardware | Reuse what exists | Printer/scanner/UPS/PC purchases when needed |
+| Connectivity | Existing shop internet and manager data | Provider bills and optional failover |
+| M-Pesa/card | Simulation initially | Real provider charges/onboarding as applicable |
+| eTIMS | Simulation; assess existing/KRA workflow for live pilot | Integrator/support/certification work if needed |
+| Notifications | In-app alerts | SMS/WhatsApp/email services later |
+| Development and support | Project work | Time, training, maintenance and incident response |
+
+No additional Vercel, Supabase, VPN or VPS subscription is planned for this pilot. Stay within the existing package where the deployment and load tests support it; upgrade only when measured capacity, availability or recovery requirements demand it.
+
+## 12. Delivery plan with completion gates
+
+Estimates below are planning ranges for one experienced developer working consistently. They are not a promise about integration approval or hardware procurement.
+
+| Stage | Indicative effort | Deliverable and exit condition |
+| --- | --- | --- |
+| 0. Confirm shop and prove setup | 2–4 working days | Inventory hardware; prove hosted Node.js startup, PostgreSQL connection, HTTPS, phone access and restart |
+| 1. Foundation | 1–2 weeks | Separate development/hosted test databases, accounts/roles, product import, migrations, backup and restore |
+| 2. Complete cash-sale workflow | 1–2 weeks | Scan, basket, exact totals, payment, atomic stock deduction, receipt/reprint, duplicate-request test |
+| 3. Shop operations | 1–2 weeks | Receiving, returns, adjustments, stocktake, shift closing, audit and reconciliation |
+| 4. Phone dashboard and test pilot | 1–2 weeks | Authorized remote reports, clear outage states, cashier usability and recovery tests |
+| 5. Live-operation readiness | Separately estimated after discovery | Actual fiscal process, required payment workflow, hardware reliability, training and signed-off reconciliation |
+
+Allow approximately 4–8 development weeks plus setup for a credible simulated single-shop pilot. Part-time work, unfamiliar hardware, weighted goods, migrations, or expanded scope can extend this. Estimate production launch after confirming the actual integrations.
+
+### 12.1 First test-release scope
+
+- One shop, one active till, manager and cashier accounts.
+- Product catalogue and CSV import.
+- Opening stock, receiving, adjustments and basic stocktake.
+- Cash checkout, receipt/reprint and held baskets.
+- Linked returns/refunds with approval.
+- Shift opening/closing and cash variance.
+- Daily sales, payment totals, low stock, and exception reports on a phone.
+- Online checkout with explicit connectivity failure and unknown-submit recovery states.
+- Audit records and proven backup/restore.
+- Simulated external payment and fiscal statuses.
+
+### 12.2 Deferred until justified
+
+- Local store service/database and offline checkout synchronization.
+- Dedicated store server and additional database replicas.
+- Tauri/Electron and automatic printer/drawer bridge.
+- Redis, microservices, Kubernetes and paid monitoring subscriptions.
+- Automated M-Pesa and eTIMS in simulation; promote to launch scope if required for actual trading.
+- Purchase orders, advanced supplier accounting and accounting integrations.
+- Loyalty, credit, delivery, e-commerce and complex promotions.
+- Multiple branches and transfers.
+- Independent operation of tills disconnected from the hosted service.
+
+## 13. Verification and acceptance
+
+- Scanned item appears in under one second on the test hardware and representative shop connection; measure lookup and hosted API latency.
+- Cash-sale commit completes within two seconds under the agreed test load; receipt timing is measured separately.
+- Repeated submit requests produce one sale, one payment and the intended stock movements.
+- Prices, rounding, tax and quantity calculations match agreed worked examples.
+- Concurrent sale/return requests cannot violate the defined stock/return policy.
+- Printer failure does not roll back a paid sale or duplicate it.
+- Disconnecting store internet prevents new sale finalization and shows a clear connection error.
+- Dropping a response after commit and retrying with the same request ID recovers the original sale without duplication.
+- Phone monitoring works on mobile data, not just store Wi-Fi.
+- Phone data refreshes within one minute when connected and is visibly stale when unavailable.
+- Cashier accounts cannot access restricted reports or approve their own restricted actions.
+- Controlled application restart/idle recovery preserves committed records and server sessions; no critical task depends solely on process memory.
+- Manager reports remain available while the shop PC is off, provided hosting and the manager's connection work.
+- A backup restores successfully on another machine and totals reconcile.
+- Before live use: test actual fiscal/payment workflows and the agreed recovery objectives.
+
+Use unit tests for calculations, integration tests for database transactions and constraints, end-to-end tests for checkout/returns/closing, and manual tests on real peripherals. Add adapter contract tests when external integrations are introduced.
+
+## 14. Growth triggers
+
+| Evidence | Next investment |
+| --- | --- |
+| Hosted latency, concurrency or connection limits exceed pilot targets | Tune queries/pooling, then assess a larger package or VPS |
+| Browser printing too slow/unreliable | Local printer bridge or desktop wrapper |
+| Checkout must continue during store internet outages | Local store service/database, UPS and tested synchronization |
+| More than one branch | Branch-scoped operations, transfer design and per-branch continuity requirements |
+| Backup/recovery targets not achieved | Database hosting/backup arrangement that supports required recovery |
+| Manual payment/fiscal processing slows checkout | Production integration and stable callback endpoint |
+| Usage exceeds existing HostPinnacle package limits | Budgeted upgrade or another supported deployment |
+
+Retain SQL migrations, modular APIs, stable IDs, and explicit provider adapters so each upgrade is incremental.
+
+## 15. Open decisions
+
+1. Is the first test simulated, shadowing an existing POS, or replacing checkout for real customers?
+2. Is Kenya the correct jurisdiction?
+3. Which PC, printer, scanner, backup storage and router are already available?
+4. How many products, daily sales, and tills will the pilot cover?
+5. Which HostPinnacle package, Node.js/PostgreSQL versions, resource limits and backup features are actually available?
+6. Is online-only checkout acceptable for live trading, or must offline operation be implemented before launch?
+7. What eTIMS and M-Pesa setup does the shop already have?
+8. Does the shop need weighted goods, expiry batches, split payments, or credit immediately?
+9. What approval limits, stock policy and cost method should apply?
+10. Who handles backups, support and recovery, and what downtime/data loss can the shop accept?
+11. Which owned domain/subdomain should host the isolated test deployment?
+
+These questions refine the pilot. The user has confirmed that PostgreSQL and Node.js application management are listed; the first technical milestone is proving the deployment, database connection and phone access. Feature development uses separate local/test data.
+
+## 16. Decision log
 
 | ID | Decision | Status | Date |
 | --- | --- | --- | --- |
-| ADR-001 | Use hybrid store-edge plus cloud architecture | Proposed | 2026-07-16 |
-| ADR-002 | Use a modular monolith for the initial backend | Proposed | 2026-07-16 |
-| ADR-003 | Use an append-only stock movement ledger | Proposed | 2026-07-16 |
-| ADR-004 | Use a desktop shell for tills and a responsive web app for managers | Proposed | 2026-07-16 |
-| ADR-005 | Use a certified eTIMS integrator for the first release | Proposed | 2026-07-16 |
+| ADR-001 | Original cloud + store-edge deployment | Deferred until growth triggers apply | 2026-09-14 |
+| ADR-002 | Modular monolith | Retained recommendation | 2026-09-14 |
+| ADR-003 | Append-only stock movement ledger | Retained recommendation | 2026-09-14 |
+| ADR-004 | Desktop wrapper on every till | Deferred pending printer/hardware tests | 2026-09-14 |
+| ADR-005 | Paid certified eTIMS integration at first release | Replaced with simulation first and explicit live fiscal decision | 2026-09-14 |
+| ADR-006 | React/Vite + NestJS + one authoritative PostgreSQL database on HostPinnacle | Revised deployment proposal; runtime test pending | 2026-09-14 |
+| ADR-007 | Existing PC hosts web app and database | Superseded by existing HostPinnacle account | 2026-09-14 |
+| ADR-008 | Private phone VPN access | Superseded by browser access over HTTPS | 2026-09-14 |
+| ADR-009 | Reuse existing HostPinnacle Node.js and PostgreSQL facilities | Features reported available by user; deployment unverified | 2026-09-14 |
+| ADR-010 | Host frontend and API together; no Vercel subscription initially | Recommended to minimize additional cost | 2026-09-14 |
+| ADR-011 | Online-only initial hosted test | Explicit scope limitation; live offline requirement still open | 2026-09-14 |
 
-## 21. Definition of project success
-
-The project succeeds when store staff can complete daily checkout, receiving, returns, stock control, and till closing accurately; management can monitor the business remotely; sales remain safe during defined outages; every important action is auditable; M-Pesa and eTIMS reconcile; and the system can be restored from tested backups without losing committed transactions.
+Provider claims cited above were reviewed on 14 September 2026. Recheck plan terms when creating accounts or enabling live integrations.
