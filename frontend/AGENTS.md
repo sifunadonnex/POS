@@ -12,6 +12,7 @@ Read `../AGENTS.md` first. These rules apply to all frontend files.
 - Base UI imports belong in the matching shadcn primitive wrappers in `src/components/ui/`, not ad hoc controls in business screens.
 - Semantic HTML for page structure, text, forms and receipt markup is allowed. Tailwind layouts, business compositions, theme providers, and Lucide icons are allowed; “strict shadcn” does not mean every paragraph must be a generated component.
 - Keep `src/components/ui/` reusable and free of POS-specific API calls or business state. Put business components in feature folders or `src/components/`.
+- Keep React component exports separate from styling-function exports for Fast Refresh. The Button uses `button-variants.ts`; import `buttonVariants` there when composing styles. Preserve this separation when updating generated shadcn files.
 
 ## UI and interaction
 
@@ -34,10 +35,10 @@ Run from `frontend/` (on Windows, use `pnpm.cmd` if PowerShell blocks the shim):
 | Install exact dependencies when needed | `pnpm install --frozen-lockfile` |
 | Development | `pnpm run dev` |
 | Lint | `pnpm run lint` |
-| Referenced-project type check | `pnpm exec tsc -b` |
+| Referenced-project type check | `pnpm run typecheck` |
 | Production build, including type check | `pnpm run build` |
 | Check formatting of changed files | `pnpm exec prettier --check <changed-files>` |
 
-The existing `pnpm run typecheck` executes `tsc --noEmit` against a root config with an empty file list and project references. Do not use that command alone as evidence of frontend type safety. A successful production build already covers the build-mode TypeScript check; no need to repeat it unnecessarily.
+The `pnpm run typecheck` command executes `tsc -b` to traverse the application and tooling project references. Do not replace it with a bare `tsc --noEmit` against the empty root file list. A successful production build already covers the build-mode TypeScript check; no need to repeat it unnecessarily.
 
 No frontend test runner is configured yet. Add an appropriate test setup with the first interactive business feature; do not claim frontend tests exist or pass today. Run a browser/visual check for material UI changes and report if unavailable. Vite preview is a local check, not a production hosting service.

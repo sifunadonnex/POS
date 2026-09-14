@@ -25,7 +25,7 @@ Read `../AGENTS.md` first. These rules apply to all backend files.
 
 - Read port and credentials from server configuration. Do not assume HostPinnacle permits root access, persistent background workers, Docker, unlimited memory or every Node.js version.
 - Persist retry jobs and use a verified scheduling mechanism. Important work must survive application recycling.
-- The starter already imports `@nestjs/observe` and defines a `deploy` script. Neither establishes a chosen telemetry service or HostPinnacle deployment workflow. Do not add live telemetry keys or run `pnpm run deploy` by default.
+- External starter telemetry (`@nestjs/observe`) and the generic Nest deployment helper (`@nestjs/mau`) have been removed. Keep normal Nest logging; add external telemetry or a deployment service only after an explicit project decision. The current production entrypoint is `dist/main.js`; HostPinnacle startup still needs verification.
 - Keep M-Pesa/eTIMS adapters simulated until actual workflows are authorized and implemented. No real external calls from tests; mock adapters and use isolated test credentials where appropriate.
 
 ## Checks

@@ -50,7 +50,7 @@ These rules apply throughout this repository. Read the more specific frontend or
 - Add meaningful tests for business behavior, authorization, failure handling and regressions. Do not add tests that merely mirror an implementation or snapshot incidental markup.
 - Never weaken a test, lint rule or compiler setting just to obtain a pass. Distinguish a pre-existing failure from one introduced by the task.
 - Report the command, result and scope of verification. A successful build does not establish a working database, deployed API or production system.
-- Do not claim a passing frontend `typecheck` script is sufficient: the current script does not traverse the referenced projects. Use the build-mode check documented in `frontend/AGENTS.md`.
+- Keep frontend type checking in TypeScript build mode so it traverses both referenced projects. Use `pnpm run typecheck` or the production build documented in `frontend/AGENTS.md`.
 - Update `docs/HANDOFF.md` when code, configuration, decisions or verification status materially changes. Update the architecture document when the architecture changes.
 - Stop task-started services when no longer needed, or document the service and port if it is intentionally left for the user.
 - Finish with the result, important verification and any unresolved issue. Leave a concrete next step in the handoff rather than an ambiguous “continue development.”
