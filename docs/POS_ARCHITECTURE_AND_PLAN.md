@@ -91,7 +91,7 @@ Before live use, decide whether internet-dependent checkout is acceptable. If it
 | Database | PostgreSQL in existing HostPinnacle account | KES 0 application licence; verify package limits | Transactions, constraints, concurrency, reporting |
 | UI components and styling | Strict shadcn/ui with the existing Base UI preset, Tailwind CSS and shared theme tokens | KES 0 software licence | Consistent accessible controls for till and phone screens |
 | Hosting | Existing HostPinnacle account | Target KES 0 additional subscription | Reuse paid capacity; renewal still applies |
-| Authentication | Application users and server sessions in PostgreSQL | KES 0 external authentication subscription | Account and role management within Pay & Go |
+| Authentication | Better Auth with application users and server sessions in PostgreSQL | KES 0 external authentication subscription | User-selected authentication library; POS permissions enforced by the backend |
 | Jobs | PostgreSQL job records + bounded cron runner, if supported | KES 0 external queue subscription | Durable retries without assuming always-running workers |
 | Receipts | HTML/CSS receipt and installed printer driver | KES 0 extra printing subscription | Validate using actual printer |
 | Reports | SQL reports, charts, CSV, browser print-to-PDF | KES 0 reporting subscription | Covers initial management needs |
@@ -108,6 +108,8 @@ Use Vite for the initial internal application; there is no present requirement f
 Use the provider-managed Node.js and PostgreSQL facilities for the hosted pilot; do not assume root access or Docker support. Local development can use native installations or containers independently of the deployment target.
 
 ## 5. Phone monitoring and hosting compatibility
+
+Persistence implementation: use the MIT-licensed `pg` driver with parameterized SQL and `node-pg-migrate` for explicit, versioned SQL migrations. No ORM or startup schema synchronization. See [backend setup](BACKEND_SETUP.md) for environment validation, TLS, bounded pools, health checks and isolated migration testing. This local foundation does not establish hosted compatibility.
 
 ### 5.1 Confirmed context and outstanding checks
 
@@ -302,6 +304,8 @@ Use persistent PostgreSQL job records and a bounded, locking cron runner if avai
 
 ### 11.1 Essential controls
 
+Better Auth is the selected authentication library. Implement using the relevant installed Better Auth skills, documentation matching the resolved version, and tests of actual behavior. The official [NestJS integration guide](https://better-auth.com/docs/integrations/nestjs) identifies the NestJS wrapper as community-maintained; verify its compatibility and request-body/guard behavior before integration. Retain shadcn-only authentication UI and application-level branch/till permissions. Review generated authentication schema changes and incorporate them into the existing explicit migration workflow; do not introduce an independent untracked schema writer. Authentication implementation remains pending.
+
 Use individual accounts, server-side permissions, supervisor approval for sensitive actions, password hashing, protected server sessions, CSRF protection, server-side login throttling, automatic screen lock, and manager MFA with recovery codes.
 
 Keep users and sessions in the application's PostgreSQL database without adding a paid identity subscription. Both cashier and manager login require the hosted service in this version. Store secrets in the hosting environment/protected configuration outside the public web root; a paid secrets service is unnecessary initially.
@@ -445,5 +449,7 @@ These questions refine the pilot. The user has confirmed that PostgreSQL and Nod
 | ADR-009 | Reuse existing HostPinnacle Node.js and PostgreSQL facilities | Features reported available by user; deployment unverified | 2026-09-14 |
 | ADR-010 | Host frontend and API together; no Vercel subscription initially | Recommended to minimize additional cost | 2026-09-14 |
 | ADR-011 | Online-only initial hosted test | Explicit scope limitation; live offline requirement still open | 2026-09-14 |
+| ADR-012 | `pg` driver and `node-pg-migrate` with explicit SQL migrations | Implemented foundation; real PostgreSQL verification pending | 2026-09-14 |
+| ADR-013 | Better Auth for authentication; relevant skills and version-matched official documentation required | User-selected; integration pending | 2026-09-14 |
 
 Provider claims cited above were reviewed on 14 September 2026. Recheck plan terms when creating accounts or enabling live integrations.

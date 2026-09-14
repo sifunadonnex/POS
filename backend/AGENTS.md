@@ -13,7 +13,7 @@ Read `../AGENTS.md` first. These rules apply to all backend files.
 
 ## PostgreSQL and transaction safety
 
-- Database access is not wired yet. Introduce one documented data-access/migration approach when implementing persistence; do not mix ORMs or add production schema auto-sync.
+- Use `pg` and versioned SQL through `node-pg-migrate`; see `../docs/BACKEND_SETUP.md`. Do not mix ORMs or add production schema auto-sync. Migrations run explicitly, never on application startup.
 - Use versioned migrations, parameterized queries, bounded connection pools and a dedicated application user. Keep development, test and live databases separate.
 - Never run destructive migrations or tests against real shop records. Describe data impact and recovery for schema changes.
 - Finalize sale, cash tender, stock movements and audit writes atomically. Unique request IDs and constraints must protect against retries and concurrency.
@@ -39,6 +39,8 @@ Run from `backend/` (use `pnpm.cmd` on Windows where needed):
 | Lint | `pnpm run lint` |
 | Unit tests | `pnpm run test` |
 | HTTP/end-to-end tests | `pnpm run test:e2e` |
+| Type-check source and tests | `pnpm exec tsc --noEmit --incremental false` |
+| Isolated PostgreSQL migration test | `pnpm run test:integration` (requires explicit `TEST_DATABASE_URL`; never real shop data) |
 | Production build | `pnpm run build` |
 | Check formatting of changed files | `pnpm exec prettier --check <changed-files>` |
 

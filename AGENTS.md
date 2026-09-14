@@ -14,7 +14,8 @@ These rules apply throughout this repository. Read the more specific frontend or
 
 - One root Git repository containing `frontend/`, `backend/` and `docs/`.
 - Frontend: React, TypeScript, Vite, Tailwind and **shadcn/ui exclusively for UI components**, using the existing Base UI configuration.
-- Backend: NestJS, TypeScript and PostgreSQL. A database integration has not yet been implemented.
+- Backend: NestJS, TypeScript and PostgreSQL via `pg`, with explicit SQL migrations managed by `node-pg-migrate`. See `docs/BACKEND_SETUP.md`; actual database/hosting verification is still pending.
+- Authentication: Better Auth is user-selected. Use the relevant installed Better Auth skills and official documentation matching the resolved package version before implementing or changing authentication. Authentication is not yet integrated.
 - Hosting target: existing HostPinnacle account, with Node.js and PostgreSQL listed by the user. Deployment compatibility is still unverified.
 - Initial hosted test requires internet. Do not claim offline checkout, production readiness, payment confirmation or fiscal compliance without implementing and verifying it.
 - Use pnpm separately within each project; both use `pnpm-lock.yaml`. There is no root JavaScript workspace yet.
@@ -34,6 +35,8 @@ These rules apply throughout this repository. Read the more specific frontend or
 - Follow `.editorconfig`, `.gitattributes` and each project's formatter. Do not mass-format or renormalize unrelated starter files.
 
 ## Engineering standards
+
+- For authentication work, read `better-auth-best-practices` and the applicable setup, security, email/password, MFA or organization skill before changing that area. Verify examples against version-matched official documentation and installed types/source; do not copy skill snippets blindly or run unpinned `@latest` commands. Use pnpm and preserve the project's migration and shadcn conventions. Installing a skill does not authorize enabling every plugin or adding multi-tenancy.
 
 - Keep strict TypeScript enabled. Prefer narrow types and explicit contracts; validate unknown external input at runtime. Do not introduce `any`, `@ts-ignore`, broad assertions or disabled checks to conceal defects.
 - Keep code organized by business feature; avoid giant controllers, pages and generic utility dumping grounds. Build abstractions after a real shared need appears.
