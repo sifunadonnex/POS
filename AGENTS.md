@@ -14,7 +14,7 @@ These rules apply throughout this repository. Read the more specific frontend or
 
 - One root Git repository containing `frontend/`, `backend/` and `docs/`.
 - Frontend: React, TypeScript, Vite, Tailwind and **shadcn/ui exclusively for UI components**, using the existing Base UI configuration.
-- Backend: NestJS, TypeScript and PostgreSQL via `pg`, with explicit SQL migrations managed by `node-pg-migrate`. See `docs/BACKEND_SETUP.md`; actual database/hosting verification is still pending.
+- Backend: NestJS, TypeScript and PostgreSQL via `pg`, with explicit SQL migrations managed by `node-pg-migrate`. See `docs/BACKEND_SETUP.md`; local PostgreSQL 18.6 migration/API verification passed, but hosting verification is still pending.
 - Authentication: Better Auth is user-selected. Use the relevant installed Better Auth skills and official documentation matching the resolved package version before implementing or changing authentication. Authentication is not yet integrated.
 - Hosting target: existing HostPinnacle account, with Node.js and PostgreSQL listed by the user. Deployment compatibility is still unverified.
 - Initial hosted test requires internet. Do not claim offline checkout, production readiness, payment confirmation or fiscal compliance without implementing and verifying it.

@@ -1,7 +1,7 @@
 /.agents
 
 # Local archives and session scratch data (never publish Git-history backups)
-/.local/
+.local/
 
 # Secrets: commit only sanitized example templates
 .env

@@ -449,7 +449,7 @@ These questions refine the pilot. The user has confirmed that PostgreSQL and Nod
 | ADR-009 | Reuse existing HostPinnacle Node.js and PostgreSQL facilities | Features reported available by user; deployment unverified | 2026-09-14 |
 | ADR-010 | Host frontend and API together; no Vercel subscription initially | Recommended to minimize additional cost | 2026-09-14 |
 | ADR-011 | Online-only initial hosted test | Explicit scope limitation; live offline requirement still open | 2026-09-14 |
-| ADR-012 | `pg` driver and `node-pg-migrate` with explicit SQL migrations | Implemented foundation; real PostgreSQL verification pending | 2026-09-14 |
+| ADR-012 | `pg` driver and `node-pg-migrate` with explicit SQL migrations | Local PostgreSQL 18.6 migration/API checks passed; hosted verification pending | 2026-09-14 |
 | ADR-013 | Better Auth for authentication; relevant skills and version-matched official documentation required | User-selected; integration pending | 2026-09-14 |
 
 Provider claims cited above were reviewed on 14 September 2026. Recheck plan terms when creating accounts or enabling live integrations.

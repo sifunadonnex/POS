@@ -72,4 +72,27 @@ pnpm run test:integration
 
 This test intentionally does not read `.env` or fall back to `DATABASE_URL`. Missing/unsafe test configuration fails the test rather than reporting a skipped pass. It creates a random schema, tests migration up, repeated up, down and reapplication, then drops only that schema and closes the client. An interrupted test may leave an `integration_*` schema; inspect ownership before manual cleanup. Do not use real customer records even in a database with a `_test` suffix.
 
-The real PostgreSQL test has not yet been run against a database in this workspace. The next gate is running it and checking both health endpoints against the isolated development database, followed by the hosted compatibility/backup/phone-access proof in the architecture plan.
+## Verified local environment
+
+Local PostgreSQL server 18.6 is running at `127.0.0.1:5432` as Windows service `postgresql-x64-18`. Two new databases were provisioned with separate, randomly generated credentials:
+
+| Database | Owner | Local configuration |
+| --- | --- | --- |
+| `pay_and_go_dev` | `pay_and_go_dev` | `backend/.env` |
+| `pay_and_go_test` | `pay_and_go_test` | `backend/.env.test` |
+
+Both owners are non-superusers without role/database creation, replication or RLS-bypass privileges. Each database has public access revoked, and cross-database CONNECT permission was checked as denied. These are local development owners allowed to manage their own schema, not a final production runtime/migration privilege design. Provisioning used the PostgreSQL [role](https://www.postgresql.org/docs/18/sql-createrole.html) and [database](https://www.postgresql.org/docs/18/sql-createdatabase.html) facilities. Existing databases were not modified.
+
+The environment files are Git-ignored and must remain private. The temporary administrator credential file was deleted after provisioning. Do not recreate it for normal development; the application now uses its own account. `.local/` directories at every depth are ignored.
+
+To explicitly load the local test credentials, run from `backend/`:
+
+```sh
+node --env-file=.env.test node_modules/vitest/vitest.mjs run --config vitest.config.integration.ts
+```
+
+This invokes the same suite as `pnpm run test:integration`, with the test file explicitly loaded by Node. The test itself still never reads the application `.env` or falls back to `DATABASE_URL`. The local `.env.test` contains only `TEST_DATABASE_URL` and `TEST_DATABASE_TLS`.
+
+Verified: migration up/repeated up/down/reapply against the isolated test schema; cleanup with no leftover test schemas; development migration and transactional rollback; compiled API liveness/readiness returning HTTP 200 with no-store headers. The smoke-test API process was stopped. The PostgreSQL service remains running for development.
+
+The next gate is the hosted compatibility, backup/restore and phone-access proof in the architecture plan. Local success does not establish HostPinnacle compatibility or production readiness.
