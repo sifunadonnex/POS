@@ -14,6 +14,8 @@
 
 This is the development reference for Pay & Go. Version 0.3 uses the user's existing HostPinnacle hosting account. The user has confirmed that PostgreSQL and a Node.js application management feature are listed in the hosting panel.
 
+Working conventions are defined in [project rules](../AGENTS.md), with scoped [frontend rules](../frontend/AGENTS.md) and [backend rules](../backend/AGENTS.md). Read the [current handoff](HANDOFF.md) for actual implementation and verification status. A planned feature is not an implemented feature.
+
 The initial deployment is an online web application: React/Vite frontend, NestJS backend, and one authoritative PostgreSQL database on HostPinnacle. Cashiers and managers use different screens in the same application through HTTPS.
 
 Listing the features establishes a deployment candidate, not a tested runtime. Node.js/PostgreSQL versions, application startup, database connectivity, limits, scheduled jobs and backups must be verified through a small deployment test before substantial implementation.
@@ -87,7 +89,7 @@ Before live use, decide whether internet-dependent checkout is acceptable. If it
 | Frontend | React + TypeScript + Vite | KES 0 software licence | One responsive app, built into static files |
 | Backend | NestJS + TypeScript on Node.js | KES 0 software licence | Structured modules and shared language |
 | Database | PostgreSQL in existing HostPinnacle account | KES 0 application licence; verify package limits | Transactions, constraints, concurrency, reporting |
-| Styling | Tailwind CSS and a small shared component library | KES 0 software licence | Consistent till and phone screens |
+| UI components and styling | Strict shadcn/ui with the existing Base UI preset, Tailwind CSS and shared theme tokens | KES 0 software licence | Consistent accessible controls for till and phone screens |
 | Hosting | Existing HostPinnacle account | Target KES 0 additional subscription | Reuse paid capacity; renewal still applies |
 | Authentication | Application users and server sessions in PostgreSQL | KES 0 external authentication subscription | Account and role management within Pay & Go |
 | Jobs | PostgreSQL job records + bounded cron runner, if supported | KES 0 external queue subscription | Durable retries without assuming always-running workers |

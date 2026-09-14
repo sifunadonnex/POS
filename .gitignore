@@ -1,1 +1,29 @@
 /.agents
+
+# Local archives and session scratch data (never publish Git-history backups)
+/.local/
+
+# Secrets: commit only sanitized example templates
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Dependencies, generated output and test artifacts at any project depth
+node_modules/
+dist/
+dist-ssr/
+coverage/
+.vite/
+*.tsbuildinfo
+*.log
+playwright-report/
+test-results/
+
+# Database exports and operational backups; SQL migrations remain trackable
+/backups/
+*.dump
+
+# OS metadata
+.DS_Store
+Thumbs.db
