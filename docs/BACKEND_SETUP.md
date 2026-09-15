@@ -6,6 +6,8 @@ Run commands from `backend/`. Use `pnpm.cmd` on Windows if PowerShell blocks `pn
 
 ## Prerequisites and configuration
 
+**Current machine (user-confirmed, 15 September 2026): PostgreSQL is not installed.** Continue code development, unit/HTTP tests with mocked database access, lint and builds. Database installation, migrations, staff provisioning, real integration tests and connected browser testing are deferred until PostgreSQL is available. The historical setup evidence below does not describe this machine.
+
 Use Node.js 24 for the currently tested local setup and `pnpm install --frozen-lockfile`. HostPinnacle's available runtime is still unverified. The pure-JavaScript `pg` driver and `node-pg-migrate` are MIT-licensed; no ORM, native PostgreSQL extension, Docker or paid service is required by the application.
 
 Create a separate development PostgreSQL database and dedicated non-superuser account using your database administrator or hosting panel. Do not reuse a live shop database. Copy `.env.example` to `.env` using your editor, then enter the development connection details privately. No database/user is created by application startup.
@@ -74,9 +76,9 @@ pnpm run test:integration
 
 This test intentionally does not read `.env` or fall back to `DATABASE_URL`. Missing/unsafe test configuration fails the test rather than reporting a skipped pass. It creates a random schema, tests migration up, repeated up, down and reapplication, then drops only that schema and closes the client. An interrupted test may leave an `integration_*` schema; inspect ownership before manual cleanup. Do not use real customer records even in a database with a `_test` suffix.
 
-## Verified local environment
+## Historical verification from the earlier local environment
 
-Local PostgreSQL server 18.6 is running at `127.0.0.1:5432` as Windows service `postgresql-x64-18`. Two new databases were provisioned with separate, randomly generated credentials:
+The earlier implementation recorded PostgreSQL server 18.6 at `127.0.0.1:5432` as Windows service `postgresql-x64-18`. Two databases were provisioned in that environment with separate, randomly generated credentials:
 
 | Database | Owner | Local configuration |
 | --- | --- | --- |
@@ -95,6 +97,6 @@ node --env-file=.env.test node_modules/vitest/vitest.mjs run --config vitest.con
 
 This invokes the same suite as `pnpm run test:integration`, with the test file explicitly loaded by Node. The test itself still never reads the application `.env` or falls back to `DATABASE_URL`. The local `.env.test` contains only `TEST_DATABASE_URL` and `TEST_DATABASE_TLS`.
 
-Verified: migration up/repeated up/down/reapply against the isolated test schema; cleanup with no leftover test schemas; development migration and transactional rollback; compiled API liveness/readiness returning HTTP 200 with no-store headers. The smoke-test API process was stopped. The PostgreSQL service remains running for development.
+Historically verified: migration up/repeated up/down/reapply against the isolated test schema; cleanup with no leftover test schemas; development migration and transactional rollback; compiled API liveness/readiness returning HTTP 200 with no-store headers. The smoke-test API process was stopped. Repeat these checks once PostgreSQL is installed on the current machine.
 
-The next gate is the hosted compatibility, backup/restore and phone-access proof in the architecture plan. Local success does not establish HostPinnacle compatibility or production readiness.
+The next database gate is to configure this machine and run the updated authentication migration/integration checks in [local auth setup](LOCAL_AUTH_SETUP.md). Hosting, backup/restore and phone-access proof remain deferred. Historical local success does not establish current-machine or HostPinnacle readiness.

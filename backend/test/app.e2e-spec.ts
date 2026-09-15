@@ -10,6 +10,7 @@ import { AUTH } from '../src/identity/auth.js';
 import { StaffGuard } from '../src/identity/staff.guard.js';
 import { IdentityController } from '../src/identity/identity.controller.js';
 import { DatabaseService } from '../src/database/database.service.js';
+import { AUTH_CONFIG } from '../src/identity/auth.config.js';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
@@ -27,6 +28,10 @@ describe('AppController (e2e)', () => {
         AppService,
         { provide: DatabaseService, useValue: database },
         { provide: AUTH, useValue: auth },
+        {
+          provide: AUTH_CONFIG,
+          useValue: { baseURL: 'http://localhost:5173', smtp: null },
+        },
         { provide: APP_GUARD, useClass: StaffGuard },
       ],
     }).compile();

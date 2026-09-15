@@ -16,6 +16,8 @@ import {
   parseStaffInput,
   provisionStaff,
 } from '../src/identity/provision-staff.js';
+import { AUTH_MAILER, type AuthMessage } from '../src/identity/auth-mail.js';
+import { cookieHeader, totpCode } from './security-test-helpers.js';
 
 describe('real PostgreSQL staff authentication', () => {
   let pool: Pool;
@@ -24,6 +26,8 @@ describe('real PostgreSQL staff authentication', () => {
   const origin = 'http://localhost:5173';
   const password = randomBytes(24).toString('base64url');
   let managerId: string;
+  let managerSecret = '';
+  const emails: AuthMessage[] = [];
 
   beforeAll(async () => {
     const url = process.env.TEST_DATABASE_URL;
@@ -67,6 +71,8 @@ describe('real PostgreSQL staff authentication', () => {
       );
       if (role === 'manager') managerId = id;
     }
+    // These fixtures isolate session/role behavior; a separate test below exercises email verification.
+    await pool.query('UPDATE "user" SET "emailVerified" = true');
     const fixture = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(APP_CONFIG)
       .useValue(config)
@@ -75,6 +81,19 @@ describe('real PostgreSQL staff authentication', () => {
         secret: randomBytes(32).toString('hex'),
         baseURL: origin,
         secureCookies: false,
+        smtp: {
+          host: 'smtp.example.test',
+          port: 587,
+          user: 'test',
+          password: 'test-only',
+          from: 'test@example.test',
+        },
+      })
+      .overrideProvider(AUTH_MAILER)
+      .useValue({
+        send: async (message: AuthMessage) => {
+          emails.push(message);
+        },
       })
       .overrideProvider(DatabaseService)
       .useValue({
@@ -109,15 +128,32 @@ describe('real PostgreSQL staff authentication', () => {
       .set('Origin', origin)
       .send({ email: `${role}@example.test`, password, rememberMe: false })
       .expect(200);
-    const cookies: unknown = response.headers['set-cookie'];
-    if (
-      !Array.isArray(cookies) ||
-      !cookies.every((cookie): cookie is string => typeof cookie === 'string')
-    )
-      throw new Error('Expected session cookie');
-    expect(cookies.join(';')).toContain('HttpOnly');
-    expect(cookies.join(';')).toContain('SameSite=Lax');
-    return cookies.map((cookie) => cookie.split(';')[0]).join('; ');
+    let cookie = cookieHeader(response.headers['set-cookie']);
+    expect(String(response.headers['set-cookie'])).toContain('HttpOnly');
+    expect(String(response.headers['set-cookie'])).toContain('SameSite=Lax');
+    if (role === 'manager') {
+      if (!response.body.twoFactorRedirect) {
+        const setup = await request(app.getHttpServer())
+          .post('/api/auth/two-factor/enable')
+          .set('Origin', origin)
+          .set('Cookie', cookie)
+          .send({ password })
+          .expect(200);
+        const uri: unknown = setup.body.totpURI;
+        if (typeof uri !== 'string')
+          throw new Error('Expected authenticator setup');
+        managerSecret = new URL(uri).searchParams.get('secret') ?? '';
+      }
+      const verified = await request(app.getHttpServer())
+        .post('/api/auth/two-factor/verify-totp')
+        .set('Origin', origin)
+        .set('Cookie', cookie)
+        .send({ code: totpCode(managerSecret), trustDevice: false })
+        .expect(200);
+      if (verified.headers['set-cookie'])
+        cookie = cookieHeader(verified.headers['set-cookie'], cookie);
+    }
+    return cookie;
   }
 
   it('matches the installed auth schema and provisions hashed credentials atomically', async () => {
@@ -158,6 +194,10 @@ describe('real PostgreSQL staff authentication', () => {
         name: 'Attack',
         password,
         role: 'manager',
+        emailVerified: true,
+        twoFactorEnabled: true,
+        mfaRequired: false,
+        idleSeconds: 900,
       })
       .expect(403);
     expect((await pool.query('SELECT * FROM "user"')).rowCount).toBe(2);
@@ -240,14 +280,22 @@ describe('real PostgreSQL staff authentication', () => {
       await request(app.getHttpServer())
         .get('/api/identity/manager-access')
         .set('Cookie', cookie)
-        .expect(403);
+        .expect(401);
+      const expiryCookie = await login('cashier');
       await pool.query(
         'UPDATE session SET "expiresAt" = now() - interval \'1 hour\' WHERE "userId" = $1',
-        [managerId],
+        [
+          (
+            await pool.query<{ id: string }>(
+              'SELECT id FROM "user" WHERE email = $1',
+              ['cashier@example.test'],
+            )
+          ).rows[0].id,
+        ],
       );
       await request(app.getHttpServer())
         .get('/api/identity/me')
-        .set('Cookie', cookie)
+        .set('Cookie', expiryCookie)
         .expect(401);
     } finally {
       await pool.query('UPDATE "user" SET role = $1 WHERE id = $2', [
@@ -271,5 +319,176 @@ describe('real PostgreSQL staff authentication', () => {
       .set('Origin', origin)
       .send({ email: 'manager@example.test', password })
       .expect(429);
+  });
+
+  it('requires email verification and consumes password-reset links once while revoking sessions', async () => {
+    const email = 'new-staff@example.test';
+    const userId = await provisionStaff(
+      pool,
+      parseStaffInput({
+        STAFF_NAME: 'New staff',
+        STAFF_EMAIL: email,
+        STAFF_PASSWORD: password,
+        STAFF_ROLE: 'cashier',
+        STAFF_PROVISIONED_BY: 'integration-test',
+      }),
+    );
+    await request(app.getHttpServer())
+      .post('/api/auth/sign-in/email')
+      .set('Origin', origin)
+      .send({ email, password })
+      .expect(403);
+    await request(app.getHttpServer())
+      .post('/api/auth/send-verification-email')
+      .set('Origin', origin)
+      .send({ email })
+      .expect(200);
+    const verification = emails.findLast(
+      (message) => message.userId === userId && message.purpose === 'verify',
+    );
+    if (!verification) throw new Error('Expected captured verification email');
+    await request(app.getHttpServer())
+      .get('/api/auth/verify-email')
+      .query({ token: verification.token })
+      .expect(200);
+    const loggedIn = await request(app.getHttpServer())
+      .post('/api/auth/sign-in/email')
+      .set('Origin', origin)
+      .send({ email, password })
+      .expect(200);
+    const cookie = cookieHeader(loggedIn.headers['set-cookie']);
+    await request(app.getHttpServer())
+      .post('/api/auth/request-password-reset')
+      .set('Origin', origin)
+      .send({ email })
+      .expect(200);
+    const reset = emails.findLast(
+      (message) => message.userId === userId && message.purpose === 'reset',
+    );
+    if (!reset) throw new Error('Expected captured reset email');
+    const newPassword = randomBytes(24).toString('base64url');
+    await request(app.getHttpServer())
+      .post('/api/auth/reset-password')
+      .set('Origin', origin)
+      .send({ token: reset.token, newPassword })
+      .expect(200);
+    await request(app.getHttpServer())
+      .get('/api/identity/me')
+      .set('Cookie', cookie)
+      .expect(401);
+    await request(app.getHttpServer())
+      .post('/api/auth/reset-password')
+      .set('Origin', origin)
+      .send({ token: reset.token, newPassword })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post('/api/auth/sign-in/email')
+      .set('Origin', origin)
+      .send({ email, password })
+      .expect(401);
+    await request(app.getHttpServer())
+      .post('/api/auth/sign-in/email')
+      .set('Origin', origin)
+      .send({ email, password: newPassword })
+      .expect(200);
+  });
+
+  it('requires session MFA proof, blocks trust-device bypass and enforces idle expiry', async () => {
+    const cookie = await login();
+    await pool.query(
+      'UPDATE session SET "mfaVerified" = false WHERE "userId" = $1',
+      [managerId],
+    );
+    await request(app.getHttpServer())
+      .get('/api/identity/staff')
+      .set('Cookie', cookie)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post('/api/auth/two-factor/enable')
+      .set('Origin', origin)
+      .set('Cookie', cookie)
+      .send({ password })
+      .expect(403);
+    await request(app.getHttpServer())
+      .post('/api/auth/two-factor/verify-totp')
+      .set('Origin', origin)
+      .set('Cookie', cookie)
+      .send({ code: totpCode(managerSecret), trustDevice: true })
+      .expect(403);
+    await pool.query(
+      'UPDATE session SET "lastActivityAt" = now() - interval \'16 minutes\' WHERE "userId" = $1',
+      [managerId],
+    );
+    await request(app.getHttpServer())
+      .post('/api/identity/activity')
+      .set('Origin', origin)
+      .set('Cookie', cookie)
+      .send({})
+      .expect(401);
+  });
+
+  it('protects administration, suspends users atomically, and preserves append-only audit history', async () => {
+    const cookie = await login();
+    const cashier = await login('cashier');
+    const cashierRow = await pool.query<{ id: string; revision: number }>(
+      'SELECT id, revision FROM "user" WHERE role = $1 ORDER BY "createdAt" LIMIT 1',
+      ['cashier'],
+    );
+    const target = cashierRow.rows[0];
+    await request(app.getHttpServer())
+      .post('/api/identity/staff')
+      .set('Origin', origin)
+      .set('Cookie', cashier)
+      .send({})
+      .expect(403);
+    await request(app.getHttpServer())
+      .patch(`/api/identity/staff/${target.id}`)
+      .set('Origin', origin)
+      .set('Cookie', cookie)
+      .send({
+        name: 'cashier',
+        role: 'cashier',
+        disabled: true,
+        revision: target.revision,
+        reason: 'Test suspension',
+        password,
+      })
+      .expect(200);
+    await request(app.getHttpServer())
+      .get('/api/identity/me')
+      .set('Cookie', cashier)
+      .expect(401);
+    await request(app.getHttpServer())
+      .post('/api/auth/sign-in/email')
+      .set('Origin', origin)
+      .send({ email: 'cashier@example.test', password })
+      .expect(401);
+    const events = await pool.query<{ action: string; detail: unknown }>(
+      'SELECT action, detail FROM auth_audit WHERE subject_id = $1',
+      [target.id],
+    );
+    expect(events.rows.some((event) => event.action === 'staff.updated')).toBe(
+      true,
+    );
+    expect(JSON.stringify(events.rows)).not.toContain(password);
+    await expect(
+      pool.query('UPDATE auth_audit SET outcome = $1', ['failure']),
+    ).rejects.toThrow('append-only');
+    await expect(pool.query('DELETE FROM auth_audit')).rejects.toThrow(
+      'append-only',
+    );
+    await request(app.getHttpServer())
+      .patch(`/api/identity/staff/${managerId}`)
+      .set('Origin', origin)
+      .set('Cookie', cookie)
+      .send({
+        name: 'manager',
+        role: 'cashier',
+        disabled: false,
+        revision: 1,
+        reason: 'Test self-demotion',
+        password,
+      })
+      .expect(409);
   });
 });

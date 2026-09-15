@@ -12,7 +12,7 @@ const { getStaff, signOut } = vi.hoisted(() => ({
   getStaff: vi.fn(),
   signOut: vi.fn(),
 }))
-vi.mock("./identity-api", () => ({ getStaff }))
+vi.mock("./identity-api", () => ({ getStaff, identityRequest: vi.fn() }))
 vi.mock("./auth-client", () => ({
   authClient: { signOut, signIn: { email: vi.fn() } },
 }))
@@ -21,6 +21,10 @@ const staff = {
   name: "Test Manager",
   email: "manager@example.test",
   role: "manager",
+  emailVerified: true,
+  twoFactorEnabled: true,
+  mfaRequired: false,
+  idleSeconds: 900,
 }
 afterEach(() => {
   cleanup()

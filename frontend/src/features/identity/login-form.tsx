@@ -4,7 +4,15 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { authClient } from "./auth-client"
 
-export function LoginForm({ onSignedIn }: { onSignedIn: () => void }) {
+export function LoginForm({
+  onSignedIn,
+  onMfaRequired,
+  onRecovery,
+}: {
+  onSignedIn: () => void
+  onMfaRequired?: () => void
+  onRecovery?: (purpose: "reset" | "verify") => void
+}) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
   const submitting = useRef(false)
@@ -29,13 +37,22 @@ export function LoginForm({ onSignedIn }: { onSignedIn: () => void }) {
         setError(
           result.error.status === 429
             ? "Too many attempts. Wait a minute before trying again."
-            : result.error.status >= 500
-              ? "Sign-in is unavailable. Please retry."
-              : "Sign-in failed. Check your email and password."
+            : result.error.code === "EMAIL_NOT_VERIFIED"
+              ? "Verify your email before signing in. Use the verification link below."
+              : result.error.status >= 500
+                ? "Sign-in is unavailable. Please retry."
+                : "Sign-in failed. Check your email and password."
         )
       } else {
         form.reset()
-        onSignedIn()
+        if (
+          result.data &&
+          "twoFactorRedirect" in result.data &&
+          result.data.twoFactorRedirect === true
+        ) {
+          if (onMfaRequired) onMfaRequired()
+          else setError("Two-factor verification is required to continue.")
+        } else onSignedIn()
       }
     } catch {
       setError("Unable to connect. Check your connection and retry.")
@@ -85,6 +102,26 @@ export function LoginForm({ onSignedIn }: { onSignedIn: () => void }) {
         Staff accounts are created by your administrator. Contact them if you
         cannot sign in.
       </p>
+      {onRecovery && (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="link"
+            disabled={pending}
+            onClick={() => onRecovery("reset")}
+          >
+            Forgot password?
+          </Button>
+          <Button
+            type="button"
+            variant="link"
+            disabled={pending}
+            onClick={() => onRecovery("verify")}
+          >
+            Verify email
+          </Button>
+        </div>
+      )}
     </form>
   )
 }

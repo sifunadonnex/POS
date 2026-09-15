@@ -2,23 +2,25 @@
 
 **Status:** Local development active; HostPinnacle deployment verification deferred
 
-**Version:** 0.4
+**Version:** 0.5
 
-**Last updated:** 15 September 2026
+**Last updated:** 16 September 2026
 
 **Budget objective:** Zero application licence fees and no additional hosting subscription for the first test shop, within the existing HostPinnacle package. Existing hosting/domain renewals still apply.
 
 **Working assumptions:** One shop in Kenya, one cashier computer initially, one manager using a phone. Confirm these during discovery.
 
+**Current machine (15 September 2026):** User confirmed PostgreSQL is not installed. Continue local implementation and database-independent checks; defer installation, migrations, account provisioning and database/connected-browser verification. Previous local PostgreSQL results are historical evidence only.
+
 ## 1. Purpose and revision
 
-This is the development reference for Pay & Go. Version 0.4 retains the user's existing HostPinnacle hosting target while prioritizing local development. The user has confirmed that PostgreSQL and a Node.js application management feature are listed in the hosting panel.
+This is the development reference for Pay & Go. Version 0.5 retains the user's existing HostPinnacle hosting target while prioritizing local development. The user has confirmed that PostgreSQL and a Node.js application management feature are listed in the hosting panel.
 
 Working conventions are defined in [project rules](../AGENTS.md), with scoped [frontend rules](../frontend/AGENTS.md) and [backend rules](../backend/AGENTS.md). Read the [current handoff](HANDOFF.md) for actual implementation and verification status. A planned feature is not an implemented feature.
 
 The initial deployment is an online web application: React/Vite frontend, NestJS backend, and one authoritative PostgreSQL database on HostPinnacle. Cashiers and managers use different screens in the same application through HTTPS.
 
-Listing the features establishes a deployment candidate, not a tested runtime. Node.js/PostgreSQL versions, application startup, database connectivity, limits, scheduled jobs and backups must be verified through a small deployment test before the hosted pilot. At the user's direction, local feature development proceeds now using separate development/test databases; deployment troubleshooting is deferred.
+Listing the features establishes a deployment candidate, not a tested runtime. Node.js/PostgreSQL versions, application startup, database connectivity, limits, scheduled jobs and backups must be verified through a small deployment test before the hosted pilot. At the user's direction, local implementation and database-independent checks proceed now. Separate development/test databases will be configured after PostgreSQL is installed; deployment troubleshooting is deferred.
 
 The previous local-PC hosting and phone VPN proposal is superseded for this online pilot. A local store service and synchronization remain a future option if checkout must survive internet outages. No Vercel subscription, VPN client, Redis or desktop wrapper is required for the proposed starting deployment.
 
@@ -163,7 +165,7 @@ The following is the product roadmap. Section 12 identifies the first test relea
 | Audit | User, time, action, reason and relevant before/after values | Separate tamper-resistant storage and alerting |
 | Integrations | Test adapters and clear simulated status | M-Pesa, eTIMS, accounting and messaging |
 
-Weighted goods, expiry tracking, or split payments move into the first live release if the test shop actually depends on them.
+The user confirmed weight and volume sales on 15 September 2026: include fractional quantities and explicit units in the first catalogue/checkout design. Unit precision, price basis and rounding examples must be defined before implementation. Expiry tracking and split-payment requirements remain open.
 
 ## 7. Data and transaction rules
 
@@ -306,7 +308,9 @@ Use persistent PostgreSQL job records and a bounded, locking cron runner if avai
 
 ### 11.1 Essential controls
 
-Better Auth is the selected authentication library. Use the relevant installed Better Auth skills, documentation matching the resolved version, and tests of actual behavior. The official [NestJS integration guide](https://better-auth.com/docs/integrations/nestjs) identifies the NestJS wrapper as community-maintained. Local email/password authentication is implemented with Better Auth 1.7.4 and wrapper 2.8.0: database sessions, explicit SQL migrations, exact-origin checks, database rate limits, server-side manager/cashier roles, controlled local staff provisioning and shadcn login UI. A custom global guard keeps health probes independent of authentication/database availability. See [local auth setup](LOCAL_AUTH_SETUP.md). Branch/till permissions, account administration, verification, recovery, full authentication audit and manager MFA remain incomplete; local login is not live readiness.
+Better Auth is the selected authentication library. Use the relevant installed Better Auth skills, documentation matching the resolved version, and tests of actual behavior. The official [NestJS integration guide](https://better-auth.com/docs/integrations/nestjs) identifies the NestJS wrapper as community-maintained. Local email/password authentication is implemented with Better Auth 1.7.4 and wrapper 2.8.0: database sessions, explicit SQL migrations, exact-origin checks, database rate limits, server-side manager/cashier roles, controlled local staff provisioning and shadcn login UI. A custom global guard keeps health probes independent of authentication/database availability. See [local auth setup](LOCAL_AUTH_SETUP.md). The login/security follow-up is implemented in source: required email verification, password recovery/change, authenticator MFA with per-session proof, controlled staff administration/suspension, session revocation, sanitized append-only security history and a 15-minute server/browser inactivity policy. Managers must complete MFA before business access. Branch/till permissions remain future business-module work. PostgreSQL, SMTP and connected-browser verification remain pending; this is not live readiness.
+
+The user chose an existing SMTP mailbox. Nodemailer 10.0.10 sends through certificate-verified TLS. Encrypted, expiring PostgreSQL outbox jobs separate request handling from SMTP, with bounded claims/retries. A timer processes local jobs while Node runs; hosted scheduling/recycling is unverified and must be proven before hosted use. See [deferred security verification](SECURITY_VERIFICATION.md).
 
 Use individual accounts, server-side permissions, supervisor approval for sensitive actions, password hashing, protected server sessions, CSRF protection, server-side login throttling, automatic screen lock, and manager MFA with recovery codes.
 
@@ -341,7 +345,7 @@ There is no promise of zero lost transactions after hosting failure. Better data
 | Connectivity | Existing shop internet and manager data | Provider bills and optional failover |
 | M-Pesa/card | Simulation initially | Real provider charges/onboarding as applicable |
 | eTIMS | Simulation; assess existing/KRA workflow for live pilot | Integrator/support/certification work if needed |
-| Notifications | In-app alerts | SMS/WhatsApp/email services later |
+| Notifications | Auth email through existing SMTP mailbox; in-app alerts later | Existing mailbox limits/costs; SMS/WhatsApp services later |
 | Development and support | Project work | Time, training, maintenance and incident response |
 
 No additional Vercel, Supabase, VPN or VPS subscription is planned for this pilot. Stay within the existing package where the deployment and load tests support it; upgrade only when measured capacity, availability or recovery requirements demand it.
@@ -364,7 +368,7 @@ Allow approximately 4–8 development weeks plus setup for a credible simulated 
 ### 12.1 First test-release scope
 
 - One shop, one active till, manager and cashier accounts.
-- Product catalogue and CSV import.
+- Product catalogue and CSV import, including whole-item, weight and volume units.
 - Opening stock, receiving, adjustments and basic stocktake.
 - Cash checkout, receipt/reprint and held baskets.
 - Linked returns/refunds with approval.
@@ -429,12 +433,12 @@ Retain SQL migrations, modular APIs, stable IDs, and explicit provider adapters 
 5. Which HostPinnacle package, Node.js/PostgreSQL versions, resource limits and backup features are actually available?
 6. Is online-only checkout acceptable for live trading, or must offline operation be implemented before launch?
 7. What eTIMS and M-Pesa setup does the shop already have?
-8. Does the shop need weighted goods, expiry batches, split payments, or credit immediately?
+8. Weight and volume sales are confirmed. Which units, fractional precision and pricing/rounding examples apply? Are expiry batches, split payments or credit required immediately?
 9. What approval limits, stock policy and cost method should apply?
 10. Who handles backups, support and recovery, and what downtime/data loss can the shop accept?
 11. Which owned domain/subdomain should host the isolated test deployment?
 
-These questions refine the pilot. The user has confirmed that PostgreSQL and Node.js application management are listed; local database/migration/API and initial authentication checks have passed. The next local feature milestone is catalogue with server-side permissions. Deployment and phone access remain required before the hosted pilot; feature development uses separate local/test data.
+These questions refine the pilot. The user confirmed that hosting lists PostgreSQL and Node.js, but PostgreSQL is absent on the current machine. The requested priority is remaining login/security work first. Its implementation and database-independent checks precede catalogue; real database, SMTP and browser verification stay explicitly deferred. Catalogue is the following feature milestone, including weight/volume sales. Deployment and phone access remain required before the hosted pilot.
 
 ## 16. Decision log
 
@@ -452,8 +456,12 @@ These questions refine the pilot. The user has confirmed that PostgreSQL and Nod
 | ADR-010 | Host frontend and API together; no Vercel subscription initially | Recommended to minimize additional cost | 2026-09-14 |
 | ADR-011 | Online-only initial hosted test | Explicit scope limitation; live offline requirement still open | 2026-09-14 |
 | ADR-012 | `pg` driver and `node-pg-migrate` with explicit SQL migrations | Local PostgreSQL 18.6 migration/API checks passed; hosted verification pending | 2026-09-14 |
-| ADR-013 | Better Auth for authentication; relevant skills and version-matched official documentation required | User-selected; local login/session/role integration verified, hardening follow-ups pending | 2026-09-15 |
+| ADR-013 | Better Auth for authentication; relevant skills and version-matched official documentation required | User-selected; initial integration historically verified, hardening code added with real database verification deferred | 2026-09-15 |
 | ADR-014 | Prioritize local feature development; defer deployment troubleshooting without changing the hosting target | User-directed; hosted verification remains required before the hosted pilot/live use | 2026-09-15 |
-| ADR-015 | Email/password, controlled staff accounts, no public signup, centered shadcn UI; verification/recovery/MFA follow before live use | User-confirmed; local initial scope implemented | 2026-09-15 |
+| ADR-015 | Email/password, controlled staff accounts, no public signup, centered shadcn UI; verification/recovery/MFA follow before live use | User-confirmed; hardening implemented in source, connected verification pending | 2026-09-15 |
+| ADR-016 | PostgreSQL is absent on the current machine; defer installation, migrations, provisioning and real database tests | User-confirmed; continue database-independent work | 2026-09-15 |
+| ADR-017 | Finish remaining login/security work before the full POS backlog | User-confirmed priority | 2026-09-15 |
+| ADR-018 | Existing SMTP mailbox for verification/recovery; encrypted PostgreSQL email jobs with bounded retries | Mailbox selected by user; implementation added, delivery and hosted scheduling unverified | 2026-09-15 |
+| ADR-019 | Include weight and volume sales in the first catalogue/checkout | User-confirmed; implementation deferred until after login/security | 2026-09-15 |
 
 Provider claims cited above were reviewed on 14 September 2026. Recheck plan terms when creating accounts or enabling live integrations.

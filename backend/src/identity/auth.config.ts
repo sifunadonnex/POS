@@ -1,3 +1,5 @@
+import { parseSmtpEnvironment } from './smtp.config.js';
+
 export const AUTH_CONFIG = Symbol('AUTH_CONFIG');
 
 export function parseAuthEnvironment(env: NodeJS.ProcessEnv) {
@@ -34,6 +36,7 @@ export function parseAuthEnvironment(env: NodeJS.ProcessEnv) {
     secret,
     baseURL: url.origin,
     secureCookies: url.protocol === 'https:',
+    smtp: parseSmtpEnvironment(env),
   };
 }
 export type AuthConfig = ReturnType<typeof parseAuthEnvironment>;
