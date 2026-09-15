@@ -25,7 +25,9 @@ Read `../AGENTS.md` first. These rules apply to all backend files.
 
 - Read port and credentials from server configuration. Do not assume HostPinnacle permits root access, persistent background workers, Docker, unlimited memory or every Node.js version.
 - Persist retry jobs and use a verified scheduling mechanism. Important work must survive application recycling.
-- External starter telemetry (`@nestjs/observe`) and the generic Nest deployment helper (`@nestjs/mau`) have been removed. Keep normal Nest logging; add external telemetry or a deployment service only after an explicit project decision. The current production entrypoint is `dist/main.js`; HostPinnacle startup still needs verification.
+- External starter telemetry (`@nestjs/observe`) and the generic Nest deployment helper (`@nestjs/mau`) have been removed. Keep normal Nest logging; add external telemetry or a deployment service only after an explicit project decision. Standalone production entrypoint is `dist/main.js`; Passenger startup is `app.cjs`, which imports the ESM build. Hosted Passenger behavior remains unverified.
+- Build upload archives locally with `pnpm run hosting:package` on Windows; see `../docs/HOSTPINNACLE_DEPLOYMENT.md`. Never upload local environment files or node_modules. Keep runtime imports such as tslib in dependencies, not devDependencies. Hosting install uses pinned pnpm and its frozen lockfile, even when the panel invokes the script using npm.
+- `hosting:migrate` runs the compiled migration without building or installing dependencies. Keep migration execution out of install/startup hooks and public HTTP endpoints. Local package building is not permission to deploy or run commands against hosted databases.
 - Keep M-Pesa/eTIMS adapters simulated until actual workflows are authorized and implemented. No real external calls from tests; mock adapters and use isolated test credentials where appropriate.
 
 ## Checks
@@ -42,6 +44,7 @@ Run from `backend/` (use `pnpm.cmd` on Windows where needed):
 | Type-check source and tests | `pnpm exec tsc --noEmit --incremental false` |
 | Isolated PostgreSQL migration test | `pnpm run test:integration` (requires explicit `TEST_DATABASE_URL`; never real shop data) |
 | Production build | `pnpm run build` |
+| Build backend upload ZIP locally (Windows) | `pnpm run hosting:package` |
 | Check formatting of changed files | `pnpm exec prettier --check <changed-files>` |
 
 Use unit tests for calculations/services, HTTP tests for validation/auth/error contracts, and real isolated PostgreSQL integration tests for transaction/concurrency behavior when persistence is introduced. Close application/database handles after tests. Do not simply increase timeouts or disable telemetry/testing rules to conceal unresolved startup behavior.

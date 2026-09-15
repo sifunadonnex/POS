@@ -12,6 +12,10 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main.js",
+    "hosting:install": "npx --yes pnpm@11.10.0 install --prod --frozen-lockfile --ignore-scripts",
+    "hosting:diagnose": "node -e \"console.log('Node startup OK', process.version, process.platform, process.arch); console.log(JSON.stringify({memoryBytes:process.memoryUsage(),heapLimitBytes:require('node:v8').getHeapStatistics().heap_size_limit},null,2));\"",
+    "hosting:migrate": "node dist/database/migrate.js up",
+    "hosting:package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-hosting.ps1",
     "db:migrate": "pnpm run build && node dist/database/migrate.js up",
     "db:rollback": "pnpm run build && node dist/database/migrate.js down",
     "lint": "oxlint src/ test/",
@@ -30,7 +34,8 @@
     "node-pg-migrate": "^9.0.0",
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "tslib": "^2.8.1"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",
@@ -45,7 +50,6 @@
     "prettier": "^3.4.2",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
-    "tslib": "^2.8.1",
     "typescript": "^6.0.2",
     "vitest": "^4.1.2"
   }

@@ -1,10 +1,10 @@
 # Pay & Go POS — Architecture and Delivery Plan
 
-**Status:** HostPinnacle deployment proposal for one online test shop
+**Status:** Local development active; HostPinnacle deployment verification deferred
 
-**Version:** 0.3
+**Version:** 0.4
 
-**Last updated:** 14 September 2026
+**Last updated:** 15 September 2026
 
 **Budget objective:** Zero application licence fees and no additional hosting subscription for the first test shop, within the existing HostPinnacle package. Existing hosting/domain renewals still apply.
 
@@ -12,13 +12,13 @@
 
 ## 1. Purpose and revision
 
-This is the development reference for Pay & Go. Version 0.3 uses the user's existing HostPinnacle hosting account. The user has confirmed that PostgreSQL and a Node.js application management feature are listed in the hosting panel.
+This is the development reference for Pay & Go. Version 0.4 retains the user's existing HostPinnacle hosting target while prioritizing local development. The user has confirmed that PostgreSQL and a Node.js application management feature are listed in the hosting panel.
 
 Working conventions are defined in [project rules](../AGENTS.md), with scoped [frontend rules](../frontend/AGENTS.md) and [backend rules](../backend/AGENTS.md). Read the [current handoff](HANDOFF.md) for actual implementation and verification status. A planned feature is not an implemented feature.
 
 The initial deployment is an online web application: React/Vite frontend, NestJS backend, and one authoritative PostgreSQL database on HostPinnacle. Cashiers and managers use different screens in the same application through HTTPS.
 
-Listing the features establishes a deployment candidate, not a tested runtime. Node.js/PostgreSQL versions, application startup, database connectivity, limits, scheduled jobs and backups must be verified through a small deployment test before substantial implementation.
+Listing the features establishes a deployment candidate, not a tested runtime. Node.js/PostgreSQL versions, application startup, database connectivity, limits, scheduled jobs and backups must be verified through a small deployment test before the hosted pilot. At the user's direction, local feature development proceeds now using separate development/test databases; deployment troubleshooting is deferred.
 
 The previous local-PC hosting and phone VPN proposal is superseded for this online pilot. A local store service and synchronization remain a future option if checkout must survive internet outages. No Vercel subscription, VPN client, Redis or desktop wrapper is required for the proposed starting deployment.
 
@@ -280,9 +280,9 @@ Reuse the shop's existing supported PC, printer/scanner and router where suitabl
 - Keep the till awake while trading; turning it off does not stop hosted reporting.
 - A UPS and backup internet connection may improve till availability but involve hardware/connectivity costs.
 
-### 10.1 Deployment proof before feature development
+### 10.1 Deployment proof before the hosted pilot
 
-Selected test URL: `https://dev.sifulabs.co.ke/` (user supplied). The panel screenshot lists Node.js 22.23.2 and Passenger startup settings. Use that Node version as the hosted test candidate, subject to actual execution and dependency checks; do not use the screenshot's initially selected Node 10. Local verification used Node 24.15.0. Terminal/SSH, hosted PostgreSQL details and HTTPS routing remain unverified. CloudLinux documents a [CommonJS wrapper for ESM applications under Passenger](https://docs.cloudlinux.com/cloudlinuxos/cloudlinux_os_components/#limitations); prepare and test the startup bridge before deployment.
+Selected test URL: `https://dev.sifulabs.co.ke/` (user supplied). The panel screenshot lists Node.js 22.23.2 and Passenger startup settings. The user can upload through File Manager; the panel selects named package.json scripts with optional parameters, not arbitrary shell commands. Hosted dependency installation failed with memory-allocation errors, and a later attempt reported an application lock for `dev`. The current remote process/lock state is unknown. Troubleshooting is deferred by the user; do not rerun hosted scripts as part of local development. Local production-only wrapper/API and real PostgreSQL migration tests passed on Node 22.23.2, in addition to the original Node 24 baseline. Hosted PostgreSQL details, HTTPS routing and actual Passenger behavior remain unverified. The `app.cjs` bridge follows the [CloudLinux CommonJS wrapper for ESM](https://docs.cloudlinux.com/cloudlinuxos/cloudlinux_os_components/#limitations). Follow the [deployment runbook](HOSTPINNACLE_DEPLOYMENT.md) for the backend-only proof; frontend packaging and SPA verification follow separately.
 
 Use an isolated test application/subdomain and test database in the existing account. Deployment requires account access provided through an appropriate secure channel when that step is reached; this document does not record credentials.
 
@@ -352,11 +352,11 @@ Estimates below are planning ranges for one experienced developer working consis
 
 | Stage | Indicative effort | Deliverable and exit condition |
 | --- | --- | --- |
-| 0. Confirm shop and prove setup | 2–4 working days | Inventory hardware; prove hosted Node.js startup, PostgreSQL connection, HTTPS, phone access and restart |
-| 1. Foundation | 1–2 weeks | Separate development/hosted test databases, accounts/roles, product import, migrations, backup and restore |
+| 0. Confirm shop and prove local setup | 2–4 working days | Inventory hardware; verify local Node.js, separate PostgreSQL development/test databases, migrations and API health |
+| 1. Local foundation | 1–2 weeks | Better Auth login/sessions, server-side manager/cashier permissions, shadcn login UI, reviewed migrations and product import using local test data |
 | 2. Complete cash-sale workflow | 1–2 weeks | Scan, basket, exact totals, payment, atomic stock deduction, receipt/reprint, duplicate-request test |
 | 3. Shop operations | 1–2 weeks | Receiving, returns, adjustments, stocktake, shift closing, audit and reconciliation |
-| 4. Phone dashboard and test pilot | 1–2 weeks | Authorized remote reports, clear outage states, cashier usability and recovery tests |
+| 4. Hosting proof, phone dashboard and test pilot | 1–2 weeks | Resolve deployment blockers; verify isolated hosted database, HTTPS, restart, backup/restore, authorized mobile-data reports, outage states and cashier usability |
 | 5. Live-operation readiness | Separately estimated after discovery | Actual fiscal process, required payment workflow, hardware reliability, training and signed-off reconciliation |
 
 Allow approximately 4–8 development weeks plus setup for a credible simulated single-shop pilot. Part-time work, unfamiliar hardware, weighted goods, migrations, or expanded scope can extend this. Estimate production launch after confirming the actual integrations.
@@ -434,7 +434,7 @@ Retain SQL migrations, modular APIs, stable IDs, and explicit provider adapters 
 10. Who handles backups, support and recovery, and what downtime/data loss can the shop accept?
 11. Which owned domain/subdomain should host the isolated test deployment?
 
-These questions refine the pilot. The user has confirmed that PostgreSQL and Node.js application management are listed; the first technical milestone is proving the deployment, database connection and phone access. Feature development uses separate local/test data.
+These questions refine the pilot. The user has confirmed that PostgreSQL and Node.js application management are listed; local database/migration/API checks have passed. The next local milestone is Better Auth authentication and server-side permissions. Deployment and phone access remain required before the hosted pilot; feature development uses separate local/test data.
 
 ## 16. Decision log
 
@@ -453,5 +453,7 @@ These questions refine the pilot. The user has confirmed that PostgreSQL and Nod
 | ADR-011 | Online-only initial hosted test | Explicit scope limitation; live offline requirement still open | 2026-09-14 |
 | ADR-012 | `pg` driver and `node-pg-migrate` with explicit SQL migrations | Local PostgreSQL 18.6 migration/API checks passed; hosted verification pending | 2026-09-14 |
 | ADR-013 | Better Auth for authentication; relevant skills and version-matched official documentation required | User-selected; integration pending | 2026-09-14 |
+
+| ADR-014 | Prioritize local feature development; defer deployment troubleshooting without changing the hosting target | User-directed; hosted verification remains required before the hosted pilot/live use | 2026-09-15 |
 
 Provider claims cited above were reviewed on 14 September 2026. Recheck plan terms when creating accounts or enabling live integrations.

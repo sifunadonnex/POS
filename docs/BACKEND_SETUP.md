@@ -1,5 +1,7 @@
 # Backend foundation setup
 
+For the File Manager/Passenger deployment, use [HostPinnacle deployment instructions](HOSTPINNACLE_DEPLOYMENT.md). The backend-only upload ZIP contains compiled code and migrations, not secrets or the React frontend.
+
 Run commands from `backend/`. Use `pnpm.cmd` on Windows if PowerShell blocks `pnpm`.
 
 ## Prerequisites and configuration

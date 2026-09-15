@@ -17,6 +17,7 @@ These rules apply throughout this repository. Read the more specific frontend or
 - Backend: NestJS, TypeScript and PostgreSQL via `pg`, with explicit SQL migrations managed by `node-pg-migrate`. See `docs/BACKEND_SETUP.md`; local PostgreSQL 18.6 migration/API verification passed, but hosting verification is still pending.
 - Authentication: Better Auth is user-selected. Use the relevant installed Better Auth skills and official documentation matching the resolved package version before implementing or changing authentication. Authentication is not yet integrated.
 - Hosting target: existing HostPinnacle account, with Node.js and PostgreSQL listed by the user. Deployment compatibility is still unverified.
+- User-directed priority (15 September 2026): continue local development; defer deployment troubleshooting. Hosted verification gates the hosted pilot/live use, not local feature development. Preserve deployment work without running it.
 - Initial hosted test requires internet. Do not claim offline checkout, production readiness, payment confirmation or fiscal compliance without implementing and verifying it.
 - Use pnpm separately within each project; both use `pnpm-lock.yaml`. There is no root JavaScript workspace yet.
 - No new paid services, competing UI kits, deployment platforms or architecture migrations without a user-directed decision.
