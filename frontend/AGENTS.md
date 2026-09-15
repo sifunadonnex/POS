@@ -20,7 +20,7 @@ Read `../AGENTS.md` first. These rules apply to all frontend files.
 - Keep the current font, theme and component style consistent unless the task changes the design system. Match the local formatter (double quotes, no semicolons).
 - Preserve semantic labels, accessible names, visible keyboard focus, dialog focus handling and error descriptions. Icon-only actions need accessible names.
 - Cashier interactions must support keyboard/scanner input; manager screens must work on a narrow phone viewport. Test affected layouts in both light and dark themes when supported.
-- Do not add global single-letter shortcuts that conflict with typing or scanning. The starter's global `d` theme shortcut needs evaluation before a cashier screen uses it.
+- Do not add global single-letter shortcuts that conflict with typing or scanning. The starter's global `d` theme shortcut has been removed.
 - Show pending/failed/unknown payment and save states accurately. Do not optimistically show a finalized sale or confirmed payment before the backend confirms it.
 - Use browser storage only for appropriate preferences/drafts. Do not store database credentials, long-lived authentication secrets or authoritative sale records there.
 
@@ -35,10 +35,11 @@ Run from `frontend/` (on Windows, use `pnpm.cmd` if PowerShell blocks the shim):
 | Install exact dependencies when needed | `pnpm install --frozen-lockfile` |
 | Development | `pnpm run dev` |
 | Lint | `pnpm run lint` |
+| UI and API-client tests | `pnpm run test` |
 | Referenced-project type check | `pnpm run typecheck` |
 | Production build, including type check | `pnpm run build` |
 | Check formatting of changed files | `pnpm exec prettier --check <changed-files>` |
 
 The `pnpm run typecheck` command executes `tsc -b` to traverse the application and tooling project references. Do not replace it with a bare `tsc --noEmit` against the empty root file list. A successful production build already covers the build-mode TypeScript check; no need to repeat it unnecessarily.
 
-No frontend test runner is configured yet. Add an appropriate test setup with the first interactive business feature; do not claim frontend tests exist or pass today. Run a browser/visual check for material UI changes and report if unavailable. Vite preview is a local check, not a production hosting service.
+Vitest, Testing Library and jsdom cover authentication UI and API-client behavior. Keep tooling configuration in the referenced TypeScript node project. Run a browser/visual check for material UI changes and report if unavailable; DOM tests do not prove real browser cookie behavior. Vite preview is a local check, not a production hosting service.

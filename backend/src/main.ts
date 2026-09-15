@@ -8,7 +8,7 @@ import {
 
 async function bootstrap() {
   loadLocalEnvironment();
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
   const config = app.get<AppConfig>(APP_CONFIG);
   app.enableShutdownHooks();
   await app.listen(config.port);

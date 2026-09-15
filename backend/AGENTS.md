@@ -38,6 +38,8 @@ Run from `backend/` (use `pnpm.cmd` on Windows where needed):
 | --- | --- |
 | Install exact dependencies when needed | `pnpm install --frozen-lockfile` |
 | Development | `pnpm run start:dev` |
+| Configure missing local auth values | `pnpm run auth:setup` (preserves existing values in ignored `.env`) |
+| Create a local staff account | `pnpm run auth:provision` (private `.local/staff.env`; see `../docs/LOCAL_AUTH_SETUP.md`) |
 | Lint | `pnpm run lint` |
 | Unit tests | `pnpm run test` |
 | HTTP/end-to-end tests | `pnpm run test:e2e` |

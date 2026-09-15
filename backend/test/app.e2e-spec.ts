@@ -2,30 +2,34 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
-import { AppModule } from './../src/app.module.js';
-import { APP_CONFIG, parseEnvironment } from '../src/config/environment.js';
+import { AppController } from '../src/app.controller.js';
+import { AppService } from '../src/app.service.js';
+import { HealthController } from '../src/health/health.controller.js';
+import { APP_GUARD } from '@nestjs/core';
+import { AUTH } from '../src/identity/auth.js';
+import { StaffGuard } from '../src/identity/staff.guard.js';
+import { IdentityController } from '../src/identity/identity.controller.js';
 import { DatabaseService } from '../src/database/database.service.js';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
   const database = { checkConnection: vi.fn<() => Promise<void>>() };
+  const auth = { api: { getSession: vi.fn() } };
 
   beforeEach(async () => {
     database.checkConnection.mockReset().mockResolvedValue(undefined);
+    auth.api.getSession
+      .mockReset()
+      .mockRejectedValue(new Error('Auth unavailable'));
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    })
-      .overrideProvider(APP_CONFIG)
-      .useValue(
-        parseEnvironment({
-          DATABASE_URL: 'postgresql://test:fake@127.0.0.1/pay_and_go_test',
-          DATABASE_TLS: 'disable',
-          NODE_ENV: 'test',
-        }),
-      )
-      .overrideProvider(DatabaseService)
-      .useValue(database)
-      .compile();
+      controllers: [AppController, HealthController, IdentityController],
+      providers: [
+        AppService,
+        { provide: DatabaseService, useValue: database },
+        { provide: AUTH, useValue: auth },
+        { provide: APP_GUARD, useClass: StaffGuard },
+      ],
+    }).compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
@@ -49,6 +53,7 @@ describe('AppController (e2e)', () => {
       .expect('Cache-Control', 'no-store')
       .expect({ status: 'ok' });
     expect(database.checkConnection).not.toHaveBeenCalled();
+    expect(auth.api.getSession).not.toHaveBeenCalled();
   });
 
   it('readiness checks connectivity', async () => {
@@ -58,6 +63,18 @@ describe('AppController (e2e)', () => {
       .expect('Cache-Control', 'no-store')
       .expect({ status: 'ok', database: 'reachable' });
     expect(database.checkConnection).toHaveBeenCalledOnce();
+  });
+
+  it('fails closed with a sanitized 503 if authentication storage is unavailable', async () => {
+    await request(app.getHttpServer())
+      .get('/api/identity/me')
+      .expect(503)
+      .expect('Cache-Control', 'no-store')
+      .expect({
+        message: 'Authentication is temporarily unavailable',
+        error: 'Service Unavailable',
+        statusCode: 503,
+      });
   });
 
   it('database failure returns 503 without leaking internal details', async () => {

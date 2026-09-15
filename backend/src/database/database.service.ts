@@ -24,6 +24,10 @@ export class DatabaseService implements OnApplicationShutdown {
     await this.pool.query('SELECT 1');
   }
 
+  get connectionPool(): Pool {
+    return this.pool;
+  }
+
   async onApplicationShutdown(): Promise<void> {
     await this.pool.end();
   }

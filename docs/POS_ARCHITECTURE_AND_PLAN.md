@@ -306,7 +306,7 @@ Use persistent PostgreSQL job records and a bounded, locking cron runner if avai
 
 ### 11.1 Essential controls
 
-Better Auth is the selected authentication library. Implement using the relevant installed Better Auth skills, documentation matching the resolved version, and tests of actual behavior. The official [NestJS integration guide](https://better-auth.com/docs/integrations/nestjs) identifies the NestJS wrapper as community-maintained; verify its compatibility and request-body/guard behavior before integration. Retain shadcn-only authentication UI and application-level branch/till permissions. Review generated authentication schema changes and incorporate them into the existing explicit migration workflow; do not introduce an independent untracked schema writer. Authentication implementation remains pending.
+Better Auth is the selected authentication library. Use the relevant installed Better Auth skills, documentation matching the resolved version, and tests of actual behavior. The official [NestJS integration guide](https://better-auth.com/docs/integrations/nestjs) identifies the NestJS wrapper as community-maintained. Local email/password authentication is implemented with Better Auth 1.7.4 and wrapper 2.8.0: database sessions, explicit SQL migrations, exact-origin checks, database rate limits, server-side manager/cashier roles, controlled local staff provisioning and shadcn login UI. A custom global guard keeps health probes independent of authentication/database availability. See [local auth setup](LOCAL_AUTH_SETUP.md). Branch/till permissions, account administration, verification, recovery, full authentication audit and manager MFA remain incomplete; local login is not live readiness.
 
 Use individual accounts, server-side permissions, supervisor approval for sensitive actions, password hashing, protected server sessions, CSRF protection, server-side login throttling, automatic screen lock, and manager MFA with recovery codes.
 
@@ -434,7 +434,7 @@ Retain SQL migrations, modular APIs, stable IDs, and explicit provider adapters 
 10. Who handles backups, support and recovery, and what downtime/data loss can the shop accept?
 11. Which owned domain/subdomain should host the isolated test deployment?
 
-These questions refine the pilot. The user has confirmed that PostgreSQL and Node.js application management are listed; local database/migration/API checks have passed. The next local milestone is Better Auth authentication and server-side permissions. Deployment and phone access remain required before the hosted pilot; feature development uses separate local/test data.
+These questions refine the pilot. The user has confirmed that PostgreSQL and Node.js application management are listed; local database/migration/API and initial authentication checks have passed. The next local feature milestone is catalogue with server-side permissions. Deployment and phone access remain required before the hosted pilot; feature development uses separate local/test data.
 
 ## 16. Decision log
 
@@ -452,8 +452,8 @@ These questions refine the pilot. The user has confirmed that PostgreSQL and Nod
 | ADR-010 | Host frontend and API together; no Vercel subscription initially | Recommended to minimize additional cost | 2026-09-14 |
 | ADR-011 | Online-only initial hosted test | Explicit scope limitation; live offline requirement still open | 2026-09-14 |
 | ADR-012 | `pg` driver and `node-pg-migrate` with explicit SQL migrations | Local PostgreSQL 18.6 migration/API checks passed; hosted verification pending | 2026-09-14 |
-| ADR-013 | Better Auth for authentication; relevant skills and version-matched official documentation required | User-selected; integration pending | 2026-09-14 |
-
+| ADR-013 | Better Auth for authentication; relevant skills and version-matched official documentation required | User-selected; local login/session/role integration verified, hardening follow-ups pending | 2026-09-15 |
 | ADR-014 | Prioritize local feature development; defer deployment troubleshooting without changing the hosting target | User-directed; hosted verification remains required before the hosted pilot/live use | 2026-09-15 |
+| ADR-015 | Email/password, controlled staff accounts, no public signup, centered shadcn UI; verification/recovery/MFA follow before live use | User-confirmed; local initial scope implemented | 2026-09-15 |
 
 Provider claims cited above were reviewed on 14 September 2026. Recheck plan terms when creating accounts or enabling live integrations.

@@ -4,9 +4,10 @@ import { AppService } from './app.service.js';
 import { ConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './database/database.module.js';
 import { HealthController } from './health/health.controller.js';
+import { IdentityModule } from './identity/identity.module.js';
 
 @Module({
-  imports: [ConfigModule, DatabaseModule],
+  imports: [ConfigModule, DatabaseModule, IdentityModule],
   controllers: [AppController, HealthController],
   providers: [AppService],
 })
