@@ -13,6 +13,9 @@ const { getStaff, signOut } = vi.hoisted(() => ({
   signOut: vi.fn(),
 }))
 vi.mock("./identity-api", () => ({ getStaff, identityRequest: vi.fn() }))
+vi.mock("../catalogue/catalogue-screen", () => ({
+  CatalogueScreen: () => <p>Product catalogue</p>,
+}))
 vi.mock("./auth-client", () => ({
   authClient: { signOut, signIn: { email: vi.fn() } },
 }))

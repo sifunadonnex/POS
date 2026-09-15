@@ -12,9 +12,7 @@ import { LoginForm } from "./login-form"
 import { RecoveryScreen } from "./recovery-screen"
 import { readRecoveryLink, type Recovery } from "./recovery-link"
 import { MfaScreen } from "./mfa-screen"
-import { AccountSecurity } from "./account-security"
-import { StaffAdminScreen } from "./staff-admin-screen"
-import { AuditScreen } from "./audit-screen"
+import { StaffWorkspace } from "../workspace/staff-workspace"
 import { useStaffSession } from "./use-staff-session"
 
 export function IdentityScreen() {
@@ -22,7 +20,6 @@ export function IdentityScreen() {
   const { access } = session
   const [recovery, setRecovery] = useState<Recovery | null>(readRecoveryLink)
   const [mfaChallenge, setMfaChallenge] = useState(false)
-  const [tab, setTab] = useState<"account" | "staff" | "audit">("account")
   useEffect(() => {
     if (recovery?.token !== undefined)
       window.history.replaceState(null, "", window.location.pathname)
@@ -30,14 +27,9 @@ export function IdentityScreen() {
   function signedIn() {
     setMfaChallenge(false)
     setRecovery(null)
-    setTab("account")
     session.signedIn()
   }
   const ready = access.status === "ready" && !recovery && !mfaChallenge
-  const manager =
-    access.status === "ready" &&
-    access.staff.role === "manager" &&
-    !access.staff.mfaRequired
   return (
     <main
       className={`flex min-h-svh justify-center bg-muted/30 p-4 sm:p-8 ${ready ? "items-start" : "items-center"}`}
@@ -61,7 +53,7 @@ export function IdentityScreen() {
           <CardHeader>
             <CardTitle>{ready ? "Staff workspace" : "Staff sign in"}</CardTitle>
             <CardDescription>
-              Manage your account and keep staff access secure.
+              Find products, manage your account and keep staff access secure.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -139,45 +131,11 @@ export function IdentityScreen() {
                         onVerified={session.refresh}
                       />
                     ) : (
-                      <>
-                        {manager && (
-                          <nav
-                            className="flex flex-wrap gap-2 border-b pb-4"
-                            aria-label="Staff workspace"
-                          >
-                            <Button
-                              variant={
-                                tab === "account" ? "secondary" : "ghost"
-                              }
-                              onClick={() => setTab("account")}
-                            >
-                              My security
-                            </Button>
-                            <Button
-                              variant={tab === "staff" ? "secondary" : "ghost"}
-                              onClick={() => setTab("staff")}
-                            >
-                              Staff accounts
-                            </Button>
-                            <Button
-                              variant={tab === "audit" ? "secondary" : "ghost"}
-                              onClick={() => setTab("audit")}
-                            >
-                              Security history
-                            </Button>
-                          </nav>
-                        )}
-                        {manager && tab === "staff" ? (
-                          <StaffAdminScreen currentUserId={access.staff.id} />
-                        ) : manager && tab === "audit" ? (
-                          <AuditScreen />
-                        ) : (
-                          <AccountSecurity
-                            staff={access.staff}
-                            onChanged={session.refresh}
-                          />
-                        )}
-                      </>
+                      <StaffWorkspace
+                        key={access.staff.id}
+                        staff={access.staff}
+                        onSecurityChanged={session.refresh}
+                      />
                     )}
                   </>
                 )}

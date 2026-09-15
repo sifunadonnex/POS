@@ -12,6 +12,9 @@ import { readRecoveryLink } from "./recovery-link"
 import { MfaScreen } from "./mfa-screen"
 import { LoginForm } from "./login-form"
 import { IdentityScreen } from "./identity-screen"
+vi.mock("../catalogue/catalogue-screen", () => ({
+  CatalogueScreen: () => <p>Product catalogue</p>,
+}))
 
 const mocks = vi.hoisted(() => ({
   resetPassword: vi.fn(),
