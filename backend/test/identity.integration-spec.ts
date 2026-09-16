@@ -224,6 +224,10 @@ describe('real PostgreSQL staff authentication', () => {
         name: 'manager',
         email: 'manager@example.test',
         role: 'manager',
+        emailVerified: true,
+        twoFactorEnabled: true,
+        mfaRequired: false,
+        idleSeconds: 900,
       },
     });
     await request(app.getHttpServer())

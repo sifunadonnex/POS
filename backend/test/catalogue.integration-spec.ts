@@ -10,7 +10,7 @@ import { CatalogueService } from '../src/catalogue/catalogue.service.js';
 import { CatalogueWrites } from '../src/catalogue/catalogue-writes.js';
 import { CatalogueImportService } from '../src/catalogue/catalogue-import.service.js';
 
-// Deferred until PostgreSQL is installed. Uses only a disposable schema in an explicit _test DB.
+// Uses only a disposable schema in an explicit _test database.
 describe('catalogue PostgreSQL transactions', () => {
   let pool: Pool, catalogue: CatalogueService, importer: CatalogueImportService;
   const schema = `catalogue_${randomUUID().replaceAll('-', '')}`;

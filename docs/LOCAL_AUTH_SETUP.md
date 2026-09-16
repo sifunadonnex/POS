@@ -4,7 +4,7 @@
 
 Login/security implementation now includes email verification, password recovery/change, authenticator MFA and recovery codes, staff administration, account suspension/session revocation, security history, and a 15-minute inactivity lock. Managers must complete MFA before using protected features. Cashiers may enable MFA.
 
-**PostgreSQL is not installed on this machine**, confirmed by the user on 15 September 2026. Installation, migrations, provisioning and real database tests are deferred. SMTP delivery and connected browser checks are also unverified. Passing mocked tests/builds does not establish working login against PostgreSQL.
+**PostgreSQL 18 is installed and running locally.** On 16 September 2026 all migrations, isolated database integration tests and real development manager/cashier password logins passed. SMTP delivery and full connected browser checks remain unverified. Local success does not establish hosted login.
 
 No public registration, social login, paid identity service, checkout, business reports or branch/till permissions. Hosting troubleshooting remains deferred.
 
@@ -35,7 +35,7 @@ With delivery disabled, reset/verification requests return an explicit unavailab
 - The UI confirms a request, not delivery. Security history records `email.smtp-accepted` or `email.delivery-failed`; acceptance by SMTP does not prove inbox arrival. Check the test inbox/spam folder later.
 - The current worker requires a running Node process. HostPinnacle scheduling, recycling, outbound SMTP and delivery after restart must be verified before relying on hosted delivery.
 
-## Start later, after PostgreSQL is available
+## Local start and account provisioning
 
 Configure separate development and test databases using [backend setup](BACKEND_SETUP.md). From `backend/`:
 
@@ -89,16 +89,16 @@ From `frontend/`, run `pnpm run dev` and open `http://localhost:5173`. Vite prox
 
 ## Migration impact and deferred checks
 
-`202609150002_identity_security.sql` adds MFA fields/table, session policy fields, staff revision/status, append-only audit, durable email jobs and revocation triggers. It is **written but unapplied on this machine**. Existing emails are not automatically verified. The down migration deletes MFA, queue and audit data; use only for deliberate disposable-test rollback.
+`202609150002_identity_security.sql` adds MFA fields/table, session policy fields, staff revision/status, append-only audit, durable email jobs and revocation triggers. It is applied in the local development database and tested in disposable test schemas. Existing emails are not automatically verified. The down migration deletes MFA, queue and audit data; use only for deliberate disposable-test rollback.
 
 Backend database-independent checks: `pnpm run test`, `pnpm run test:e2e`, `pnpm exec tsc --noEmit --incremental false`, `pnpm run lint`, `pnpm run build`. Frontend: `pnpm run test`, `pnpm run lint`, `pnpm run build` (includes referenced-project TypeScript).
 
-Once PostgreSQL is available, run from `backend/`:
+Run the isolated PostgreSQL suites from `backend/`:
 
 ```powershell
 node --env-file=.env.test node_modules/vitest/vitest.mjs run --config vitest.config.integration.ts
 ```
 
-The explicit `TEST_DATABASE_URL` must end in `_test`; suites create/drop only uniquely named test schemas. The extended suite is unrun and may expose integration defects. Complete [the deferred security verification checklist](SECURITY_VERIFICATION.md) before treating this feature as connected and verified.
+The explicit `TEST_DATABASE_URL` must end in `_test`; suites create/drop only uniquely named test schemas. All 15 tests passed on 16 September 2026. Complete the remaining [security verification checklist](SECURITY_VERIFICATION.md), especially real SMTP and interactive browser flows, before treating the feature as deployment-ready.
 
 References: [Better Auth email/password](https://better-auth.com/docs/authentication/email-password), [MFA](https://better-auth.com/docs/plugins/2fa), [hooks](https://better-auth.com/docs/concepts/hooks), [Nodemailer SMTP](https://nodemailer.com/smtp), [Nodemailer licence](https://github.com/nodemailer/nodemailer/blob/master/LICENSE).

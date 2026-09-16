@@ -1,11 +1,15 @@
-# Deferred security verification
+# Security verification
 
-**Updated: 16 September 2026. All items below remain unverified.** PostgreSQL is not installed on the current machine. Automated unit, HTTP and UI tests use mocks; no real SMTP delivery was attempted. No browser connection was available for visual checks.
+**Updated: 16 September 2026.** PostgreSQL integration and local manager/cashier password login are verified. Real SMTP delivery, full MFA/recovery browser flows, visual checks, idle/offline behavior and hosted operation remain unverified.
 
-## PostgreSQL, after installation
+## Completed locally
 
-- Configure separate local `_dev` and `_test` databases, apply all three migrations, and run the isolated integration suite in [local auth setup](LOCAL_AUTH_SETUP.md). Review migration up/repeat/down/reapply only in disposable data.
-- Verify schema compatibility with Better Auth 1.7.4, transaction rollback, account uniqueness, audit immutability, and role/suspension/password changes revoking existing sessions and pending MFA challenges.
+- PostgreSQL 18 is running with separate development and `_test` databases. All four migrations are applied to development.
+- All 15 integration tests pass in disposable test schemas, including migration repeat/down/reapply, transaction rollback, account/audit controls, staff concurrency/revisions and catalogue transaction behavior.
+- Disposable manager and cashier accounts both completed real password sign-in and authenticated `/api/identity/me` requests; the test sessions were signed out.
+
+## PostgreSQL and authentication checks still required
+
 - Test simultaneous login/suspension, stale staff edits, concurrent manager changes, password reset/reuse, and recovery-code reuse. Verify only one concurrent attempt consumes a reset token or recovery code.
 - Verify manager enrollment, subsequent login challenge, wrong/expired codes, recovery codes, authenticator reset by another manager, password changes, and blocked trusted-device/direct-role/MFA bypass requests.
 - Verify initial unverified accounts cannot sign in and disabled accounts cannot obtain sessions, including after email recovery. Confirm cashiers cannot read staff or audit records.

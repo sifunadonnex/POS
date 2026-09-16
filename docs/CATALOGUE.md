@@ -1,6 +1,6 @@
 # Product catalogue
 
-**Implemented in source, 16 September 2026.** Database-independent tests pass. PostgreSQL is not installed on this machine; the migration and real integration suite are deferred. Browser inspection is unavailable in this session. This feature does not implement stock or checkout.
+**Implemented and locally database-verified, 16 September 2026.** The PostgreSQL migration, isolated integration suite, HTTP tests and frontend tests pass. Full interactive browser inspection is still pending. This feature does not implement stock or checkout.
 
 ## Use the catalogue
 
@@ -70,10 +70,10 @@ Endpoints under `/api/catalogue`:
 
 Product/history queries return at most 50 rows plus a `hasMore` flag. Product search supports `search`, `categoryId`, `status` and zero-based `page`. Writes include `requestId` and `reason`; updates also include `revision`.
 
-## Deferred verification
+## Verification still required
 
-When PostgreSQL becomes available, apply migrations to the separate development database and run the isolated `_test` suite using [backend setup](BACKEND_SETUP.md). `backend/test/catalogue.integration-spec.ts` covers concurrent replay, conflicting barcode rollback, price history, stale edits, import replay/atomicity, archival and transactional MFA checks. These tests are written but **not executed**.
+The development migration and isolated `_test` integration suite have run successfully. `backend/test/catalogue.integration-spec.ts` covers concurrent replay, conflicting barcode rollback, price history, stale edits, import replay/atomicity, archival and transactional MFA checks.
 
-Then verify real manager/cashier browser flows, phone/desktop light/dark layouts, keyboard scanning, CSV file selection, failed saves/retry after reconnect and simultaneous edits. Measure representative catalogue search/import performance. No visual, database, hosted or checkout readiness is claimed by unit tests/builds.
+Still verify real manager/cashier browser flows, phone/desktop light/dark layouts, keyboard scanning, CSV file selection, failed saves/retry after reconnect and simultaneous edits. Measure representative catalogue search/import performance. Local database success does not establish visual, hosted, load or checkout readiness.
 
 Next feature: stock opening/receiving/adjustments with append-only movements and exact whole/fractional quantities, before connecting catalogue prices and stock to cash checkout.
