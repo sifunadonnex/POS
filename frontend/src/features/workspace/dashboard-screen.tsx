@@ -3,6 +3,7 @@ import {
   ArrowUpRight,
   CircleDollarSign,
   PackageSearch,
+  Search,
   ShoppingCart,
   TrendingUp,
   Wallet,
@@ -17,6 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import {
   Table,
@@ -85,15 +87,36 @@ const lowStock = [
 
 export function DashboardScreen() {
   return (
-    <div className="space-y-6 pt-4">
-      <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Overview</p>
-          <h2 className="text-2xl font-semibold tracking-tight">Sales dashboard</h2>
+    <div className="space-y-6 pt-2">
+      <header className="rounded-2xl border bg-card p-4 shadow-sm">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+              Store overview
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+              Sales dashboard
+            </h2>
+          </div>
+
+          <div className="flex w-full max-w-xl items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" aria-hidden="true" />
+              <Input
+                aria-label="Search products or orders"
+                placeholder="Search products, SKU or orders"
+                className="pl-9"
+              />
+            </div>
+            <Button variant="outline">Download</Button>
+            <Button>New sale</Button>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline">Download report</Button>
-          <Button>Open shift</Button>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button variant="secondary" size="sm">Receive stock</Button>
+          <Button variant="outline" size="sm">Stock count</Button>
+          <Button variant="outline" size="sm">Open shift</Button>
         </div>
       </header>
 

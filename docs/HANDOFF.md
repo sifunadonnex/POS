@@ -24,6 +24,7 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 - Unique SKU/barcodes, archive/reactivate, immutable unit after creation, optimistic revisions, append-only product/category history, manager reason capture and idempotent request receipts.
 - UTF-8 CSV preview/import with bounded size/rows, create-only semantics, conflict checks and one-transaction all-or-nothing import.
 - Responsive shadcn/Base UI screens for identity, staff security and catalogue workflows.
+- Product UI direction is now aligned to a clean Dynamics 365 Commerce-inspired operational shell, using shadcn components and a dense commercial dashboard layout rather than a consumer SaaS aesthetic.
 - Backend stock API for opening, receiving and adjustments with append-only inventory movements and quantity validation for each/pack/kg/l units.
 - Supplier purchase receipt flow with request replay protection, supplier validation, stock increase, inventory movement logging and append-only receipt history.
 - Sales, returns, shifts, reports and stocktake flows are implemented as transactional, replay-safe, append-only business operations.

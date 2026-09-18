@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Shield,
   ShieldCheck,
+  ShoppingCart,
   Users,
   type LucideIcon,
 } from "lucide-react"
@@ -19,6 +20,7 @@ import { AuditScreen } from "../identity/audit-screen"
 import { StaffAdminScreen } from "../identity/staff-admin-screen"
 import type { Staff } from "../identity/identity-api"
 import { DashboardScreen } from "./dashboard-screen"
+import { SalesScreen } from "./sales-screen"
 
 export function StaffWorkspace({
   staff,
@@ -27,7 +29,13 @@ export function StaffWorkspace({
   staff: Staff
   onSecurityChanged: () => void
 }) {
-  type WorkspaceTab = "dashboard" | "catalogue" | "account" | "staff" | "audit"
+  type WorkspaceTab =
+    | "dashboard"
+    | "sales"
+    | "catalogue"
+    | "account"
+    | "staff"
+    | "audit"
 
   const [tab, setTab] = useState<WorkspaceTab>("dashboard")
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -35,6 +43,7 @@ export function StaffWorkspace({
 
   const baseItems: { id: WorkspaceTab; label: string; icon: LucideIcon }[] = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "sales", label: "Sales", icon: ShoppingCart },
     { id: "catalogue", label: "Catalogue", icon: FileText },
     { id: "account", label: "My security", icon: Shield },
   ]
@@ -133,13 +142,15 @@ export function StaffWorkspace({
             <h2 className="mt-1 text-2xl font-semibold tracking-tight">
               {tab === "dashboard"
                 ? "Overview"
-                : tab === "catalogue"
-                  ? "Catalogue"
-                  : tab === "account"
-                    ? "Account security"
-                    : tab === "staff"
-                      ? "Staff management"
-                      : "Security history"}
+                : tab === "sales"
+                  ? "Sales register"
+                  : tab === "catalogue"
+                    ? "Catalogue"
+                    : tab === "account"
+                      ? "Account security"
+                      : tab === "staff"
+                        ? "Staff management"
+                        : "Security history"}
             </h2>
           </div>
           <div className="flex items-center gap-2">
@@ -176,6 +187,8 @@ export function StaffWorkspace({
 
           {tab === "dashboard" ? (
             <DashboardScreen />
+          ) : tab === "sales" ? (
+            <SalesScreen />
           ) : tab === "catalogue" ? (
             <CatalogueScreen manager={manager} />
           ) : tab === "staff" && manager ? (
