@@ -33,7 +33,7 @@ it('applies migrations once, rolls back and reapplies in an isolated test schema
       checkOrder: true,
       log: () => undefined,
     };
-    expect(await runner({ ...options, direction: 'up' })).toHaveLength(4);
+    expect(await runner({ ...options, direction: 'up' })).toHaveLength(11);
     expect(await runner({ ...options, direction: 'up' })).toHaveLength(0);
     const result = await client.query<{ value: string }>(
       `SELECT value FROM "${schema}".app_metadata WHERE key = $1`,
