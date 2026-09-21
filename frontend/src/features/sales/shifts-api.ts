@@ -5,6 +5,14 @@ export type CurrentShift = {
   openedAt: string
 }
 
+export type ClosedShift = {
+  shiftId: string
+  status: "closed"
+  expectedCashMinor: number
+  varianceMinor: number
+  closingCashMinor: number
+}
+
 export class ShiftError extends Error {
   readonly status: number
 
@@ -71,6 +79,12 @@ function integer(value: unknown, name: string): number {
   return value
 }
 
+function safeInteger(value: unknown, name: string): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value))
+    throw new Error(`Invalid ${name} in shift response`)
+  return value
+}
+
 function parseShift(value: unknown): CurrentShift {
   const row = object(value)
   if (
@@ -116,14 +130,25 @@ export async function closeShift(
   shiftId: string,
   closingCashMinor: number,
   requestId: string
-) {
-  return shiftRequest(
-    `/${encodeURIComponent(shiftId)}/close`,
-    {
-      closingCashMinor,
-      requestId,
-      reason: "Register closing",
-    },
-    "POST"
+): Promise<ClosedShift> {
+  const row = object(
+    await shiftRequest(
+      `/${encodeURIComponent(shiftId)}/close`,
+      {
+        closingCashMinor,
+        requestId,
+        reason: "Register closing",
+      },
+      "POST"
+    )
   )
+  if (row.shiftId !== shiftId || row.status !== "closed")
+    throw new Error("Invalid closed shift response")
+  return {
+    shiftId,
+    status: "closed",
+    expectedCashMinor: integer(row.expectedCashMinor, "expected cash"),
+    varianceMinor: safeInteger(row.varianceMinor, "variance"),
+    closingCashMinor: integer(row.closingCashMinor, "closing cash"),
+  }
 }

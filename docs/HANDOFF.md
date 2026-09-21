@@ -28,17 +28,18 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 - Manager dashboard now loads the real daily report summary, presents operational KPIs/payment mix with loading and retry states, and keeps cashier actions honest until each module is available.
 - Staff workspace sidebar is grouped into Workspace, Sell, Inventory, Insights and Administration, with existing modules active and planned modules visibly marked as coming next rather than exposed as fake actions.
 - Sales register now uses active catalogue lookup/barcode search, server-authoritative basket quotes, request-replay-safe sale/payment confirmation, and an open/current/close shift flow with loading, error and retry states. A `GET /api/shifts/current` read was added so register refreshes recover the active shift instead of opening a duplicate.
+- Confirmed payments now attach to the active shift; cash payments create linked append-only `cash_in` movements, and shift closing calculates expected cash and variance from the movement ledger. Migration `202609210002_payment_shift_reconciliation` is applied locally.
 - Backend stock API for opening, receiving and adjustments with append-only inventory movements and quantity validation for each/pack/kg/l units.
 - Supplier purchase receipt and supplier-return flows with request replay protection, supplier validation, exact unit-aware totals, cumulative return limits, stock movement logging and append-only receipt history.
 - Sales, customer returns, shifts, reports and stocktake flows are transactional and replay-safe. Checkout and refunds use server-authoritative catalogue/sale prices; split payments and repeated returns cannot exceed their source totals.
-- Forward migration `202609210001_business_invariants` permits `stocktake` inventory movements, enforces non-negative stock, permits only one open shift per cashier and allows a single open-to-closed shift transition.
+- Forward migrations `202609210001_business_invariants` and `202609210002_payment_shift_reconciliation` permit `stocktake` inventory movements, enforce non-negative stock, permit only one open shift per cashier, allow a single open-to-closed shift transition, and link confirmed payments to shift reconciliation.
 - Fractional minor-unit line totals are rejected with a clear error until the documented rounding examples are agreed; no silent rounding was introduced.
 
 ## Verification on 21 September 2026
 
 | Area                            | Result                                                                                                                                                    |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Backend unit                    | 97 tests in 18 files passed                                                                                                                               |
+| Backend unit                    | 98 tests in 18 files passed                                                                                                                               |
 | PostgreSQL integration          | 15 tests in 3 files passed against disposable `_test` schemas                                                                                             |
 | HTTP/e2e                        | 20 tests in 3 files passed                                                                                                                                |
 | Backend typecheck/build         | Passed                                                                                                                                                    |
@@ -59,7 +60,7 @@ Database coverage includes migration up/repeat/down/reapply, auth transactions, 
 ## Concrete next step
 
 1. Add the next inventory module behind the sidebar: stock control, including the report's low-stock threshold source and movement history.
-2. Extend the register business-flow integration coverage to link cash payments and shift reconciliation, then add receipt/reprint and held-basket behavior.
+2. Add receipt/reprint and held-basket behavior to the register, then extend the register business-flow integration coverage beyond migration validation.
 3. Add the supplier ledger and purchase reconciliation/reporting endpoints; supplier creation/listing is still not an API capability.
 4. Agree worked examples for fractional sale/refund rounding before enabling those cases, then add a dedicated PostgreSQL business-flow integration suite.
 5. Later complete SMTP delivery and the remaining [security verification checklist](SECURITY_VERIFICATION.md), then separately prove HostPinnacle runtime/database/TLS/jobs, phone access and backup/restore.

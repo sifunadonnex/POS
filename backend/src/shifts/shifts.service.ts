@@ -175,8 +175,19 @@ export class ShiftsService {
           throw new ConflictException('Shift is already closed');
         }
 
-        const opening = Number(shift.rows[0].opening_cash_minor ?? 0);
-        const variance = closingCashMinor - opening;
+        const cash = await client.query<{ expected_cash_minor: string }>(
+          `SELECT COALESCE(SUM(
+            CASE WHEN kind IN ('opening', 'cash_in') THEN amount_minor ELSE -amount_minor END
+          ), 0)::text AS expected_cash_minor
+          FROM cash_movement WHERE shift_id = $1`,
+          [shiftId],
+        );
+        const expectedCashMinor = Number(
+          cash.rows[0]?.expected_cash_minor ??
+            shift.rows[0].opening_cash_minor ??
+            0,
+        );
+        const variance = closingCashMinor - expectedCashMinor;
 
         await client.query(
           `UPDATE cash_shift
@@ -194,6 +205,7 @@ export class ShiftsService {
         return {
           shiftId,
           status: 'closed',
+          expectedCashMinor,
           varianceMinor: variance,
           closingCashMinor,
           movementId: movement.rows[0].id,

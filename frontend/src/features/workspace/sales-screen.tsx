@@ -76,6 +76,11 @@ function money(value: number) {
   return displayPrice(String(value))
 }
 
+function variance(value: number) {
+  const sign = value > 0 ? "+" : value < 0 ? "-" : ""
+  return `${sign}${money(Math.abs(value))}`
+}
+
 function quantityLabel(value: number, unit: SaleUnit) {
   return unit === "each" || unit === "pack"
     ? String(value)
@@ -320,13 +325,13 @@ export function SalesScreen() {
     setShiftAction("closing")
     setShiftError("")
     try {
-      await closeShift(shift.shiftId, amount, requestId())
+      const result = await closeShift(shift.shiftId, amount, requestId())
       setShift(null)
       setShowCloseShift(false)
       setClosingCash("")
       updateBasket([])
       setSuccessMessage(
-        "Shift closed. The register is ready for the next opening."
+        `Shift closed. Expected cash ${money(result.expectedCashMinor)}; variance ${variance(result.varianceMinor)}.`
       )
     } catch (failure: unknown) {
       setShiftError(errorMessage(failure))

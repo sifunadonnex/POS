@@ -168,8 +168,14 @@ describe('SalesService', () => {
           rows: [{ total_minor: 4000, status: 'completed' }],
         };
       }
+      if (sql.includes('FROM cash_shift')) {
+        return { rowCount: 1, rows: [{ id: 'shift-1' }] };
+      }
       if (sql.includes('INSERT INTO sale_payment')) {
         return { rows: [{ id: 'pay-1' }] };
+      }
+      if (sql.includes('INSERT INTO cash_movement')) {
+        return { rows: [] };
       }
       if (sql.includes('INSERT INTO sale_payment_request')) {
         return { rows: [] };
@@ -207,6 +213,12 @@ describe('SalesService', () => {
 
     expect(result.amountMinor).toBe(4000);
     expect(result.paymentId).toBe('pay-1');
+    expect(result.shiftId).toBe('shift-1');
+    expect(
+      query.mock.calls.some(([sql]) =>
+        sql.includes('INSERT INTO cash_movement'),
+      ),
+    ).toBe(true);
   });
 
   it('rejects split payments that exceed the sale total', async () => {
@@ -232,10 +244,14 @@ describe('SalesService', () => {
       if (sql.includes('COALESCE(SUM(amount_minor)')) {
         return { rows: [{ paid_minor: String(paidMinor) }] };
       }
+      if (sql.includes('FROM cash_shift')) {
+        return { rowCount: 1, rows: [{ id: 'shift-1' }] };
+      }
       if (sql.includes('INSERT INTO sale_payment')) {
-        paidMinor += Number((params ?? [])[3]);
+        paidMinor += Number((params ?? [])[4]);
         return { rows: [{ id: `pay-${paidMinor}` }] };
       }
+      if (sql.includes('INSERT INTO cash_movement')) return { rows: [] };
       if (sql.includes('INSERT INTO sale_payment_request')) return { rows: [] };
       return { rows: [] };
     });
@@ -279,5 +295,61 @@ describe('SalesService', () => {
         },
       ),
     ).rejects.toThrow('Payment exceeds sale total');
+  });
+
+  it('requires an open shift before recording a payment', async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes('SELECT pg_advisory_xact_lock')) return { rows: [] };
+      if (sql.includes('SELECT u.id FROM "user" u JOIN session s')) {
+        return { rowCount: 1, rows: [{ id: 'cashier' }] };
+      }
+      if (
+        sql.includes(
+          'SELECT actor_id, fingerprint, response FROM sale_payment_request',
+        )
+      ) {
+        return { rows: [] };
+      }
+      if (sql.includes('SELECT total_minor, status FROM sale')) {
+        return {
+          rowCount: 1,
+          rows: [{ total_minor: 4000, status: 'completed' }],
+        };
+      }
+      if (sql.includes('COALESCE(SUM(amount_minor)')) {
+        return { rows: [{ paid_minor: '0' }] };
+      }
+      if (sql.includes('FROM cash_shift')) return { rowCount: 0, rows: [] };
+      return { rows: [] };
+    });
+
+    const module = await Test.createTestingModule({
+      providers: [
+        SalesService,
+        SalesWrites,
+        {
+          provide: DatabaseService,
+          useValue: {
+            connectionPool: {
+              query,
+              connect: async () => ({ query, release: vi.fn() }),
+            },
+          },
+        },
+      ],
+    }).compile();
+
+    await expect(
+      module.get(SalesService).recordPayment(
+        { userId: 'cashier', sessionId: 'session' },
+        {
+          requestId: '55555555-5555-4555-8555-555555555555',
+          saleId: 'sale-1',
+          kind: 'cash',
+          amountMinor: 4000,
+          reason: 'Cash payment',
+        },
+      ),
+    ).rejects.toThrow('Open a register shift');
   });
 });

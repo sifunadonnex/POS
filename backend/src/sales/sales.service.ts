@@ -457,16 +457,38 @@ export class SalesService {
           throw new ConflictException('Payment exceeds sale total');
         }
 
+        const shift = await client.query<{ id: string }>(
+          `SELECT id FROM cash_shift
+          WHERE cashier_id = $1 AND status = 'open'
+          ORDER BY opened_at DESC LIMIT 1 FOR UPDATE`,
+          [actor.userId],
+        );
+        if (!shift.rowCount) {
+          throw new ConflictException(
+            'Open a register shift before recording a payment',
+          );
+        }
+        const shiftId = shift.rows[0].id;
+
         const paymentId = randomUUID();
         const payment = await client.query<{ id: string }>(
-          `INSERT INTO sale_payment (id, sale_id, kind, amount_minor, status, reason, created_at)
-          VALUES ($1, $2, $3, $4, 'paid', $5, now()) RETURNING id`,
-          [paymentId, saleId, kind, amountMinor, reason],
+          `INSERT INTO sale_payment (id, sale_id, shift_id, kind, amount_minor, status, reason, created_at)
+          VALUES ($1, $2, $3, $4, $5, 'paid', $6, now()) RETURNING id`,
+          [paymentId, saleId, shiftId, kind, amountMinor, reason],
         );
+
+        if (kind === 'cash') {
+          await client.query(
+            `INSERT INTO cash_movement (id, shift_id, payment_id, kind, amount_minor, reason, created_at)
+            VALUES ($1, $2, $3, 'cash_in', $4, $5, now())`,
+            [randomUUID(), shiftId, payment.rows[0].id, amountMinor, reason],
+          );
+        }
 
         return {
           paymentId: payment.rows[0].id,
           saleId,
+          shiftId,
           kind,
           amountMinor,
           totalMinor: total,

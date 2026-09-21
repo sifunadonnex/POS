@@ -132,6 +132,9 @@ describe('ShiftsService', () => {
           ],
         };
       }
+      if (sql.includes('expected_cash_minor')) {
+        return { rows: [{ expected_cash_minor: '5000' }] };
+      }
       if (sql.includes('UPDATE cash_shift')) {
         return { rows: [] };
       }

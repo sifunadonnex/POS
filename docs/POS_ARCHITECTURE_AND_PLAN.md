@@ -2,9 +2,9 @@
 
 **Status:** Local development active; HostPinnacle deployment verification deferred
 
-**Version:** 0.6
+**Version:** 0.7
 
-**Last updated:** 16 September 2026
+**Last updated:** 21 September 2026
 
 **Budget objective:** Zero application licence fees and no additional hosting subscription for the first test shop, within the existing HostPinnacle package. Existing hosting/domain renewals still apply.
 
@@ -14,7 +14,7 @@
 
 ## 1. Purpose and revision
 
-This is the development reference for Pay & Go. Version 0.6 records the locally verified authentication/catalogue foundation while retaining the user's existing HostPinnacle hosting target. The user has confirmed that PostgreSQL and a Node.js application management feature are listed in the hosting panel.
+This is the development reference for Pay & Go. Version 0.7 records the locally verified authentication/catalogue foundation and payment-to-shift cash reconciliation while retaining the user's existing HostPinnacle hosting target. The user has confirmed that PostgreSQL and a Node.js application management feature are listed in the hosting panel.
 
 Working conventions are defined in [project rules](../AGENTS.md), with scoped [frontend rules](../frontend/AGENTS.md) and [backend rules](../backend/AGENTS.md). Read the [current handoff](HANDOFF.md) for actual implementation and verification status. A planned feature is not an implemented feature.
 
@@ -188,6 +188,7 @@ Include branch and till identifiers in transactions from the start, using one br
 - Snapshot description, applied price, cost basis, tax classification/rate, and discount on each sale line.
 - Store UTC timestamps and use Africa/Nairobi for shop business-day reporting.
 - Commit a finalized sale, cash-payment record, stock movements, and audit record atomically in PostgreSQL.
+- Assign each confirmed payment to the active cashier shift. Cash payments append a linked `cash_in` movement; card and M-Pesa payments remain shift-associated but do not increase drawer cash. Closing expected cash is opening float plus cash-in movements minus cash-out movements, and variance is counted cash minus expected cash.
 - For asynchronous external payments, use explicit payment attempts and reconciliation; an external provider cannot participate in the application's database transaction.
 - Use unique request IDs and constraints so retries cannot create duplicate sales/payments.
 - Protect stock and returns against concurrent updates. Define whether insufficient stock blocks checkout or allows a recorded supervisor override.
