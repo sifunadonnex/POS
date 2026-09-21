@@ -26,6 +26,7 @@ import { StaffAdminScreen } from "../identity/staff-admin-screen"
 import type { Staff } from "../identity/identity-api"
 import { StockControlScreen } from "../inventory/stock-control-screen"
 import { PurchaseIntakeScreen } from "../purchases/purchase-intake-screen"
+import { ReturnsScreen } from "../returns/returns-screen"
 import { DashboardScreen } from "./dashboard-screen"
 import { SalesScreen } from "./sales-screen"
 
@@ -80,7 +81,6 @@ const navigationSections: Array<{
         label: "Returns",
         description: "Customer returns and refunds",
         icon: RotateCcw,
-        available: false,
       },
     ],
   },
@@ -194,7 +194,8 @@ const pageDetails: Record<
   returns: {
     section: "Sell",
     title: "Returns",
-    description: "Customer returns and refunds will appear here next.",
+    description:
+      "Find a completed sale and record a traceable customer return.",
   },
   stock: {
     section: "Inventory",
@@ -411,6 +412,8 @@ export function StaffWorkspace({
             />
           ) : tab === "sales" ? (
             <SalesScreen />
+          ) : tab === "returns" ? (
+            <ReturnsScreen />
           ) : tab === "catalogue" ? (
             <CatalogueScreen manager={manager} />
           ) : tab === "stock" && manager ? (
