@@ -1,12 +1,20 @@
+import { useEffect, useState, type ReactNode } from "react"
 import {
   ArrowDownRight,
   ArrowUpRight,
+  Boxes,
   CircleDollarSign,
-  PackageSearch,
-  Search,
+  ClipboardList,
+  CreditCard,
+  LayoutDashboard,
+  PackageOpen,
+  ReceiptText,
+  RefreshCw,
+  ShieldCheck,
   ShoppingCart,
-  TrendingUp,
-  Wallet,
+  UsersRound,
+  WalletCards,
+  type LucideIcon,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -18,295 +26,457 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { getDailySummary, type DailySummary } from "../reports/reports-api"
 
-const overview = [
-  {
-    title: "Sales today",
-    value: "KSh 48,200",
-    delta: "+12.4%",
-    direction: "up",
-    icon: CircleDollarSign,
-  },
-  {
-    title: "Transactions",
-    value: "184",
-    delta: "+24",
-    direction: "up",
-    icon: ShoppingCart,
-  },
-  {
-    title: "Refunds",
-    value: "KSh 1,260",
-    delta: "-3.8%",
-    direction: "down",
-    icon: ArrowDownRight,
-  },
-  {
-    title: "Low stock",
-    value: "6 items",
-    delta: "2 urgent",
-    direction: "up",
-    icon: PackageSearch,
-  },
-]
+type DashboardTarget = "sales" | "catalogue" | "account" | "staff"
 
-const salesByHour = [
-  { label: "09:00", value: 24 },
-  { label: "10:00", value: 46 },
-  { label: "11:00", value: 58 },
-  { label: "12:00", value: 68 },
-  { label: "13:00", value: 74 },
-  { label: "14:00", value: 63 },
-  { label: "15:00", value: 82 },
-  { label: "16:00", value: 38 },
-]
+type DashboardScreenProps = {
+  manager: boolean
+  staffName: string
+  onNavigate: (target: DashboardTarget) => void
+}
 
-const recentSales = [
-  { id: "#1048", customer: "Walk-in", item: "Bread loaf", amount: "KSh 1,200", time: "09:14" },
-  { id: "#1049", customer: "M. Kamau", item: "Milk 2L", amount: "KSh 890", time: "09:32" },
-  { id: "#1050", customer: "L. Wanjiku", item: "Pasta pack", amount: "KSh 540", time: "09:45" },
-  { id: "#1051", customer: "Walk-in", item: "Tea leaves", amount: "KSh 620", time: "10:02" },
-  { id: "#1052", customer: "A. Otieno", item: "Rice 10kg", amount: "KSh 2,350", time: "10:18" },
-]
+function today() {
+  const date = new Date()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${date.getFullYear()}-${month}-${day}`
+}
 
-const lowStock = [
-  { item: "Whole milk", qty: "2 cartons", status: "Reorder soon" },
-  { item: "Bread loaf", qty: "5 left", status: "Low" },
-  { item: "Cereal mix", qty: "3 boxes", status: "Critical" },
-]
+function money(minor: number) {
+  return new Intl.NumberFormat("en-KE", {
+    style: "currency",
+    currency: "KES",
+    maximumFractionDigits: 2,
+  }).format(minor / 100)
+}
 
-export function DashboardScreen() {
+function StatCard({
+  title,
+  value,
+  description,
+  icon: Icon,
+  tone = "default",
+}: {
+  title: string
+  value: string
+  description: string
+  icon: LucideIcon
+  tone?: "default" | "attention"
+}) {
   return (
-    <div className="space-y-6 pt-2">
-      <header className="rounded-2xl border bg-card p-4 shadow-sm">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
-              Store overview
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-              Sales dashboard
+    <Card className="min-w-0">
+      <CardHeader className="flex flex-row items-start justify-between gap-4 pb-3">
+        <div>
+          <CardDescription>{title}</CardDescription>
+          <CardTitle className="mt-2 text-2xl tabular-nums">{value}</CardTitle>
+        </div>
+        <div
+          className={`rounded-lg p-2.5 ${tone === "attention" ? "bg-amber-500/10 text-amber-700 dark:text-amber-300" : "bg-primary/10 text-primary"}`}
+        >
+          <Icon className="size-5" aria-hidden="true" />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function WorkArea({
+  icon: Icon,
+  title,
+  description,
+  action,
+  onClick,
+  disabled = false,
+}: {
+  icon: LucideIcon
+  title: string
+  description: string
+  action: string
+  onClick?: () => void
+  disabled?: boolean
+}) {
+  return (
+    <div className="flex min-h-36 flex-col justify-between rounded-xl border bg-card p-4 shadow-xs">
+      <div className="flex items-start gap-3">
+        <div className="rounded-lg bg-muted p-2 text-muted-foreground">
+          <Icon className="size-4" aria-hidden="true" />
+        </div>
+        <div className="min-w-0">
+          <h3 className="font-medium">{title}</h3>
+          <p className="mt-1 text-sm leading-5 text-muted-foreground">
+            {description}
+          </p>
+        </div>
+      </div>
+      <Button
+        className="mt-5 w-fit"
+        variant={disabled ? "ghost" : "outline"}
+        size="sm"
+        disabled={disabled}
+        onClick={onClick}
+      >
+        {action}
+      </Button>
+    </div>
+  )
+}
+
+function SummaryState({
+  children,
+  action,
+}: {
+  children: ReactNode
+  action?: ReactNode
+}) {
+  return (
+    <div className="flex min-h-44 flex-col items-center justify-center rounded-xl border border-dashed bg-muted/20 p-6 text-center">
+      <p className="max-w-md text-sm text-muted-foreground">{children}</p>
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  )
+}
+
+export function DashboardScreen({
+  manager,
+  staffName,
+  onNavigate,
+}: DashboardScreenProps) {
+  const [summary, setSummary] = useState<DailySummary | null>(null)
+  const [loading, setLoading] = useState(manager)
+  const [error, setError] = useState("")
+  const [reloadKey, setReloadKey] = useState(0)
+  const reportDay = today()
+
+  useEffect(() => {
+    if (!manager) return
+    const controller = new AbortController()
+    void getDailySummary(reportDay, controller.signal)
+      .then(setSummary)
+      .catch((failure: unknown) => {
+        if (!controller.signal.aborted) {
+          setSummary(null)
+          setError(
+            failure instanceof Error
+              ? failure.message
+              : "The daily summary could not be loaded."
+          )
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+    return () => controller.abort()
+  }, [manager, reloadKey, reportDay])
+
+  const dateLabel = new Intl.DateTimeFormat("en-KE", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date())
+
+  return (
+    <div className="space-y-6">
+      <section className="overflow-hidden rounded-2xl border bg-card shadow-xs">
+        <div className="flex flex-col gap-6 p-5 sm:p-7 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-2xl">
+            <div className="flex items-center gap-2 text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">
+              <LayoutDashboard className="size-3.5" aria-hidden="true" />
+              Command centre
+            </div>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+              Good morning, {staffName.split(" ")[0]}
             </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Keep the shop moving from one connected workspace. {dateLabel}.
+            </p>
           </div>
-
-          <div className="flex w-full max-w-xl items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" aria-hidden="true" />
-              <Input
-                aria-label="Search products or orders"
-                placeholder="Search products, SKU or orders"
-                className="pl-9"
-              />
-            </div>
-            <Button variant="outline">Download</Button>
-            <Button>New sale</Button>
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm">Receive stock</Button>
-          <Button variant="outline" size="sm">Stock count</Button>
-          <Button variant="outline" size="sm">Open shift</Button>
-        </div>
-      </header>
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {overview.map(({ title, value, delta, direction, icon: Icon }) => (
-          <Card key={title}>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <div className="rounded-md bg-muted p-2">
-                  <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-                </div>
-                <Badge variant={direction === "up" ? "secondary" : "outline"}>
-                  {direction === "up" ? (
-                    <ArrowUpRight className="mr-1 size-3" aria-hidden="true" />
-                  ) : (
-                    <ArrowDownRight className="mr-1 size-3" aria-hidden="true" />
-                  )}
-                  {delta}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">{title}</p>
-              <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <CardTitle>Traffic and sales</CardTitle>
-                <CardDescription>Hourly activity across your store</CardDescription>
-              </div>
-              <Badge variant="secondary">Live</Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="flex h-52 items-end gap-3 px-2 pt-4">
-              {salesByHour.map(({ label, value }) => (
-                <div key={label} className="flex flex-1 flex-col items-center gap-2">
-                  <div
-                    className="w-full rounded-t-md bg-primary/85"
-                    style={{ height: `${value}%`, minHeight: 20 }}
-                    aria-label={`${label} sales ${value}%`}
-                  />
-                  <span className="text-[10px] text-muted-foreground">{label}</span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle>Shift summary</CardTitle>
-            <CardDescription>Cash and till health</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between rounded-lg bg-muted/70 p-3">
-              <div>
-                <p className="text-sm text-muted-foreground">Opened</p>
-                <p className="text-lg font-semibold">08:30 AM</p>
-              </div>
-              <Badge>Shift open</Badge>
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Cash in drawer</span>
-                <span className="font-medium">KSh 16,400</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Expected cash</span>
-                <span className="font-medium">KSh 17,080</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Variance</span>
-                <span className="font-medium text-emerald-600">+KSh 680</span>
-              </div>
-            </div>
-            <Button className="w-full" variant="outline">
-              <Wallet className="mr-2 size-4" aria-hidden="true" />
-              Close shift
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => onNavigate("sales")} className="gap-2">
+              <ShoppingCart className="size-4" aria-hidden="true" />
+              New sale
             </Button>
-          </CardContent>
-        </Card>
+            <Button
+              variant="outline"
+              onClick={() => onNavigate("catalogue")}
+              className="gap-2"
+            >
+              <Boxes className="size-4" aria-hidden="true" />
+              Browse catalogue
+            </Button>
+          </div>
+        </div>
+        <div className="grid border-t bg-muted/20 sm:grid-cols-3">
+          <div className="flex items-center gap-3 border-b p-4 sm:border-r sm:border-b-0">
+            <ReceiptText
+              className="size-4 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <div>
+              <p className="text-xs text-muted-foreground">Primary workflow</p>
+              <p className="text-sm font-medium">Sell and reconcile</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 border-b p-4 sm:border-r sm:border-b-0">
+            <PackageOpen
+              className="size-4 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <div>
+              <p className="text-xs text-muted-foreground">Inventory</p>
+              <p className="text-sm font-medium">Catalogue first</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-4">
+            <ShieldCheck
+              className="size-4 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <div>
+              <p className="text-xs text-muted-foreground">Access</p>
+              <p className="text-sm font-medium">
+                {manager ? "Manager controls" : "Cashier workspace"}
+              </p>
+            </div>
+          </div>
+        </div>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle>Recent sales</CardTitle>
-            <CardDescription>Latest transactions on the till</CardDescription>
-          </CardHeader>
-          <CardContent className="px-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Receipt</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Item</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Time</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recentSales.map((sale) => (
-                  <TableRow key={sale.id}>
-                    <TableCell className="font-medium">{sale.id}</TableCell>
-                    <TableCell>{sale.customer}</TableCell>
-                    <TableCell>{sale.item}</TableCell>
-                    <TableCell className="text-right font-medium">{sale.amount}</TableCell>
-                    <TableCell className="text-right text-muted-foreground">{sale.time}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+      {manager && loading ? (
+        <SummaryState>Loading today&apos;s operational summary…</SummaryState>
+      ) : manager && error ? (
+        <SummaryState
+          action={
+            <Button
+              variant="outline"
+              onClick={() => {
+                setLoading(true)
+                setError("")
+                setReloadKey((value) => value + 1)
+              }}
+              className="gap-2"
+            >
+              <RefreshCw className="size-4" aria-hidden="true" />
+              Retry summary
+            </Button>
+          }
+        >
+          {error}
+        </SummaryState>
+      ) : manager && summary ? (
+        <section
+          aria-label="Today summary"
+          className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"
+        >
+          <StatCard
+            title="Sales today"
+            value={money(summary.salesTotalMinor)}
+            description={`${summary.saleCount} completed sale${summary.saleCount === 1 ? "" : "s"}`}
+            icon={CircleDollarSign}
+          />
+          <StatCard
+            title="Transactions"
+            value={String(summary.saleCount)}
+            description={`${summary.paymentCount} payment record${summary.paymentCount === 1 ? "" : "s"} recorded`}
+            icon={ShoppingCart}
+          />
+          <StatCard
+            title="Refunds"
+            value={money(summary.refundMinor)}
+            description={`${summary.refundCount} refund${summary.refundCount === 1 ? "" : "s"} recorded today`}
+            icon={ArrowDownRight}
+          />
+          <StatCard
+            title="Low stock"
+            value={String(summary.lowStockCount)}
+            description={
+              summary.lowStockCount
+                ? "Items need replenishment review"
+                : "No low-stock items reported"
+            }
+            icon={PackageOpen}
+            tone={summary.lowStockCount ? "attention" : "default"}
+          />
+        </section>
+      ) : (
+        <section
+          aria-label="Cashier start panel"
+          className="grid gap-4 md:grid-cols-2"
+        >
+          <StatCard
+            title="Register"
+            value="Ready"
+            description="Open the sales register to start a basket."
+            icon={ShoppingCart}
+          />
+          <StatCard
+            title="Product lookup"
+            value="Catalogue"
+            description="Find current products, prices and barcodes."
+            icon={Boxes}
+          />
+        </section>
+      )}
 
+      <section className="grid gap-4 xl:grid-cols-[1.4fr_0.9fr]">
         <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle>Low stock</CardTitle>
-              <Badge variant="destructive">Needs review</Badge>
-            </div>
-            <CardDescription>Items requiring replenishment</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {lowStock.map((item) => (
-              <div key={item.item} className="rounded-lg border p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-medium">{item.item}</p>
-                  <Badge
-                    variant={
-                      item.status === "Critical"
-                        ? "destructive"
-                        : item.status === "Reorder soon"
-                          ? "secondary"
-                          : "outline"
-                    }
-                  >
-                    {item.status}
-                  </Badge>
-                </div>
-                <div className="mt-2 flex items-center justify-between text-sm text-muted-foreground">
-                  <span>Available</span>
-                  <span className="font-medium text-foreground">{item.qty}</span>
-                </div>
+          <CardHeader className="border-b">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <CardTitle>Work areas</CardTitle>
+                <CardDescription className="mt-1">
+                  Move through the store operations as each module comes online.
+                </CardDescription>
               </div>
-            ))}
+              <Badge variant="secondary">
+                {manager ? "Manager view" : "Cashier view"}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="grid gap-3 p-4 sm:grid-cols-2">
+            <WorkArea
+              icon={ShoppingCart}
+              title="Sales register"
+              description="Build a basket, scan products and complete a sale."
+              action="Open register"
+              onClick={() => onNavigate("sales")}
+            />
+            <WorkArea
+              icon={Boxes}
+              title="Product catalogue"
+              description="Search products, prices, units and barcodes."
+              action="Open catalogue"
+              onClick={() => onNavigate("catalogue")}
+            />
+            <WorkArea
+              icon={ClipboardList}
+              title="Stock control"
+              description="Receiving, adjustments and stocktake are being added next."
+              action="Coming next"
+              disabled
+            />
+            <WorkArea
+              icon={WalletCards}
+              title="Daily reports"
+              description={
+                manager
+                  ? "Today’s manager summary is available above."
+                  : "Manager reporting is restricted to managers."
+              }
+              action={manager ? "Summary above" : "Manager only"}
+              disabled
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="border-b">
+            <CardTitle>Payment mix</CardTitle>
+            <CardDescription className="mt-1">
+              Recorded today, when manager summary is available.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 p-5">
+            {manager && summary ? (
+              <>
+                <PaymentRow
+                  icon={WalletCards}
+                  label="Cash"
+                  value={summary.cashMinor}
+                />
+                <PaymentRow
+                  icon={CreditCard}
+                  label="Card"
+                  value={summary.cardMinor}
+                />
+                <PaymentRow
+                  icon={CircleDollarSign}
+                  label="M-Pesa"
+                  value={summary.mpesaMinor}
+                />
+                <Separator />
+                <div className="flex items-center justify-between text-sm font-medium">
+                  <span>Total recorded</span>
+                  <span className="tabular-nums">
+                    {money(
+                      summary.cashMinor + summary.cardMinor + summary.mpesaMinor
+                    )}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <SummaryState>
+                {manager
+                  ? "Payment totals will appear after the summary loads."
+                  : "Payment totals are available in the manager summary."}
+              </SummaryState>
+            )}
           </CardContent>
         </Card>
       </section>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between gap-2">
+      <section className="grid gap-4 md:grid-cols-2">
+        <Card className="bg-primary text-primary-foreground">
+          <CardContent className="flex items-start gap-4 p-5">
+            <div className="rounded-lg bg-primary-foreground/10 p-2.5">
+              <ArrowUpRight className="size-5" aria-hidden="true" />
+            </div>
             <div>
-              <CardTitle>Today’s performance</CardTitle>
-              <CardDescription>Revenue trend versus the current target</CardDescription>
+              <p className="text-sm font-medium">Next up</p>
+              <p className="mt-1 text-sm text-primary-foreground/75">
+                {manager
+                  ? "Connect stock intake and supplier operations to this workspace."
+                  : "Use the register for the next customer sale."}
+              </p>
             </div>
-            <div className="flex items-center gap-2 text-emerald-600">
-              <TrendingUp className="size-4" aria-hidden="true" />
-              <span className="text-sm font-medium">Target +8.2%</span>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-start gap-4 p-5">
+            <div className="rounded-lg bg-muted p-2.5 text-muted-foreground">
+              <UsersRound className="size-5" aria-hidden="true" />
             </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col gap-4 rounded-xl bg-muted/50 p-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="text-sm text-muted-foreground">Gross sales</p>
-              <p className="mt-2 text-3xl font-semibold tracking-tight">KSh 48,200</p>
+              <p className="text-sm font-medium">Need a hand?</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Keep staff access and account security in one place.
+              </p>
+              <Button
+                variant="link"
+                className="mt-2 h-auto p-0"
+                onClick={() => onNavigate(manager ? "staff" : "account")}
+              >
+                {manager ? "Manage staff access" : "Open my security"}
+              </Button>
             </div>
-            <Separator orientation="vertical" className="hidden h-12 md:block" />
-            <div>
-              <p className="text-sm text-muted-foreground">Average basket</p>
-              <p className="mt-2 text-2xl font-semibold tracking-tight">KSh 640</p>
-            </div>
-            <Separator orientation="vertical" className="hidden h-12 md:block" />
-            <div>
-              <p className="text-sm text-muted-foreground">Best seller</p>
-              <p className="mt-2 text-xl font-semibold tracking-tight">Rice 10kg</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </section>
+    </div>
+  )
+}
+
+function PaymentRow({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon
+  label: string
+  value: number
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <div className="flex items-center gap-2 text-muted-foreground">
+        <Icon className="size-4" aria-hidden="true" />
+        <span>{label}</span>
+      </div>
+      <span className="font-medium tabular-nums">{money(value)}</span>
     </div>
   )
 }

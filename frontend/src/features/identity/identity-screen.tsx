@@ -50,7 +50,7 @@ export function IdentityScreen() {
               <div>
                 <p className="text-sm text-muted-foreground">Signed in</p>
                 <h1 className="text-2xl font-semibold tracking-tight">
-                  {access.staff.name}
+                  Welcome, {access.staff.name}
                 </h1>
               </div>
               <Button
@@ -94,7 +94,8 @@ export function IdentityScreen() {
               <CardHeader>
                 <CardTitle>Staff sign in</CardTitle>
                 <CardDescription>
-                  Find products, manage your account and keep staff access secure.
+                  Find products, manage your account and keep staff access
+                  secure.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
@@ -129,8 +130,8 @@ export function IdentityScreen() {
                     {access.status === "error" && (
                       <div className="space-y-3">
                         <p role="alert">
-                          We cannot verify your session. Check your connection and
-                          retry.
+                          We cannot verify your session. Check your connection
+                          and retry.
                         </p>
                         <Button onClick={session.refresh}>Retry</Button>
                       </div>
