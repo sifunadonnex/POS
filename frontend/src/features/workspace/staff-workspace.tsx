@@ -27,6 +27,7 @@ import type { Staff } from "../identity/identity-api"
 import { StockControlScreen } from "../inventory/stock-control-screen"
 import { PurchaseIntakeScreen } from "../purchases/purchase-intake-screen"
 import { ReturnsScreen } from "../returns/returns-screen"
+import { StocktakeScreen } from "../stocktake/stocktake-screen"
 import { DashboardScreen } from "./dashboard-screen"
 import { SalesScreen } from "./sales-screen"
 
@@ -112,7 +113,6 @@ const navigationSections: Array<{
         label: "Stocktake",
         description: "Count and reconcile stock",
         icon: ClipboardCheck,
-        available: false,
         managerOnly: true,
       },
     ],
@@ -212,7 +212,7 @@ const pageDetails: Record<
   stocktake: {
     section: "Inventory",
     title: "Stocktake",
-    description: "Count and reconcile stock will appear here next.",
+    description: "Count physical stock and reconcile differences safely.",
   },
   reports: {
     section: "Insights",
@@ -420,6 +420,8 @@ export function StaffWorkspace({
             <StockControlScreen />
           ) : tab === "purchases" && manager ? (
             <PurchaseIntakeScreen />
+          ) : tab === "stocktake" && manager ? (
+            <StocktakeScreen />
           ) : tab === "staff" && manager ? (
             <StaffAdminScreen currentUserId={staff.id} />
           ) : tab === "audit" && manager ? (
