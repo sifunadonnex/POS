@@ -6,7 +6,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { DatabaseService } from '../database/database.service.js';
 import { type ShiftActor, ShiftsWrites } from './shifts-writes.js';
+
+export type CurrentShift = {
+  shiftId: string;
+  openingCashMinor: number;
+  status: 'open';
+  openedAt: string;
+};
 
 export type ShiftInput = {
   requestId?: unknown;
@@ -18,7 +26,35 @@ export type ShiftInput = {
 
 @Injectable()
 export class ShiftsService {
-  constructor(@Inject(ShiftsWrites) private readonly writes: ShiftsWrites) {}
+  constructor(
+    @Inject(ShiftsWrites) private readonly writes: ShiftsWrites,
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+  ) {}
+
+  async currentShift(userId: string): Promise<{ shift: CurrentShift | null }> {
+    const result = await this.database.connectionPool.query<{
+      id: string;
+      opening_cash_minor: string;
+      status: 'open';
+      opened_at: string;
+    }>(
+      `SELECT id, opening_cash_minor::text, status, opened_at
+       FROM cash_shift WHERE cashier_id = $1 AND status = 'open'
+       ORDER BY opened_at DESC LIMIT 1`,
+      [userId],
+    );
+    const row = result.rows[0];
+    return {
+      shift: row
+        ? {
+            shiftId: row.id,
+            openingCashMinor: Number(row.opening_cash_minor),
+            status: row.status,
+            openedAt: row.opened_at,
+          }
+        : null,
+    };
+  }
 
   async openShift(actor: ShiftActor, value: unknown) {
     const body =
@@ -54,9 +90,9 @@ export class ShiftsService {
       { reason, openingCashMinor },
       async (client) => {
         const shiftId = randomUUID();
-        const shift = await client.query<{ id: string }>(
+        const shift = await client.query<{ id: string; opened_at: string }>(
           `INSERT INTO cash_shift (id, cashier_id, opening_cash_minor, status, reason, opened_at)
-          VALUES ($1, $2, $3, 'open', $4, now()) RETURNING id`,
+          VALUES ($1, $2, $3, 'open', $4, now()) RETURNING id, opened_at`,
           [shiftId, actor.userId, openingCashMinor, reason],
         );
 
@@ -69,6 +105,7 @@ export class ShiftsService {
         return {
           shiftId: shift.rows[0].id,
           openingCashMinor,
+          openedAt: shift.rows[0].opened_at,
           movementId: movement.rows[0].id,
           status: 'open',
         };

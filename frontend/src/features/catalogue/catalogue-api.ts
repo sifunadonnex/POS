@@ -174,6 +174,14 @@ export async function getProducts(query: {
     throw new Error("Invalid products response")
   return { products: v.products.map(parseProduct), hasMore: v.hasMore }
 }
+export async function getProductByBarcode(code: string): Promise<Product> {
+  const v = object(
+    await catalogueRequest(
+      `products/by-barcode?code=${encodeURIComponent(code)}`
+    )
+  )
+  return parseProduct(v.product)
+}
 export async function getHistory(id: string, page: number) {
   const v = object(
     await catalogueRequest(

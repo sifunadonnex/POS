@@ -4,6 +4,45 @@ import { ShiftsService } from './shifts.service.js';
 import { ShiftsWrites } from './shifts-writes.js';
 
 describe('ShiftsService', () => {
+  it('returns the active shift for a register refresh', async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes('FROM cash_shift WHERE cashier_id')) {
+        return {
+          rows: [
+            {
+              id: 'shift-1',
+              opening_cash_minor: '5000',
+              status: 'open',
+              opened_at: '2026-09-21T08:00:00.000Z',
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+    const module = await Test.createTestingModule({
+      providers: [
+        ShiftsService,
+        ShiftsWrites,
+        {
+          provide: DatabaseService,
+          useValue: { connectionPool: { query, connect: vi.fn() } },
+        },
+      ],
+    }).compile();
+
+    await expect(
+      module.get(ShiftsService).currentShift('cashier'),
+    ).resolves.toEqual({
+      shift: {
+        shiftId: 'shift-1',
+        openingCashMinor: 5000,
+        status: 'open',
+        openedAt: '2026-09-21T08:00:00.000Z',
+      },
+    });
+  });
+
   it('opens a shift and stores the opening float', async () => {
     const query = vi.fn(async (sql: string) => {
       if (sql.includes('SELECT pg_advisory_xact_lock')) {

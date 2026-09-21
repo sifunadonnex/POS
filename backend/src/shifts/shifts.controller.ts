@@ -1,4 +1,4 @@
-import { Body, Controller, Inject, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Post, Req } from '@nestjs/common';
 import { StaffRoles } from '../identity/access.metadata.js';
 import type { StaffRequest } from '../identity/staff.guard.js';
 import { ShiftsService } from './shifts.service.js';
@@ -12,6 +12,12 @@ function actor(req: StaffRequest) {
 @Controller('api/shifts')
 export class ShiftsController {
   constructor(@Inject(ShiftsService) private readonly shifts: ShiftsService) {}
+
+  @Get('current')
+  @StaffRoles('cashier', 'manager')
+  current(@Req() req: StaffRequest) {
+    return this.shifts.currentShift(req.staff.user.id);
+  }
 
   @Post('open')
   @StaffRoles('cashier', 'manager')
