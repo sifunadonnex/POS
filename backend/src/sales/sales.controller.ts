@@ -9,18 +9,20 @@ function actor(req: StaffRequest) {
 
 @Controller('api/sales')
 export class SalesController {
-  constructor(
-    @Inject(SalesService) private readonly sales: SalesService,
-  ) {}
+  constructor(@Inject(SalesService) private readonly sales: SalesService) {}
 
   @Post('quote')
   @StaffRoles('cashier', 'manager')
   quote(@Body() body: unknown) {
-    const lines = Array.isArray(body) ? body : body && typeof body === 'object' && Array.isArray((body as Record<string, unknown>).lines)
-      ? (body as Record<string, unknown>).lines
-      : undefined;
+    const lines = Array.isArray(body)
+      ? body
+      : body &&
+          typeof body === 'object' &&
+          Array.isArray((body as Record<string, unknown>).lines)
+        ? (body as Record<string, unknown>).lines
+        : undefined;
 
-    return this.sales.quoteBasket(lines);
+    return this.sales.quoteCurrentBasket(lines);
   }
 
   @Post()
@@ -33,7 +35,9 @@ export class SalesController {
   @StaffRoles('cashier', 'manager')
   recordPayment(@Req() req: StaffRequest, @Body() body: unknown) {
     return this.sales.recordPayment(actor(req), {
-      ...(body && typeof body === 'object' ? (body as Record<string, unknown>) : {}),
+      ...(body && typeof body === 'object'
+        ? (body as Record<string, unknown>)
+        : {}),
       saleId: (req.params as Record<string, string>).saleId,
     });
   }

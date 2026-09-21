@@ -12,12 +12,27 @@ describe('StocktakeService', () => {
       if (sql.includes('SELECT u.id FROM "user" u JOIN session s')) {
         return { rowCount: 1, rows: [{ id: 'manager' }] };
       }
-      if (sql.includes('SELECT actor_id, fingerprint, response FROM stocktake_request')) {
+      if (
+        sql.includes(
+          'SELECT actor_id, fingerprint, response FROM stocktake_request',
+        )
+      ) {
         return { rows: [] };
       }
-      if (sql.includes('SELECT p.id, p.unit, p.active, COALESCE(s.quantity_minor, 0) AS quantity_minor')) {
+      if (
+        sql.includes(
+          'SELECT p.id, p.unit, p.active, COALESCE(s.quantity_minor, 0) AS quantity_minor',
+        )
+      ) {
         return {
-          rows: [{ id: 'product-1', unit: 'each', active: true, quantity_minor: 5 }],
+          rows: [
+            {
+              id: '11111111-1111-4111-8111-111111111111',
+              unit: 'each',
+              active: true,
+              quantity_minor: 5,
+            },
+          ],
         };
       }
       if (sql.includes('INSERT INTO stocktake')) {
@@ -52,14 +67,17 @@ describe('StocktakeService', () => {
     }).compile();
 
     const service = module.get(StocktakeService);
-    const result = await service.count({ userId: 'manager', sessionId: 'session' }, {
-      requestId: '33333333-3333-4333-8333-333333333333',
-      productId: 'product-1',
-      quantity: 8,
-      reason: 'Physical count',
-    });
+    const result = await service.count(
+      { userId: 'manager', sessionId: 'session' },
+      {
+        requestId: '33333333-3333-4333-8333-333333333333',
+        productId: '11111111-1111-4111-8111-111111111111',
+        quantity: 8,
+        reason: 'Physical count',
+      },
+    );
 
-    expect(result.productId).toBe('product-1');
+    expect(result.productId).toBe('11111111-1111-4111-8111-111111111111');
     expect(result.quantityMinor).toBe(8);
     expect(result.deltaMinor).toBe(3);
   });

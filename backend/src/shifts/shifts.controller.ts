@@ -4,14 +4,14 @@ import type { StaffRequest } from '../identity/staff.guard.js';
 import { ShiftsService } from './shifts.service.js';
 
 function actor(req: StaffRequest) {
-  return { userId: req.staff.user.id, sessionId: req.staff.session.id };
+  const role: 'manager' | 'cashier' =
+    req.staff.user.role === 'manager' ? 'manager' : 'cashier';
+  return { userId: req.staff.user.id, sessionId: req.staff.session.id, role };
 }
 
 @Controller('api/shifts')
 export class ShiftsController {
-  constructor(
-    @Inject(ShiftsService) private readonly shifts: ShiftsService,
-  ) {}
+  constructor(@Inject(ShiftsService) private readonly shifts: ShiftsService) {}
 
   @Post('open')
   @StaffRoles('cashier', 'manager')
@@ -23,7 +23,9 @@ export class ShiftsController {
   @StaffRoles('cashier', 'manager')
   close(@Req() req: StaffRequest, @Body() body: unknown) {
     return this.shifts.closeShift(actor(req), {
-      ...(body && typeof body === 'object' ? (body as Record<string, unknown>) : {}),
+      ...(body && typeof body === 'object'
+        ? (body as Record<string, unknown>)
+        : {}),
       shiftId: (req.params as Record<string, string>).shiftId,
     });
   }

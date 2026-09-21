@@ -12,28 +12,52 @@ describe('ReturnsService', () => {
       if (sql.includes('SELECT u.id FROM "user" u JOIN session s')) {
         return { rowCount: 1, rows: [{ id: 'manager' }] };
       }
-      if (sql.includes('SELECT actor_id, fingerprint, response FROM sale_return_request')) {
+      if (
+        sql.includes(
+          'SELECT actor_id, fingerprint, response FROM sale_return_request',
+        )
+      ) {
         return { rows: [] };
       }
-      if (sql.includes('SELECT id, total_minor FROM sale WHERE id = $1 FOR UPDATE')) {
-        return { rowCount: 1, rows: [{ id: 'sale-1', total_minor: 3200 }] };
-      }
-      if (sql.includes('SELECT s.id, s.sale_id, s.status, sl.product_id, sl.quantity_minor, sl.unit_price_minor')) {
+      if (
+        sql.includes(
+          'SELECT id, total_minor, status FROM sale WHERE id = $1 FOR UPDATE',
+        )
+      ) {
         return {
           rowCount: 1,
-          rows: [{
-            id: 'sale-line-1',
-            sale_id: 'sale-1',
-            status: 'completed',
-            product_id: 'product-1',
-            quantity_minor: 2000,
-            unit_price_minor: 3200,
-          }],
+          rows: [{ id: 'sale-1', total_minor: 3200, status: 'completed' }],
         };
       }
-      if (sql.includes('SELECT p.id, p.unit, p.active, COALESCE(s.quantity_minor, 0) AS quantity_minor')) {
+      if (
+        sql.includes(
+          'SELECT sl.id, sl.product_id, p.unit, sl.quantity_minor, sl.unit_price_minor',
+        )
+      ) {
         return {
-          rows: [{ id: 'product-1', unit: 'kg', active: true, quantity_minor: 1000 }],
+          rowCount: 1,
+          rows: [
+            {
+              id: 'sale-line-1',
+              sale_id: 'sale-1',
+              status: 'completed',
+              product_id: 'product-1',
+              unit: 'kg',
+              quantity_minor: 2000,
+              unit_price_minor: 3200,
+            },
+          ],
+        };
+      }
+      if (
+        sql.includes(
+          'SELECT p.id, p.unit, p.active, COALESCE(s.quantity_minor, 0) AS quantity_minor',
+        )
+      ) {
+        return {
+          rows: [
+            { id: 'product-1', unit: 'kg', active: true, quantity_minor: 1000 },
+          ],
         };
       }
       if (sql.includes('INSERT INTO sale_return')) {
@@ -74,12 +98,17 @@ describe('ReturnsService', () => {
     }).compile();
 
     const service = module.get(ReturnsService);
-    const result = await service.createReturn({ userId: 'manager', sessionId: 'session' }, {
-      requestId: '44444444-4444-4444-8444-444444444444',
-      saleId: 'sale-1',
-      reason: 'Customer return',
-      lines: [{ productId: 'product-1', quantityMinor: 500, unitPriceMinor: 3200 }],
-    });
+    const result = await service.createReturn(
+      { userId: 'manager', sessionId: 'session' },
+      {
+        requestId: '44444444-4444-4444-8444-444444444444',
+        saleId: 'sale-1',
+        reason: 'Customer return',
+        lines: [
+          { productId: 'product-1', quantityMinor: 500, unitPriceMinor: 3200 },
+        ],
+      },
+    );
 
     expect(result.returnId).toBe('return-1');
     expect(result.amountMinor).toBe(1600);

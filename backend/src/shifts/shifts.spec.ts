@@ -12,7 +12,11 @@ describe('ShiftsService', () => {
       if (sql.includes('SELECT u.id FROM "user" u JOIN session s')) {
         return { rowCount: 1, rows: [{ id: 'cashier' }] };
       }
-      if (sql.includes('SELECT actor_id, fingerprint, response FROM shift_request')) {
+      if (
+        sql.includes(
+          'SELECT actor_id, fingerprint, response FROM shift_request',
+        )
+      ) {
         return { rows: [] };
       }
       if (sql.includes('INSERT INTO cash_shift')) {
@@ -44,11 +48,14 @@ describe('ShiftsService', () => {
     }).compile();
 
     const service = module.get(ShiftsService);
-    const result = await service.openShift({ userId: 'cashier', sessionId: 'session' }, {
-      requestId: '11111111-1111-4111-8111-111111111111',
-      reason: 'Opening float',
-      openingCashMinor: 5000,
-    });
+    const result = await service.openShift(
+      { userId: 'cashier', sessionId: 'session', role: 'cashier' },
+      {
+        requestId: '11111111-1111-4111-8111-111111111111',
+        reason: 'Opening float',
+        openingCashMinor: 5000,
+      },
+    );
 
     expect(result.shiftId).toBe('shift-1');
     expect(result.openingCashMinor).toBe(5000);
@@ -62,11 +69,29 @@ describe('ShiftsService', () => {
       if (sql.includes('SELECT u.id FROM "user" u JOIN session s')) {
         return { rowCount: 1, rows: [{ id: 'manager' }] };
       }
-      if (sql.includes('SELECT actor_id, fingerprint, response FROM shift_request')) {
+      if (
+        sql.includes(
+          'SELECT actor_id, fingerprint, response FROM shift_request',
+        )
+      ) {
         return { rows: [] };
       }
-      if (sql.includes('SELECT id, cashier_id, opening_cash_minor, status FROM cash_shift')) {
-        return { rowCount: 1, rows: [{ id: 'shift-1', cashier_id: 'cashier', opening_cash_minor: 5000, status: 'open' }] };
+      if (
+        sql.includes(
+          'SELECT id, cashier_id, opening_cash_minor, status FROM cash_shift',
+        )
+      ) {
+        return {
+          rowCount: 1,
+          rows: [
+            {
+              id: 'shift-1',
+              cashier_id: 'cashier',
+              opening_cash_minor: 5000,
+              status: 'open',
+            },
+          ],
+        };
       }
       if (sql.includes('UPDATE cash_shift')) {
         return { rows: [] };
@@ -97,12 +122,15 @@ describe('ShiftsService', () => {
     }).compile();
 
     const service = module.get(ShiftsService);
-    const result = await service.closeShift({ userId: 'manager', sessionId: 'session' }, {
-      requestId: '22222222-2222-4222-8222-222222222222',
-      shiftId: 'shift-1',
-      reason: 'Close shift',
-      closingCashMinor: 5200,
-    });
+    const result = await service.closeShift(
+      { userId: 'manager', sessionId: 'session', role: 'manager' },
+      {
+        requestId: '22222222-2222-4222-8222-222222222222',
+        shiftId: 'shift-1',
+        reason: 'Close shift',
+        closingCashMinor: 5200,
+      },
+    );
 
     expect(result.status).toBe('closed');
     expect(result.varianceMinor).toBe(200);

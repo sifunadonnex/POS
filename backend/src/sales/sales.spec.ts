@@ -8,9 +8,24 @@ describe('SalesService', () => {
     const service = new SalesService();
 
     const quote = service.quoteBasket([
-      { productId: '11111111-1111-4111-8111-111111111111', unit: 'each', quantity: 2, priceMinor: 2500 },
-      { productId: '22222222-2222-4222-8222-222222222222', unit: 'kg', quantity: 1.75, priceMinor: 3200 },
-      { productId: '33333333-3333-4333-8333-333333333333', unit: 'l', quantity: 0.5, priceMinor: 4200 },
+      {
+        productId: '11111111-1111-4111-8111-111111111111',
+        unit: 'each',
+        quantity: 2,
+        priceMinor: 2500,
+      },
+      {
+        productId: '22222222-2222-4222-8222-222222222222',
+        unit: 'kg',
+        quantity: 1.75,
+        priceMinor: 3200,
+      },
+      {
+        productId: '33333333-3333-4333-8333-333333333333',
+        unit: 'l',
+        quantity: 0.5,
+        priceMinor: 4200,
+      },
     ]);
 
     expect(quote.subtotalMinor).toBe(2500 * 2 + 3200 * 1.75 + 4200 * 0.5);
@@ -26,7 +41,12 @@ describe('SalesService', () => {
 
     expect(() =>
       service.quoteBasket([
-        { productId: '44444444-4444-4444-8444-444444444444', unit: 'pack', quantity: 1.5, priceMinor: 1000 },
+        {
+          productId: '44444444-4444-4444-8444-444444444444',
+          unit: 'pack',
+          quantity: 1.5,
+          priceMinor: 1000,
+        },
       ]),
     ).toThrow('whole number');
   });
@@ -36,7 +56,12 @@ describe('SalesService', () => {
 
     expect(() =>
       service.quoteBasket([
-        { productId: '55555555-5555-4555-8555-555555555555', unit: 'kg', quantity: 0.0009, priceMinor: 2000 },
+        {
+          productId: '55555555-5555-4555-8555-555555555555',
+          unit: 'kg',
+          quantity: 0.0009,
+          priceMinor: 2000,
+        },
       ]),
     ).toThrow('0.001');
   });
@@ -49,12 +74,22 @@ describe('SalesService', () => {
       if (sql.includes('SELECT u.id FROM "user" u JOIN session s')) {
         return { rowCount: 1, rows: [{ id: 'cashier' }] };
       }
-      if (sql.includes('SELECT actor_id, fingerprint, response FROM sale_request')) {
+      if (
+        sql.includes('SELECT actor_id, fingerprint, response FROM sale_request')
+      ) {
         return { rows: [] };
       }
-      if (sql.includes('SELECT p.id, p.unit, p.active, COALESCE(s.quantity_minor, 0) AS quantity_minor')) {
+      if (sql.includes('SELECT p.id, p.unit, p.price_minor::text, p.active')) {
         return {
-          rows: [{ id: 'product-1', unit: 'kg', active: true, quantity_minor: 2000 }],
+          rows: [
+            {
+              id: '11111111-1111-4111-8111-111111111111',
+              unit: 'kg',
+              price_minor: '3200',
+              active: true,
+              quantity_minor: '2000',
+            },
+          ],
         };
       }
       if (sql.includes('INSERT INTO sale')) {
@@ -92,11 +127,21 @@ describe('SalesService', () => {
     }).compile();
 
     const service = module.get(SalesService);
-    const result = await service.finalize({ userId: 'cashier', sessionId: 'session' }, {
-      requestId: '11111111-1111-4111-8111-111111111111',
-      reason: 'Checkout',
-      lines: [{ productId: 'product-1', unit: 'kg', quantity: 1.25, priceMinor: 3200 }],
-    });
+    const result = await service.finalize(
+      { userId: 'cashier', sessionId: 'session' },
+      {
+        requestId: '11111111-1111-4111-8111-111111111111',
+        reason: 'Checkout',
+        lines: [
+          {
+            productId: '11111111-1111-4111-8111-111111111111',
+            unit: 'kg',
+            quantity: 1.25,
+            priceMinor: 999999,
+          },
+        ],
+      },
+    );
 
     expect(result.totalMinor).toBe(4000);
     expect(result.saleId).toBe('sale-1');
@@ -110,11 +155,18 @@ describe('SalesService', () => {
       if (sql.includes('SELECT u.id FROM "user" u JOIN session s')) {
         return { rowCount: 1, rows: [{ id: 'cashier' }] };
       }
-      if (sql.includes('SELECT actor_id, fingerprint, response FROM sale_payment_request')) {
+      if (
+        sql.includes(
+          'SELECT actor_id, fingerprint, response FROM sale_payment_request',
+        )
+      ) {
         return { rows: [] };
       }
       if (sql.includes('SELECT total_minor')) {
-        return { rowCount: 1, rows: [{ total_minor: 4000 }] };
+        return {
+          rowCount: 1,
+          rows: [{ total_minor: 4000, status: 'completed' }],
+        };
       }
       if (sql.includes('INSERT INTO sale_payment')) {
         return { rows: [{ id: 'pay-1' }] };
@@ -142,15 +194,90 @@ describe('SalesService', () => {
     }).compile();
 
     const service = module.get(SalesService);
-    const result = await service.recordPayment({ userId: 'cashier', sessionId: 'session' }, {
-      requestId: '22222222-2222-4222-8222-222222222222',
-      saleId: 'sale-1',
-      kind: 'cash',
-      amountMinor: 4000,
-      reason: 'Cash payment',
-    });
+    const result = await service.recordPayment(
+      { userId: 'cashier', sessionId: 'session' },
+      {
+        requestId: '22222222-2222-4222-8222-222222222222',
+        saleId: 'sale-1',
+        kind: 'cash',
+        amountMinor: 4000,
+        reason: 'Cash payment',
+      },
+    );
 
     expect(result.amountMinor).toBe(4000);
     expect(result.paymentId).toBe('pay-1');
+  });
+
+  it('rejects split payments that exceed the sale total', async () => {
+    let paidMinor = 0;
+    const query = vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql.includes('SELECT pg_advisory_xact_lock')) return { rows: [] };
+      if (sql.includes('SELECT u.id FROM "user" u JOIN session s')) {
+        return { rowCount: 1, rows: [{ id: 'cashier' }] };
+      }
+      if (
+        sql.includes(
+          'SELECT actor_id, fingerprint, response FROM sale_payment_request',
+        )
+      ) {
+        return { rows: [] };
+      }
+      if (sql.includes('SELECT total_minor, status FROM sale')) {
+        return {
+          rowCount: 1,
+          rows: [{ total_minor: 4000, status: 'completed' }],
+        };
+      }
+      if (sql.includes('COALESCE(SUM(amount_minor)')) {
+        return { rows: [{ paid_minor: String(paidMinor) }] };
+      }
+      if (sql.includes('INSERT INTO sale_payment')) {
+        paidMinor += Number((params ?? [])[3]);
+        return { rows: [{ id: `pay-${paidMinor}` }] };
+      }
+      if (sql.includes('INSERT INTO sale_payment_request')) return { rows: [] };
+      return { rows: [] };
+    });
+
+    const module = await Test.createTestingModule({
+      providers: [
+        SalesService,
+        SalesWrites,
+        {
+          provide: DatabaseService,
+          useValue: {
+            connectionPool: {
+              query,
+              connect: async () => ({ query, release: vi.fn() }),
+            },
+          },
+        },
+      ],
+    }).compile();
+
+    const service = module.get(SalesService);
+    await service.recordPayment(
+      { userId: 'cashier', sessionId: 'session' },
+      {
+        requestId: '33333333-3333-4333-8333-333333333333',
+        saleId: 'sale-1',
+        kind: 'cash',
+        amountMinor: 3000,
+        reason: 'Part payment',
+      },
+    );
+    await expect(
+      service.recordPayment(
+        { userId: 'cashier', sessionId: 'session' },
+        {
+          requestId: '44444444-4444-4444-8444-444444444444',
+          saleId: 'sale-1',
+          kind: 'cash',
+          amountMinor: 2000,
+          reason: 'Excess payment',
+        },
+      ),
+    ).rejects.toThrow('Payment exceeds sale total');
   });
 });

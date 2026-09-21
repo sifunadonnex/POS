@@ -18,20 +18,34 @@ export type ShiftInput = {
 
 @Injectable()
 export class ShiftsService {
-  constructor(
-    @Inject(ShiftsWrites) private readonly writes: ShiftsWrites,
-  ) {}
+  constructor(@Inject(ShiftsWrites) private readonly writes: ShiftsWrites) {}
 
   async openShift(actor: ShiftActor, value: unknown) {
-    const body = value && typeof value === 'object' ? (value as ShiftInput) : {};
-    const requestId = typeof body.requestId === 'string' && body.requestId.trim() ? body.requestId : null;
-    const reason = typeof body.reason === 'string' && body.reason.trim().length >= 3 ? body.reason.trim() : null;
+    const body =
+      value && typeof value === 'object' ? (value as ShiftInput) : {};
+    const requestId =
+      typeof body.requestId === 'string' && body.requestId.trim()
+        ? body.requestId
+        : null;
+    const reason =
+      typeof body.reason === 'string' && body.reason.trim().length >= 3
+        ? body.reason.trim()
+        : null;
     const openingCashMinor = Number(body.openingCashMinor);
 
     if (!requestId) throw new BadRequestException('Provide a valid request ID');
-    if (!reason) throw new BadRequestException('Reason must contain at least three characters');
-    if (!Number.isFinite(openingCashMinor) || openingCashMinor < 0 || !Number.isInteger(openingCashMinor)) {
-      throw new BadRequestException('Opening cash must be a non-negative integer minor amount');
+    if (!reason)
+      throw new BadRequestException(
+        'Reason must contain at least three characters',
+      );
+    if (
+      !Number.isFinite(openingCashMinor) ||
+      openingCashMinor < 0 ||
+      !Number.isInteger(openingCashMinor)
+    ) {
+      throw new BadRequestException(
+        'Opening cash must be a non-negative integer minor amount',
+      );
     }
 
     return this.writes.execute(
@@ -63,17 +77,36 @@ export class ShiftsService {
   }
 
   async closeShift(actor: ShiftActor, value: unknown) {
-    const body = value && typeof value === 'object' ? (value as ShiftInput) : {};
-    const requestId = typeof body.requestId === 'string' && body.requestId.trim() ? body.requestId : null;
-    const shiftId = typeof body.shiftId === 'string' && body.shiftId.trim() ? body.shiftId : null;
-    const reason = typeof body.reason === 'string' && body.reason.trim().length >= 3 ? body.reason.trim() : null;
+    const body =
+      value && typeof value === 'object' ? (value as ShiftInput) : {};
+    const requestId =
+      typeof body.requestId === 'string' && body.requestId.trim()
+        ? body.requestId
+        : null;
+    const shiftId =
+      typeof body.shiftId === 'string' && body.shiftId.trim()
+        ? body.shiftId
+        : null;
+    const reason =
+      typeof body.reason === 'string' && body.reason.trim().length >= 3
+        ? body.reason.trim()
+        : null;
     const closingCashMinor = Number(body.closingCashMinor);
 
     if (!requestId) throw new BadRequestException('Provide a valid request ID');
     if (!shiftId) throw new BadRequestException('Provide a valid shift ID');
-    if (!reason) throw new BadRequestException('Reason must contain at least three characters');
-    if (!Number.isFinite(closingCashMinor) || closingCashMinor < 0 || !Number.isInteger(closingCashMinor)) {
-      throw new BadRequestException('Closing cash must be a non-negative integer minor amount');
+    if (!reason)
+      throw new BadRequestException(
+        'Reason must contain at least three characters',
+      );
+    if (
+      !Number.isFinite(closingCashMinor) ||
+      closingCashMinor < 0 ||
+      !Number.isInteger(closingCashMinor)
+    ) {
+      throw new BadRequestException(
+        'Closing cash must be a non-negative integer minor amount',
+      );
     }
 
     return this.writes.execute(
@@ -92,6 +125,14 @@ export class ShiftsService {
         );
         if (!shift.rowCount) {
           throw new NotFoundException('Shift not found');
+        }
+        if (
+          actor.role !== 'manager' &&
+          shift.rows[0].cashier_id !== actor.userId
+        ) {
+          throw new ConflictException(
+            'Cashiers can only close their own shift',
+          );
         }
         if (shift.rows[0].status !== 'open') {
           throw new ConflictException('Shift is already closed');

@@ -11,7 +11,11 @@ import {
 import type { PoolClient } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
 
-export type ShiftActor = { userId: string; sessionId: string };
+export type ShiftActor = {
+  userId: string;
+  sessionId: string;
+  role: 'manager' | 'cashier';
+};
 
 @Injectable()
 export class ShiftsWrites {
@@ -62,8 +66,13 @@ export class ShiftsWrites {
       );
       const receipt = previous.rows[0];
       if (receipt) {
-        if (receipt.actor_id !== actor.userId || receipt.fingerprint !== fingerprint) {
-          throw new ConflictException('This request ID was already used for a different shift operation');
+        if (
+          receipt.actor_id !== actor.userId ||
+          receipt.fingerprint !== fingerprint
+        ) {
+          throw new ConflictException(
+            'This request ID was already used for a different shift operation',
+          );
         }
         await client.query('COMMIT');
         return receipt.response as T;
@@ -87,10 +96,14 @@ export class ShiftsWrites {
       if (error instanceof HttpException) throw error;
       if (error && typeof error === 'object' && 'code' in error) {
         if (error.code === '23505') {
-          throw new ConflictException('This shift request is already committed. Reload and retry.');
+          throw new ConflictException(
+            'This shift request is already committed. Reload and retry.',
+          );
         }
       }
-      throw new ServiceUnavailableException('The shift operation could not be completed. Retry the same request to check its outcome.');
+      throw new ServiceUnavailableException(
+        'The shift operation could not be completed. Retry the same request to check its outcome.',
+      );
     } finally {
       client?.release();
     }
