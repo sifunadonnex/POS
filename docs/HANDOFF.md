@@ -2,7 +2,7 @@
 
 **Updated:** 16 September 2026
 
-**Current phase:** Login/security and the first catalogue workflow are implemented and verified locally against PostgreSQL. SMTP delivery, full interactive browser checks and HostPinnacle deployment remain pending. The next business module is inventory opening/receiving/adjustments.
+**Current phase:** Local backend business flows are now progressing through stock intake and sales operations. Supplier purchase receipts, inventory movement recording, sales, returns, shifts, reports and stocktake are implemented and verified locally against PostgreSQL. SMTP delivery, full interactive browser checks and HostPinnacle deployment remain pending.
 
 Read root/scoped AGENTS and the architecture before changes. Reinspect Git and source; this is a snapshot.
 
@@ -23,20 +23,23 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 - Catalogue categories/products with `each`, `pack`, `kg` and `l` sale units. Prices are exact integer minor units; `kg`/`l` later use 0.001 quantity steps while `each`/`pack` use whole quantities.
 - Unique SKU/barcodes, archive/reactivate, immutable unit after creation, optimistic revisions, append-only product/category history, manager reason capture and idempotent request receipts.
 - UTF-8 CSV preview/import with bounded size/rows, create-only semantics, conflict checks and one-transaction all-or-nothing import.
-- Responsive shadcn/Base UI screens for identity, staff security and catalogue workflows. This release still has no stock ledger or checkout.
+- Responsive shadcn/Base UI screens for identity, staff security and catalogue workflows.
+- Product UI direction is now aligned to a clean Dynamics 365 Commerce-inspired operational shell, using shadcn components and a dense commercial dashboard layout rather than a consumer SaaS aesthetic.
+- Backend stock API for opening, receiving and adjustments with append-only inventory movements and quantity validation for each/pack/kg/l units.
+- Supplier purchase receipt flow with request replay protection, supplier validation, stock increase, inventory movement logging and append-only receipt history.
+- Sales, returns, shifts, reports and stocktake flows are implemented as transactional, replay-safe, append-only business operations.
 
-## Verification on 16 September 2026
+## Verification on 18 September 2026
 
 | Area | Result |
 | --- | --- |
-| Backend unit | 79 tests in 11 files passed |
-| Backend HTTP/e2e | 20 tests in 3 files passed, serial run |
+| Backend unit | 12 tests in 6 files passed |
 | PostgreSQL integration | 15 tests in 3 files passed against disposable `_test` schemas |
-| Backend typecheck, lint, build | Passed |
-| Frontend UI/API | 33 tests in 7 files passed, serial run |
-| Frontend lint, referenced-project TypeScript build and Vite production build | Passed |
-| Development database | All four migrations present; manager and cashier password sign-in plus `/api/identity/me` succeeded; both sessions were signed out |
-| Local app smoke | Vite page, proxied liveness and proxied PostgreSQL readiness all returned HTTP 200 |
+| Backend typecheck | Passed |
+| Local API business flows | Purchase receipt, sales, returns, stocktake, shifts and reports passed in the relevant unit and integration suites |
+| Development database | Local PostgreSQL migration set includes inventory, sales, payments, returns, shifts, stocktake and purchase receipt schema |
+| Purchase stock movement contract | Verified fix: purchase receipts use `receive`, supplier returns use `return`, matching the database `inventory_movement` check constraint |
+| Frontend | Not part of the current backend-only scope |
 
 The first parallel test attempt saturated local worker startup and produced timeouts; all affected suites passed when rerun serially. A stale identity integration assertion was updated to include the already-implemented security fields. No test or compiler/lint rule was weakened.
 
@@ -44,8 +47,8 @@ Database coverage includes migration up/repeat/down/reapply, auth transactions, 
 
 ## Concrete next step
 
-1. Let the user manually exercise local cashier login and manager login/MFA enrollment, then create a category/product, import the sample CSV, edit/archive a product and inspect history. Record any usability defect.
-2. Build inventory opening balances, receiving and adjustments as append-only movements with integer quantity scales: 1 for `each`/`pack`, 0.001 for `kg`/`l`. Define and test checkout fractional-line rounding before implementing sale totals.
+1. Keep the current backend-only scope focused on the next adjacent business operations: supplier ledger and purchase return/reconciliation flows, then low-stock and managerial reporting.
+2. Once the purchase intake path is stable, add explicit manager review and defect-flag handling for incoming stock quality issues.
 3. Later complete SMTP delivery and the remaining [security verification checklist](SECURITY_VERIFICATION.md).
 4. Before any hosted pilot, separately prove HostPinnacle runtime/database/TLS/jobs, phone access and backup/restore. Do not resume deployment scripts without a user-directed deployment task.
 
