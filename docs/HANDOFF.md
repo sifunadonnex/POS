@@ -2,14 +2,14 @@
 
 **Updated:** 21 September 2026
 
-**Current phase:** Local backend business flows are now progressing through stock intake and sales operations. Supplier purchase receipts, inventory movement recording, sales, returns, shifts, reports and stocktake are implemented and verified locally against PostgreSQL. SMTP delivery, full interactive browser checks and HostPinnacle deployment remain pending.
+**Current phase:** Local backend business flows and the manager-facing inventory/sales workspaces are progressing through stock intake and sales operations. Supplier purchase receipts, inventory movement recording, sales, returns, shifts, reports and stocktake are implemented and verified locally against PostgreSQL. SMTP delivery, full interactive browser checks and HostPinnacle deployment remain pending.
 
 Read root/scoped AGENTS and the architecture before changes. Reinspect Git and source; this is a snapshot.
 
 ## Current environment and decisions
 
 - PostgreSQL 18 is installed and the `postgresql-x64-18` Windows service is running. Separate ignored development/test connection settings are present in `backend/.env` and `backend/.env.test`.
-- Migrations through `202609210001_business_invariants` are applied to `pay_and_go_dev`. The integration suites use disposable schemas only in the explicitly named `_test` database.
+- Migrations through `202609210002_payment_shift_reconciliation` are applied to `pay_and_go_dev`. The integration suites use disposable schemas only in the explicitly named `_test` database.
 - Two disposable local `.test` staff accounts were provisioned and marked verified for manual testing: one manager and one cashier. Their passwords are not stored in tracked files or this handoff. The manager must enroll authenticator MFA before manager-only features become available.
 - The local API and Vite frontend are stopped at this handoff. Start them separately when manual testing is needed.
 - Use an existing SMTP mailbox later for verification/recovery. Credentials belong only in private backend environment settings; no real email has been sent.
@@ -30,6 +30,7 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 - Sales register now uses active catalogue lookup/barcode search, server-authoritative basket quotes, request-replay-safe sale/payment confirmation, and an open/current/close shift flow with loading, error and retry states. A `GET /api/shifts/current` read was added so register refreshes recover the active shift instead of opening a duplicate.
 - Confirmed payments now attach to the active shift; cash payments create linked append-only `cash_in` movements, and shift closing calculates expected cash and variance from the movement ledger. Migration `202609210002_payment_shift_reconciliation` is applied locally.
 - Backend stock API for opening, receiving and adjustments with append-only inventory movements and quantity validation for each/pack/kg/l units.
+- Manager Stock control workspace now loads real stock balances, supports search and paging, posts opening/receive/adjust movements with exact unit-aware quantities and replay-safe request IDs, and displays per-product movement history with loading, empty, error and retry states. It is wired into the manager-only Inventory sidebar; no low-stock threshold badge is shown because the current API does not provide an authoritative threshold.
 - Supplier purchase receipt and supplier-return flows with request replay protection, supplier validation, exact unit-aware totals, cumulative return limits, stock movement logging and append-only receipt history.
 - Sales, customer returns, shifts, reports and stocktake flows are transactional and replay-safe. Checkout and refunds use server-authoritative catalogue/sale prices; split payments and repeated returns cannot exceed their source totals.
 - Forward migrations `202609210001_business_invariants` and `202609210002_payment_shift_reconciliation` permit `stocktake` inventory movements, enforce non-negative stock, permit only one open shift per cashier, allow a single open-to-closed shift transition, and link confirmed payments to shift reconciliation.
@@ -45,13 +46,13 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 | Backend typecheck/build         | Passed                                                                                                                                                    |
 | Backend lint                    | Passed with two unused-parameter warnings in tests                                                                                                        |
 | Local API business flows        | New stock/sales/purchase paths passed unit and HTTP contract coverage; PostgreSQL business-flow integration remains pending                               |
-| Development database            | Local PostgreSQL migration `202609210001_business_invariants` applied successfully                                                                        |
+| Development database            | Local PostgreSQL migrations through `202609210002_payment_shift_reconciliation` applied successfully                                                       |
 | Business invariants             | Regression coverage passed for server pricing, cumulative payments/returns, exact unit-aware totals, shift ownership and stocktake movement compatibility |
 | Frontend lint/typecheck         | Passed                                                                                                                                                    |
-| Frontend tests                  | 36 tests in 8 files passed serially                                                                                                                       |
+| Frontend tests                  | 41 tests in 10 files passed serially                                                                                                                      |
 | Frontend production build       | Passed                                                                                                                                                    |
 | Frontend formatting/diff checks | Prettier check and `git diff --check` passed                                                                                                              |
-| Frontend visual/browser check   | Vite started successfully on port 5173; in-app browser connector unavailable in this session                                                              |
+| Frontend visual/browser check   | Vite started successfully on port 5174 for this module; in-app browser connector unavailable in this session                                               |
 
 The first parallel test attempt saturated local worker startup and produced timeouts; all affected suites passed when rerun serially. A stale identity integration assertion was updated to include the already-implemented security fields. No test or compiler/lint rule was weakened.
 
@@ -59,7 +60,7 @@ Database coverage includes migration up/repeat/down/reapply, auth transactions, 
 
 ## Concrete next step
 
-1. Add the next inventory module behind the sidebar: stock control, including the report's low-stock threshold source and movement history.
+1. Add the next inventory module behind the sidebar: supplier purchase intake, using the existing backend receipt and supplier-return contracts.
 2. Add receipt/reprint and held-basket behavior to the register, then extend the register business-flow integration coverage beyond migration validation.
 3. Add the supplier ledger and purchase reconciliation/reporting endpoints; supplier creation/listing is still not an API capability.
 4. Agree worked examples for fractional sale/refund rounding before enabling those cases, then add a dedicated PostgreSQL business-flow integration suite.

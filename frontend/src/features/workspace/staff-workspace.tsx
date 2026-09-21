@@ -24,6 +24,7 @@ import { AccountSecurity } from "../identity/account-security"
 import { AuditScreen } from "../identity/audit-screen"
 import { StaffAdminScreen } from "../identity/staff-admin-screen"
 import type { Staff } from "../identity/identity-api"
+import { StockControlScreen } from "../inventory/stock-control-screen"
 import { DashboardScreen } from "./dashboard-screen"
 import { SalesScreen } from "./sales-screen"
 
@@ -96,7 +97,6 @@ const navigationSections: Array<{
         label: "Stock control",
         description: "Opening stock and adjustments",
         icon: PackageCheck,
-        available: false,
         managerOnly: true,
       },
       {
@@ -199,7 +199,8 @@ const pageDetails: Record<
   stock: {
     section: "Inventory",
     title: "Stock control",
-    description: "Opening stock and adjustments will appear here next.",
+    description:
+      "Opening stock, receiving and adjustments with movement history.",
   },
   purchases: {
     section: "Inventory",
@@ -411,6 +412,8 @@ export function StaffWorkspace({
             <SalesScreen />
           ) : tab === "catalogue" ? (
             <CatalogueScreen manager={manager} />
+          ) : tab === "stock" && manager ? (
+            <StockControlScreen />
           ) : tab === "staff" && manager ? (
             <StaffAdminScreen currentUserId={staff.id} />
           ) : tab === "audit" && manager ? (
