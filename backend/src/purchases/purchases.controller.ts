@@ -1,7 +1,16 @@
-import { Body, Controller, Inject, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { StaffRoles } from '../identity/access.metadata.js';
 import type { StaffRequest } from '../identity/staff.guard.js';
 import { PurchasesService } from './purchases.service.js';
+import { SuppliersService } from './suppliers.service.js';
 
 function actor(req: StaffRequest) {
   return { userId: req.staff.user.id, sessionId: req.staff.session.id };
@@ -11,7 +20,23 @@ function actor(req: StaffRequest) {
 export class PurchasesController {
   constructor(
     @Inject(PurchasesService) private readonly purchases: PurchasesService,
+    @Inject(SuppliersService) private readonly suppliers: SuppliersService,
   ) {}
+
+  @Get('suppliers')
+  @StaffRoles('manager')
+  suppliersList(
+    @Query('search') search: unknown,
+    @Query('page') page: unknown,
+  ) {
+    return this.suppliers.list(search, page);
+  }
+
+  @Post('suppliers')
+  @StaffRoles('manager')
+  createSupplier(@Req() req: StaffRequest, @Body() body: unknown) {
+    return this.suppliers.create(actor(req), body);
+  }
 
   @Post('receive')
   @StaffRoles('manager', 'cashier')

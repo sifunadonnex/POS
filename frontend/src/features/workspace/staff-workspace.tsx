@@ -25,6 +25,7 @@ import { AuditScreen } from "../identity/audit-screen"
 import { StaffAdminScreen } from "../identity/staff-admin-screen"
 import type { Staff } from "../identity/identity-api"
 import { StockControlScreen } from "../inventory/stock-control-screen"
+import { PurchaseIntakeScreen } from "../purchases/purchase-intake-screen"
 import { DashboardScreen } from "./dashboard-screen"
 import { SalesScreen } from "./sales-screen"
 
@@ -104,7 +105,6 @@ const navigationSections: Array<{
         label: "Purchase intake",
         description: "Suppliers and receiving",
         icon: Archive,
-        available: false,
         managerOnly: true,
       },
       {
@@ -205,7 +205,8 @@ const pageDetails: Record<
   purchases: {
     section: "Inventory",
     title: "Purchase intake",
-    description: "Supplier receiving will appear here next.",
+    description:
+      "Receive supplier goods and add them to stock with cost records.",
   },
   stocktake: {
     section: "Inventory",
@@ -414,6 +415,8 @@ export function StaffWorkspace({
             <CatalogueScreen manager={manager} />
           ) : tab === "stock" && manager ? (
             <StockControlScreen />
+          ) : tab === "purchases" && manager ? (
+            <PurchaseIntakeScreen />
           ) : tab === "staff" && manager ? (
             <StaffAdminScreen currentUserId={staff.id} />
           ) : tab === "audit" && manager ? (
