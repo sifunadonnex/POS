@@ -1,6 +1,15 @@
-import { Body, Controller, Inject, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Param,
+  Post,
+  Req,
+} from '@nestjs/common';
 import { StaffRoles } from '../identity/access.metadata.js';
 import type { StaffRequest } from '../identity/staff.guard.js';
+import { SalesLookupService } from './sales-lookup.service.js';
 import { SalesService } from './sales.service.js';
 
 function actor(req: StaffRequest) {
@@ -9,7 +18,16 @@ function actor(req: StaffRequest) {
 
 @Controller('api/sales')
 export class SalesController {
-  constructor(@Inject(SalesService) private readonly sales: SalesService) {}
+  constructor(
+    @Inject(SalesService) private readonly sales: SalesService,
+    @Inject(SalesLookupService) private readonly lookup: SalesLookupService,
+  ) {}
+
+  @Get(':saleId/receipt')
+  @StaffRoles('cashier', 'manager')
+  receipt(@Param('saleId') saleId: string) {
+    return this.lookup.receipt(saleId);
+  }
 
   @Post('quote')
   @StaffRoles('cashier', 'manager')

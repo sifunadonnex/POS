@@ -7,7 +7,10 @@ import {
   CreditCard,
   LoaderCircle,
   Minus,
+  PauseCircle,
   Plus,
+  Printer,
+  Play,
   ReceiptText,
   RefreshCw,
   Search,
@@ -15,6 +18,7 @@ import {
   Smartphone,
   Trash2,
   WalletCards,
+  X,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -27,10 +31,12 @@ import { getProductByBarcode, getProducts } from "../catalogue/catalogue-api"
 import { displayPrice, errorMessage } from "../catalogue/catalogue-format"
 import {
   finalizeSale,
+  getReceipt,
   quoteBasket,
   recordPayment,
   type BasketQuote,
   type PaymentKind,
+  type SaleReceipt,
   type SaleResult,
 } from "../sales/sales-api"
 import {
@@ -43,6 +49,12 @@ import {
 type BasketItem = {
   product: Product
   quantity: number
+}
+
+type HeldBasket = {
+  id: string
+  createdAt: string
+  items: BasketItem[]
 }
 
 type PendingPayment = {
@@ -60,6 +72,81 @@ const paymentOptions: Array<{
   { kind: "card", label: "Card", icon: CreditCard },
   { kind: "mpesa", label: "M-Pesa", icon: Smartphone },
 ]
+
+const HELD_BASKETS_KEY = "paygo-held-baskets"
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value))
+    : null
+}
+
+function isSaleUnit(value: unknown): value is SaleUnit {
+  return value === "each" || value === "pack" || value === "kg" || value === "l"
+}
+
+function isProduct(value: unknown): value is Product {
+  const product = record(value)
+  return Boolean(
+    product &&
+    typeof product.id === "string" &&
+    typeof product.sku === "string" &&
+    typeof product.name === "string" &&
+    (typeof product.categoryId === "string" || product.categoryId === null) &&
+    (typeof product.categoryName === "string" ||
+      product.categoryName === null) &&
+    isSaleUnit(product.unit) &&
+    typeof product.priceMinor === "string" &&
+    (typeof product.taxCode === "string" || product.taxCode === null) &&
+    typeof product.active === "boolean" &&
+    typeof product.revision === "number" &&
+    Array.isArray(product.barcodes) &&
+    product.barcodes.every((barcode) => typeof barcode === "string")
+  )
+}
+
+function readHeldBaskets(): HeldBasket[] {
+  if (typeof window === "undefined") return []
+  try {
+    const raw = window.localStorage.getItem(HELD_BASKETS_KEY)
+    if (!raw) return []
+    const value: unknown = JSON.parse(raw)
+    if (!Array.isArray(value)) return []
+    return value.flatMap((candidate): HeldBasket[] => {
+      const held = record(candidate)
+      if (
+        !held ||
+        typeof held.id !== "string" ||
+        typeof held.createdAt !== "string"
+      ) {
+        return []
+      }
+      if (!Array.isArray(held.items)) return []
+      const items = held.items.flatMap((item): BasketItem[] => {
+        const entry = record(item)
+        if (
+          !entry ||
+          !isProduct(entry.product) ||
+          typeof entry.quantity !== "number" ||
+          !Number.isFinite(entry.quantity) ||
+          entry.quantity <= 0
+        ) {
+          return []
+        }
+        return [{ product: entry.product, quantity: entry.quantity }]
+      })
+      return items.length
+        ? [{ id: held.id, createdAt: held.createdAt, items }]
+        : []
+    })
+  } catch {
+    return []
+  }
+}
+
+function saveHeldBaskets(value: HeldBasket[]) {
+  window.localStorage.setItem(HELD_BASKETS_KEY, JSON.stringify(value))
+}
 
 function requestId() {
   return crypto.randomUUID()
@@ -107,6 +194,7 @@ export function SalesScreen() {
   const [catalogueError, setCatalogueError] = useState("")
   const [search, setSearch] = useState("")
   const [basket, setBasket] = useState<BasketItem[]>([])
+  const [heldBaskets, setHeldBaskets] = useState<HeldBasket[]>(readHeldBaskets)
   const [quote, setQuote] = useState<BasketQuote | null>(null)
   const [quoteLoading, setQuoteLoading] = useState(false)
   const [quoteError, setQuoteError] = useState("")
@@ -118,6 +206,10 @@ export function SalesScreen() {
   const [pendingPayment, setPendingPayment] = useState<PendingPayment | null>(
     null
   )
+  const [receipt, setReceipt] = useState<SaleReceipt | null>(null)
+  const [receiptSearch, setReceiptSearch] = useState("")
+  const [receiptLoading, setReceiptLoading] = useState(false)
+  const [receiptError, setReceiptError] = useState("")
   const quoteSequence = useRef(0)
   const saleRequest = useRef<string | null>(null)
   const paymentRequest = useRef<string | null>(null)
@@ -249,6 +341,73 @@ export function SalesScreen() {
     }
   }
 
+  function holdBasket() {
+    if (!basket.length || checkoutBusy || pendingPayment) return
+    const held: HeldBasket = {
+      id: requestId(),
+      createdAt: new Date().toISOString(),
+      items: basket,
+    }
+    try {
+      const next = [...heldBaskets, held].slice(-10)
+      saveHeldBaskets(next)
+      setHeldBaskets(next)
+      updateBasket([])
+      setSuccessMessage("Basket held. Resume it when the customer is ready.")
+    } catch {
+      setCheckoutError("The basket could not be held on this device.")
+    }
+  }
+
+  function resumeBasket(id: string) {
+    if (basket.length || checkoutBusy || pendingPayment) return
+    const held = heldBaskets.find((candidate) => candidate.id === id)
+    if (!held) return
+    const next = heldBaskets.filter((candidate) => candidate.id !== id)
+    try {
+      saveHeldBaskets(next)
+      setHeldBaskets(next)
+      updateBasket(held.items)
+      setSuccessMessage("Held basket resumed and re-quoted by the server.")
+    } catch {
+      setCheckoutError("The held basket could not be resumed.")
+    }
+  }
+
+  function removeHeldBasket(id: string) {
+    const next = heldBaskets.filter((candidate) => candidate.id !== id)
+    try {
+      saveHeldBaskets(next)
+      setHeldBaskets(next)
+    } catch {
+      setCheckoutError("The held basket could not be removed.")
+    }
+  }
+
+  async function loadReceipt(saleId: string) {
+    const value = saleId.trim()
+    if (!value) {
+      setReceiptError("Enter a sale reference to find a receipt.")
+      return
+    }
+    setReceiptLoading(true)
+    setReceiptError("")
+    try {
+      const result = await getReceipt(value)
+      setReceipt(result)
+      setReceiptSearch(result.saleId)
+    } catch (failure: unknown) {
+      setReceipt(null)
+      setReceiptError(errorMessage(failure))
+    } finally {
+      setReceiptLoading(false)
+    }
+  }
+
+  function printReceipt() {
+    if (receipt) window.print()
+  }
+
   async function loadProducts(term: string) {
     setCatalogueLoading(true)
     setCatalogueError("")
@@ -374,6 +533,7 @@ export function SalesScreen() {
       setSuccessMessage(
         `Sale confirmed. Sale reference ${sale.saleId.slice(0, 8)} is recorded.`
       )
+      void loadReceipt(sale.saleId)
     } catch (failure: unknown) {
       setCheckoutError(errorMessage(failure))
     } finally {
@@ -658,6 +818,165 @@ export function SalesScreen() {
               />
             </CardContent>
           </Card>
+
+          {heldBaskets.length > 0 && (
+            <Card>
+              <CardHeader className="border-b pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <PauseCircle className="size-4" aria-hidden="true" />
+                  Held baskets
+                  <Badge variant="secondary" className="ml-auto rounded-full">
+                    {heldBaskets.length}
+                  </Badge>
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Drafts stay on this device until resumed or removed.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-2 p-4">
+                {heldBaskets.map((held) => (
+                  <div
+                    key={held.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium">
+                        Basket {held.id.slice(0, 8)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {held.items.length}{" "}
+                        {held.items.length === 1 ? "line" : "lines"} ·{" "}
+                        {new Date(held.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5"
+                        onClick={() => resumeBasket(held.id)}
+                        disabled={
+                          Boolean(basket.length) ||
+                          checkoutBusy ||
+                          Boolean(pendingPayment)
+                        }
+                      >
+                        <Play className="size-3.5" aria-hidden="true" />
+                        Resume
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        aria-label={`Remove held basket ${held.id.slice(0, 8)}`}
+                        onClick={() => removeHeldBasket(held.id)}
+                        disabled={checkoutBusy || Boolean(pendingPayment)}
+                      >
+                        <X className="size-4" aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          <Card className="print:border-0 print:shadow-none">
+            <CardHeader className="border-b pb-3 print:hidden">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ReceiptText className="size-4" aria-hidden="true" />
+                Receipt / reprint
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Print the latest paid sale or find a completed sale by
+                reference.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4 p-4">
+              <form
+                className="flex gap-2 print:hidden"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void loadReceipt(receiptSearch)
+                }}
+              >
+                <Input
+                  aria-label="Sale reference"
+                  placeholder="Paste sale reference"
+                  value={receiptSearch}
+                  onChange={(event) => setReceiptSearch(event.target.value)}
+                />
+                <Button
+                  type="submit"
+                  variant="outline"
+                  disabled={receiptLoading}
+                >
+                  {receiptLoading ? "Finding…" : "Find"}
+                </Button>
+              </form>
+              {receiptError && <ErrorNotice message={receiptError} />}
+              {receiptLoading && <LoadingNotice label="Loading receipt…" />}
+              {receipt && !receiptLoading && (
+                <div aria-label="Receipt" className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold">Pay &amp; Go receipt</p>
+                      <p className="text-xs text-muted-foreground">
+                        {receipt.saleId} ·{" "}
+                        {new Date(receipt.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 print:hidden"
+                      onClick={printReceipt}
+                    >
+                      <Printer className="size-3.5" aria-hidden="true" />
+                      Print
+                    </Button>
+                  </div>
+                  <div className="divide-y rounded-lg border">
+                    {receipt.lines.map((line) => (
+                      <div
+                        key={`${receipt.saleId}-${line.productId}`}
+                        className="flex items-start justify-between gap-3 p-3 text-sm"
+                      >
+                        <div>
+                          <p className="font-medium">{line.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {line.quantity} {line.unit} ·{" "}
+                            {money(line.unitPriceMinor)} each
+                          </p>
+                        </div>
+                        <p className="font-semibold tabular-nums">
+                          {money(line.lineTotalMinor)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between border-t pt-3 font-semibold">
+                    <span>Total paid</span>
+                    <span className="tabular-nums">
+                      {money(receipt.totalMinor)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Paid by{" "}
+                    {receipt.payments.map((payment) => payment.kind).join(", ")}
+                    .
+                  </p>
+                </div>
+              )}
+              {!receipt && !receiptError && !receiptLoading && (
+                <p className="text-sm text-muted-foreground print:hidden">
+                  A receipt will appear here after a payment is confirmed.
+                </p>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         <Card className="h-fit overflow-hidden">
@@ -667,9 +986,24 @@ export function SalesScreen() {
                 <ShoppingCart className="size-4" aria-hidden="true" />
                 Current basket
               </CardTitle>
-              <Badge variant="secondary" className="rounded-full">
-                {basket.length} {basket.length === 1 ? "line" : "lines"}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="rounded-full">
+                  {basket.length} {basket.length === 1 ? "line" : "lines"}
+                </Badge>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={holdBasket}
+                  disabled={
+                    !basket.length || checkoutBusy || Boolean(pendingPayment)
+                  }
+                >
+                  <PauseCircle className="size-3.5" aria-hidden="true" />
+                  Hold
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4 p-4">

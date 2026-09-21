@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   quoteBasket: vi.fn(),
   finalizeSale: vi.fn(),
   recordPayment: vi.fn(),
+  getReceipt: vi.fn(),
 }))
 
 vi.mock("../catalogue/catalogue-api", async (original) => ({
@@ -81,10 +82,35 @@ beforeEach(() => {
     amountMinor: 1250,
     totalMinor: 1250,
   })
+  mocks.getReceipt.mockResolvedValue({
+    saleId: "sale-1",
+    totalMinor: 1250,
+    createdAt: "2026-09-21T08:00:00.000Z",
+    lines: [
+      {
+        productId: product.id,
+        name: product.name,
+        sku: product.sku,
+        unit: product.unit,
+        quantity: 1,
+        unitPriceMinor: 1250,
+        lineTotalMinor: 1250,
+      },
+    ],
+    payments: [
+      {
+        paymentId: "payment-1",
+        kind: "cash",
+        amountMinor: 1250,
+        paidAt: "2026-09-21T08:00:01.000Z",
+      },
+    ],
+  })
 })
 
 afterEach(() => {
   cleanup()
+  window.localStorage.clear()
   vi.resetAllMocks()
 })
 
@@ -110,6 +136,21 @@ it("adds a real catalogue product and confirms the sale and payment", async () =
   expect((await screen.findByRole("status")).textContent).toContain(
     "Sale confirmed"
   )
+  expect(await screen.findByLabelText("Receipt")).toBeTruthy()
+})
+
+it("holds a basket locally and resumes it for a fresh server quote", async () => {
+  render(<SalesScreen />)
+  fireEvent.click(await screen.findByRole("button", { name: /Rice 10kg/ }))
+  fireEvent.click(screen.getByRole("button", { name: "Hold" }))
+
+  expect(await screen.findByText("Basket is empty")).toBeTruthy()
+  fireEvent.click(screen.getByRole("button", { name: "Resume" }))
+
+  expect(
+    await screen.findByText("Held basket resumed and re-quoted by the server.")
+  ).toBeTruthy()
+  await waitFor(() => expect(mocks.quoteBasket).toHaveBeenCalledTimes(2))
 })
 
 it("does not invent a sale when the server quote fails", async () => {

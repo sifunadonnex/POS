@@ -27,7 +27,7 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 - Product UI direction is now aligned to a clean Dynamics 365 Commerce-inspired operational shell, using shadcn components and a dense commercial dashboard layout rather than a consumer SaaS aesthetic.
 - Manager dashboard now loads the real daily report summary, presents operational KPIs/payment mix with loading and retry states, and keeps cashier actions honest until each module is available.
 - Staff workspace sidebar is grouped into Workspace, Sell, Inventory, Insights and Administration, with existing modules active and planned modules visibly marked as coming next rather than exposed as fake actions.
-- Sales register now uses active catalogue lookup/barcode search, server-authoritative basket quotes, request-replay-safe sale/payment confirmation, and an open/current/close shift flow with loading, error and retry states. A `GET /api/shifts/current` read was added so register refreshes recover the active shift instead of opening a duplicate.
+- Sales register now uses active catalogue lookup/barcode search, server-authoritative basket quotes, request-replay-safe sale/payment confirmation, and an open/current/close shift flow with loading, error and retry states. It also supports device-local held basket drafts, server-authoritative paid receipt lookup/reprint and clear recovery when payment is confirmed but the receipt read is unavailable. A `GET /api/shifts/current` read was added so register refreshes recover the active shift instead of opening a duplicate.
 - Confirmed payments now attach to the active shift; cash payments create linked append-only `cash_in` movements, and shift closing calculates expected cash and variance from the movement ledger. Migration `202609210002_payment_shift_reconciliation` is applied locally.
 - Backend stock API for opening, receiving and adjustments with append-only inventory movements and quantity validation for each/pack/kg/l units.
 - Manager Stock control workspace now loads real stock balances, supports search and paging, posts opening/receive/adjust movements with exact unit-aware quantities and replay-safe request IDs, and displays per-product movement history with loading, empty, error and retry states. It is wired into the manager-only Inventory sidebar; no low-stock threshold badge is shown because the current API does not provide an authoritative threshold.
@@ -43,19 +43,19 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 
 | Area                            | Result                                                                                                                                                    |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Backend unit                    | 102 tests in 20 files passed                                                                                                                              |
+| Backend unit                    | 104 tests in 21 files passed                                                                                                                              |
 | PostgreSQL integration          | 15 tests in 3 files passed against disposable `_test` schemas                                                                                             |
 | HTTP/e2e                        | 20 tests in 3 files passed                                                                                                                                |
 | Backend typecheck/build         | Passed                                                                                                                                                    |
 | Backend lint                    | Passed with two unused-parameter warnings in tests                                                                                                        |
-| Local API business flows        | New stock/sales/purchase paths passed unit and HTTP contract coverage; PostgreSQL business-flow integration remains pending                               |
+| Local API business flows        | New stock/sales/purchase/receipt paths passed unit and HTTP contract coverage; PostgreSQL business-flow integration remains pending                      |
 | Development database            | Local PostgreSQL migrations through `202609210002_payment_shift_reconciliation` applied successfully                                                       |
 | Business invariants             | Regression coverage passed for server pricing, cumulative payments/returns, exact unit-aware totals, shift ownership and stocktake movement compatibility |
 | Frontend lint/typecheck         | Passed                                                                                                                                                    |
-| Frontend tests                  | 53 tests in 16 files passed serially                                                                                                                      |
+| Frontend tests                  | 56 tests in 17 files passed serially                                                                                                                      |
 | Frontend production build       | Passed                                                                                                                                                    |
 | Frontend formatting/diff checks | Prettier check and `git diff --check` passed                                                                                                              |
-| Frontend visual/browser check   | Vite started successfully on port 5178 for this module; in-app browser connector unavailable in this session                                               |
+| Frontend visual/browser check   | Vite started successfully on port 5179 for this module; in-app browser connector unavailable in this session                                               |
 
 The first parallel test attempt saturated local worker startup and produced timeouts; all affected suites passed when rerun serially. A stale identity integration assertion was updated to include the already-implemented security fields. No test or compiler/lint rule was weakened.
 
@@ -63,8 +63,8 @@ Database coverage includes migration up/repeat/down/reapply, auth transactions, 
 
 ## Concrete next step
 
-1. Add receipt/reprint and held-basket behavior to the register, then extend the register business-flow integration coverage beyond migration validation.
-2. Add the supplier ledger and purchase reconciliation/reporting endpoints around the new supplier directory and receipt records.
+1. Add the supplier ledger and purchase reconciliation/reporting endpoints around the new supplier directory and receipt records.
+2. Extend the register and purchase business-flow integration coverage beyond migration validation.
 3. Agree worked examples for fractional sale/refund rounding before enabling those cases, then add a dedicated PostgreSQL business-flow integration suite.
 4. Later complete SMTP delivery and the remaining [security verification checklist](SECURITY_VERIFICATION.md), then separately prove HostPinnacle runtime/database/TLS/jobs, phone access and backup/restore.
 
