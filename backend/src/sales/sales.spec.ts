@@ -147,6 +147,88 @@ describe('SalesService', () => {
     expect(result.saleId).toBe('sale-1');
   });
 
+  it('checks out tendered cash atomically and records the change movement', async () => {
+    const cashMovements: unknown[][] = [];
+    const query = vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql.includes('SELECT pg_advisory_xact_lock')) return { rows: [] };
+      if (sql.includes('SELECT u.id FROM "user" u JOIN session s')) {
+        return { rowCount: 1, rows: [{ id: 'cashier' }] };
+      }
+      if (sql.includes('FROM sale_request WHERE id = $1')) return { rows: [] };
+      if (sql.includes('FROM cash_shift')) {
+        return { rowCount: 1, rows: [{ id: 'shift-1' }] };
+      }
+      if (sql.includes('SELECT p.id, p.unit, p.price_minor::text, p.active')) {
+        return {
+          rows: [
+            {
+              id: '11111111-1111-4111-8111-111111111111',
+              unit: 'each',
+              price_minor: '1250',
+              active: true,
+              quantity_minor: '4',
+            },
+          ],
+        };
+      }
+      if (sql.includes('INSERT INTO sale_payment')) {
+        return { rows: [{ id: 'payment-1' }] };
+      }
+      if (sql.includes('INSERT INTO cash_movement')) {
+        cashMovements.push([sql, ...(params ?? [])]);
+        return { rows: [] };
+      }
+      if (sql.includes('INSERT INTO sale')) return { rows: [{ id: 'sale-1' }] };
+      return { rows: [] };
+    });
+    const module = await Test.createTestingModule({
+      providers: [
+        SalesService,
+        SalesWrites,
+        {
+          provide: DatabaseService,
+          useValue: {
+            connectionPool: {
+              query,
+              connect: async () => ({ query, release: vi.fn() }),
+            },
+          },
+        },
+      ],
+    }).compile();
+
+    await expect(
+      module.get(SalesService).checkout(
+        { userId: 'cashier', sessionId: 'session' },
+        {
+          requestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          reason: 'Cash checkout',
+          cashTenderedMinor: 2000,
+          lines: [
+            {
+              productId: '11111111-1111-4111-8111-111111111111',
+              unit: 'each',
+              quantity: 1,
+            },
+          ],
+        },
+      ),
+    ).resolves.toMatchObject({
+      saleId: 'sale-1',
+      totalMinor: 1250,
+      payment: {
+        paymentId: 'payment-1',
+        shiftId: 'shift-1',
+        amountMinor: 1250,
+        tenderedMinor: 2000,
+        changeMinor: 750,
+      },
+    });
+    expect(cashMovements).toHaveLength(2);
+    expect(cashMovements[0]).toContain(2000);
+    expect(cashMovements[1]).toContain(750);
+  });
+
   it('records a payment against a sale once per request id', async () => {
     const query = vi.fn(async (sql: string) => {
       if (sql.includes('SELECT pg_advisory_xact_lock')) {
@@ -216,6 +298,16 @@ describe('SalesService', () => {
     expect(result.shiftId).toBe('shift-1');
     expect(
       query.mock.calls.some(([sql]) =>
+        String(sql).includes('FROM sale_payment_request'),
+      ),
+    ).toBe(true);
+    expect(
+      query.mock.calls.some(([sql]) =>
+        String(sql).includes('INSERT INTO sale_payment_request'),
+      ),
+    ).toBe(true);
+    expect(
+      query.mock.calls.some(([sql]) =>
         sql.includes('INSERT INTO cash_movement'),
       ),
     ).toBe(true);
@@ -247,12 +339,12 @@ describe('SalesService', () => {
       if (sql.includes('FROM cash_shift')) {
         return { rowCount: 1, rows: [{ id: 'shift-1' }] };
       }
-      if (sql.includes('INSERT INTO sale_payment')) {
+      if (sql.includes('INSERT INTO sale_payment_request')) return { rows: [] };
+      if (sql.includes('INSERT INTO sale_payment (')) {
         paidMinor += Number((params ?? [])[4]);
         return { rows: [{ id: `pay-${paidMinor}` }] };
       }
       if (sql.includes('INSERT INTO cash_movement')) return { rows: [] };
-      if (sql.includes('INSERT INTO sale_payment_request')) return { rows: [] };
       return { rows: [] };
     });
 

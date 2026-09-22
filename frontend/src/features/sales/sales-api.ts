@@ -33,6 +33,14 @@ export type PaymentResult = {
   totalMinor: number
 }
 
+export type CheckoutResult = SaleResult & {
+  payment: PaymentResult & {
+    shiftId: string
+    tenderedMinor: number
+    changeMinor: number
+  }
+}
+
 export type SaleReceipt = {
   saleId: string
   totalMinor: number
@@ -50,6 +58,8 @@ export type SaleReceipt = {
     paymentId: string
     kind: PaymentKind
     amountMinor: number
+    tenderedMinor: number
+    changeMinor: number
     paidAt: string
   }>
 }
@@ -210,6 +220,8 @@ function receipt(value: unknown): SaleReceipt {
         paymentId: payment.paymentId,
         kind: payment.kind,
         amountMinor: integer(payment.amountMinor, "receipt payment"),
+        tenderedMinor: integer(payment.tenderedMinor, "receipt tender"),
+        changeMinor: integer(payment.changeMinor, "receipt change"),
         paidAt: date(payment.paidAt, "payment date"),
       }
     }),
@@ -237,6 +249,46 @@ export async function finalizeSale(
     saleId: row.saleId,
     totalMinor: integer(row.totalMinor, "sale total"),
     lines: row.lines.map(registerLine),
+  }
+}
+
+export async function checkoutCashSale(
+  lines: RegisterLine[],
+  cashTenderedMinor: number,
+  requestId: string
+): Promise<CheckoutResult> {
+  const row = object(
+    await salesRequest("/checkout", {
+      lines,
+      cashTenderedMinor,
+      requestId,
+      reason: "Cash register sale",
+    })
+  )
+  if (typeof row.saleId !== "string" || !Array.isArray(row.lines))
+    throw new Error("Invalid checkout response")
+  const payment = object(row.payment)
+  if (
+    typeof payment.paymentId !== "string" ||
+    payment.kind !== "cash" ||
+    typeof payment.shiftId !== "string"
+  ) {
+    throw new Error("Invalid checkout payment")
+  }
+  return {
+    saleId: row.saleId,
+    totalMinor: integer(row.totalMinor, "checkout total"),
+    lines: row.lines.map(registerLine),
+    payment: {
+      paymentId: payment.paymentId,
+      saleId: row.saleId,
+      kind: "cash",
+      amountMinor: integer(payment.amountMinor, "checkout payment", 1),
+      totalMinor: integer(row.totalMinor, "checkout total"),
+      shiftId: payment.shiftId,
+      tenderedMinor: integer(payment.tenderedMinor, "cash tender", 1),
+      changeMinor: integer(payment.changeMinor, "cash change"),
+    },
   }
 }
 

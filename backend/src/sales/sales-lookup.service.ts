@@ -28,6 +28,8 @@ export type SaleReceipt = {
     paymentId: string;
     kind: PaymentKind;
     amountMinor: number;
+    tenderedMinor: number;
+    changeMinor: number;
     paidAt: string;
   }>;
 };
@@ -91,9 +93,11 @@ export class SalesLookupService {
           paymentId: string;
           kind: PaymentKind;
           amountMinor: string;
+          tenderedMinor: string | null;
           paidAt: string;
         }>(
           `SELECT id AS "paymentId", kind, amount_minor::text AS "amountMinor",
+          tendered_minor::text AS "tenderedMinor",
           created_at AS "paidAt"
           FROM sale_payment WHERE sale_id = $1 AND status = 'paid'
           ORDER BY created_at ASC`,
@@ -135,6 +139,10 @@ export class SalesLookupService {
           paymentId: payment.paymentId,
           kind: payment.kind,
           amountMinor: Number(payment.amountMinor),
+          tenderedMinor: Number(payment.tenderedMinor ?? payment.amountMinor),
+          changeMinor:
+            Number(payment.tenderedMinor ?? payment.amountMinor) -
+            Number(payment.amountMinor),
           paidAt: payment.paidAt,
         })),
       } satisfies SaleReceipt;

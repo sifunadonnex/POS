@@ -30,14 +30,12 @@ import type { Product, SaleUnit } from "../catalogue/catalogue-api"
 import { getProductByBarcode, getProducts } from "../catalogue/catalogue-api"
 import { displayPrice, errorMessage } from "../catalogue/catalogue-format"
 import {
-  finalizeSale,
+  checkoutCashSale,
   getReceipt,
   quoteBasket,
-  recordPayment,
   type BasketQuote,
   type PaymentKind,
   type SaleReceipt,
-  type SaleResult,
 } from "../sales/sales-api"
 import {
   closeShift,
@@ -57,20 +55,15 @@ type HeldBasket = {
   items: BasketItem[]
 }
 
-type PendingPayment = {
-  sale: SaleResult
-  kind: PaymentKind
-  amountMinor: number
-}
-
 const paymentOptions: Array<{
   kind: PaymentKind
   label: string
   icon: typeof WalletCards
+  available: boolean
 }> = [
-  { kind: "cash", label: "Cash", icon: CircleDollarSign },
-  { kind: "card", label: "Card", icon: CreditCard },
-  { kind: "mpesa", label: "M-Pesa", icon: Smartphone },
+  { kind: "cash", label: "Cash", icon: CircleDollarSign, available: true },
+  { kind: "card", label: "Card", icon: CreditCard, available: false },
+  { kind: "mpesa", label: "M-Pesa", icon: Smartphone, available: false },
 ]
 
 const HELD_BASKETS_KEY = "paygo-held-baskets"
@@ -203,16 +196,12 @@ export function SalesScreen() {
   const [checkoutError, setCheckoutError] = useState("")
   const [successMessage, setSuccessMessage] = useState("")
   const [checkoutBusy, setCheckoutBusy] = useState(false)
-  const [pendingPayment, setPendingPayment] = useState<PendingPayment | null>(
-    null
-  )
   const [receipt, setReceipt] = useState<SaleReceipt | null>(null)
   const [receiptSearch, setReceiptSearch] = useState("")
   const [receiptLoading, setReceiptLoading] = useState(false)
   const [receiptError, setReceiptError] = useState("")
   const quoteSequence = useRef(0)
-  const saleRequest = useRef<string | null>(null)
-  const paymentRequest = useRef<string | null>(null)
+  const checkoutRequest = useRef<string | null>(null)
 
   useEffect(() => {
     let current = true
@@ -256,25 +245,27 @@ export function SalesScreen() {
     [basket]
   )
 
-  const totalMinor = pendingPayment?.sale.totalMinor ?? quote?.totalMinor ?? 0
-  const typedPaymentMinor = minorFromInput(paymentAmount)
-  const effectivePaymentKind = pendingPayment?.kind ?? paymentKind
-  const paymentMinor = pendingPayment?.amountMinor ?? typedPaymentMinor
+  const totalMinor = quote?.totalMinor ?? 0
+  const cashTenderedMinor = minorFromInput(paymentAmount)
+  const changeMinor =
+    cashTenderedMinor !== null && cashTenderedMinor >= totalMinor
+      ? cashTenderedMinor - totalMinor
+      : null
   const canComplete =
     Boolean(shift) &&
     basket.length > 0 &&
     Boolean(quote) &&
     !quoteLoading &&
-    paymentMinor === totalMinor &&
+    paymentKind === "cash" &&
+    cashTenderedMinor !== null &&
+    cashTenderedMinor >= totalMinor &&
     !checkoutBusy
 
   function updateBasket(next: BasketItem[]) {
     setBasket(next)
     setCheckoutError("")
     setSuccessMessage("")
-    setPendingPayment(null)
-    saleRequest.current = null
-    paymentRequest.current = null
+    checkoutRequest.current = null
     const sequence = ++quoteSequence.current
     if (!next.length) {
       setQuote(null)
@@ -342,7 +333,7 @@ export function SalesScreen() {
   }
 
   function holdBasket() {
-    if (!basket.length || checkoutBusy || pendingPayment) return
+    if (!basket.length || checkoutBusy) return
     const held: HeldBasket = {
       id: requestId(),
       createdAt: new Date().toISOString(),
@@ -360,7 +351,7 @@ export function SalesScreen() {
   }
 
   function resumeBasket(id: string) {
-    if (basket.length || checkoutBusy || pendingPayment) return
+    if (basket.length || checkoutBusy) return
     const held = heldBaskets.find((candidate) => candidate.id === id)
     if (!held) return
     const next = heldBaskets.filter((candidate) => candidate.id !== id)
@@ -503,37 +494,26 @@ export function SalesScreen() {
     if (
       !quote ||
       !shift ||
-      paymentMinor === null ||
-      paymentMinor !== totalMinor
+      cashTenderedMinor === null ||
+      cashTenderedMinor < totalMinor
     )
       return
     setCheckoutBusy(true)
     setCheckoutError("")
     setSuccessMessage("")
     try {
-      let sale = pendingPayment?.sale
-      if (!sale) {
-        sale = await finalizeSale(
-          basketLines,
-          saleRequest.current ?? (saleRequest.current = requestId())
-        )
-        setPendingPayment({
-          sale,
-          kind: effectivePaymentKind,
-          amountMinor: paymentMinor,
-        })
-      }
-      await recordPayment(
-        sale.saleId,
-        effectivePaymentKind,
-        paymentMinor,
-        paymentRequest.current ?? (paymentRequest.current = requestId())
+      const result = await checkoutCashSale(
+        basketLines,
+        cashTenderedMinor,
+        checkoutRequest.current ?? (checkoutRequest.current = requestId())
       )
       updateBasket([])
       setSuccessMessage(
-        `Sale confirmed. Sale reference ${sale.saleId.slice(0, 8)} is recorded.`
+        result.payment.changeMinor > 0
+          ? `Sale confirmed. Change due ${money(result.payment.changeMinor)}. Sale reference ${result.saleId.slice(0, 8)} is recorded.`
+          : `Sale confirmed. Sale reference ${result.saleId.slice(0, 8)} is recorded.`
       )
-      void loadReceipt(sale.saleId)
+      void loadReceipt(result.saleId)
     } catch (failure: unknown) {
       setCheckoutError(errorMessage(failure))
     } finally {
@@ -765,9 +745,7 @@ export function SalesScreen() {
                       key={product.id}
                       className="group rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                       onClick={() => addProduct(product)}
-                      disabled={
-                        !shift || checkoutBusy || Boolean(pendingPayment)
-                      }
+                      disabled={!shift || checkoutBusy}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -856,11 +834,7 @@ export function SalesScreen() {
                         variant="outline"
                         className="gap-1.5"
                         onClick={() => resumeBasket(held.id)}
-                        disabled={
-                          Boolean(basket.length) ||
-                          checkoutBusy ||
-                          Boolean(pendingPayment)
-                        }
+                        disabled={Boolean(basket.length) || checkoutBusy}
                       >
                         <Play className="size-3.5" aria-hidden="true" />
                         Resume
@@ -871,7 +845,7 @@ export function SalesScreen() {
                         variant="ghost"
                         aria-label={`Remove held basket ${held.id.slice(0, 8)}`}
                         onClick={() => removeHeldBasket(held.id)}
-                        disabled={checkoutBusy || Boolean(pendingPayment)}
+                        disabled={checkoutBusy}
                       >
                         <X className="size-4" aria-hidden="true" />
                       </Button>
@@ -958,16 +932,33 @@ export function SalesScreen() {
                     ))}
                   </div>
                   <div className="flex items-center justify-between border-t pt-3 font-semibold">
-                    <span>Total paid</span>
+                    <span>Sale total</span>
                     <span className="tabular-nums">
                       {money(receipt.totalMinor)}
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Paid by{" "}
-                    {receipt.payments.map((payment) => payment.kind).join(", ")}
-                    .
-                  </p>
+                  <div className="space-y-1 text-sm">
+                    {receipt.payments.map((payment) => (
+                      <div key={payment.paymentId} className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="capitalize">
+                            {payment.kind} received
+                          </span>
+                          <span className="font-medium tabular-nums">
+                            {money(payment.tenderedMinor)}
+                          </span>
+                        </div>
+                        {payment.changeMinor > 0 && (
+                          <div className="flex items-center justify-between text-muted-foreground">
+                            <span>Change given</span>
+                            <span className="tabular-nums">
+                              {money(payment.changeMinor)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
               {!receipt && !receiptError && !receiptLoading && (
@@ -996,9 +987,7 @@ export function SalesScreen() {
                   size="sm"
                   className="gap-1.5"
                   onClick={holdBasket}
-                  disabled={
-                    !basket.length || checkoutBusy || Boolean(pendingPayment)
-                  }
+                  disabled={!basket.length || checkoutBusy}
                 >
                   <PauseCircle className="size-3.5" aria-hidden="true" />
                   Hold
@@ -1042,7 +1031,7 @@ export function SalesScreen() {
                           size="icon"
                           className="size-8 shrink-0"
                           aria-label={`Remove ${product.name}`}
-                          disabled={checkoutBusy || Boolean(pendingPayment)}
+                          disabled={checkoutBusy}
                           onClick={() => adjustQuantity(product.id, -quantity)}
                         >
                           <Trash2 className="size-4" aria-hidden="true" />
@@ -1055,7 +1044,7 @@ export function SalesScreen() {
                             size="icon"
                             className="size-8"
                             aria-label={`Decrease ${product.name}`}
-                            disabled={checkoutBusy || Boolean(pendingPayment)}
+                            disabled={checkoutBusy}
                             onClick={() =>
                               adjustQuantity(
                                 product.id,
@@ -1073,7 +1062,7 @@ export function SalesScreen() {
                             size="icon"
                             className="size-8"
                             aria-label={`Increase ${product.name}`}
-                            disabled={checkoutBusy || Boolean(pendingPayment)}
+                            disabled={checkoutBusy}
                             onClick={() =>
                               adjustQuantity(
                                 product.id,
@@ -1111,40 +1100,56 @@ export function SalesScreen() {
             <div className="space-y-2">
               <Label>Payment method</Label>
               <div className="grid grid-cols-3 gap-2">
-                {paymentOptions.map(({ kind, label, icon: Icon }) => (
-                  <Button
-                    type="button"
-                    key={kind}
-                    variant={paymentKind === kind ? "secondary" : "outline"}
-                    className="h-auto flex-col gap-1 py-2 text-xs"
-                    aria-pressed={paymentKind === kind}
-                    disabled={
-                      checkoutBusy || !basket.length || Boolean(pendingPayment)
-                    }
-                    onClick={() => setPaymentKind(kind)}
-                  >
-                    <Icon className="size-4" aria-hidden="true" />
-                    {label}
-                  </Button>
-                ))}
+                {paymentOptions.map(
+                  ({ kind, label, icon: Icon, available }) => (
+                    <Button
+                      type="button"
+                      key={kind}
+                      variant={paymentKind === kind ? "secondary" : "outline"}
+                      className="h-auto flex-col gap-1 py-2 text-xs"
+                      aria-pressed={paymentKind === kind}
+                      disabled={checkoutBusy || !basket.length || !available}
+                      onClick={() => setPaymentKind(kind)}
+                    >
+                      <Icon className="size-4" aria-hidden="true" />
+                      {label}
+                    </Button>
+                  )
+                )}
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="payment-amount">Amount received (KES)</Label>
+              <Label htmlFor="payment-amount">Cash received (KES)</Label>
               <Input
                 id="payment-amount"
                 inputMode="decimal"
                 value={paymentAmount}
                 onChange={(event) => setPaymentAmount(event.target.value)}
-                disabled={
-                  checkoutBusy || !basket.length || Boolean(pendingPayment)
-                }
+                disabled={checkoutBusy || !basket.length}
                 aria-describedby="payment-help"
               />
               <p id="payment-help" className="text-xs text-muted-foreground">
-                Enter the exact total. Split payments are not enabled in this
-                register yet.
+                Enter the cash handed over. Change is calculated before the sale
+                is confirmed; split payments are not enabled yet.
+              </p>
+              {cashTenderedMinor !== null && cashTenderedMinor < totalMinor && (
+                <p className="text-xs text-destructive">
+                  Cash received is {money(totalMinor - cashTenderedMinor)}{" "}
+                  short.
+                </p>
+              )}
+              {changeMinor !== null && (
+                <div className="flex items-center justify-between rounded-lg bg-muted px-3 py-2 text-sm">
+                  <span className="text-muted-foreground">Change due</span>
+                  <span className="font-semibold tabular-nums">
+                    {money(changeMinor)}
+                  </span>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Card and M-Pesa require verified provider confirmation and are
+                not available in this register yet.
               </p>
             </div>
 
@@ -1164,12 +1169,6 @@ export function SalesScreen() {
               )}
               {checkoutBusy ? "Confirming…" : "Complete sale"}
             </Button>
-            {pendingPayment && (
-              <p className="text-xs text-amber-700 dark:text-amber-300">
-                Sale created but payment is not confirmed. Retry the same
-                payment to finish it.
-              </p>
-            )}
           </CardContent>
         </Card>
       </div>

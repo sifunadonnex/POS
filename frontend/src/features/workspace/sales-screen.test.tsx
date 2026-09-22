@@ -16,8 +16,7 @@ const mocks = vi.hoisted(() => ({
   openShift: vi.fn(),
   closeShift: vi.fn(),
   quoteBasket: vi.fn(),
-  finalizeSale: vi.fn(),
-  recordPayment: vi.fn(),
+  checkoutCashSale: vi.fn(),
   getReceipt: vi.fn(),
 }))
 
@@ -70,17 +69,20 @@ beforeEach(() => {
       },
     ],
   })
-  mocks.finalizeSale.mockResolvedValue({
+  mocks.checkoutCashSale.mockResolvedValue({
     saleId: "sale-1",
     totalMinor: 1250,
     lines: [],
-  })
-  mocks.recordPayment.mockResolvedValue({
-    paymentId: "payment-1",
-    saleId: "sale-1",
-    kind: "cash",
-    amountMinor: 1250,
-    totalMinor: 1250,
+    payment: {
+      paymentId: "payment-1",
+      saleId: "sale-1",
+      kind: "cash",
+      amountMinor: 1250,
+      totalMinor: 1250,
+      shiftId: "shift-1",
+      tenderedMinor: 2000,
+      changeMinor: 750,
+    },
   })
   mocks.getReceipt.mockResolvedValue({
     saleId: "sale-1",
@@ -102,6 +104,8 @@ beforeEach(() => {
         paymentId: "payment-1",
         kind: "cash",
         amountMinor: 1250,
+        tenderedMinor: 2000,
+        changeMinor: 750,
         paidAt: "2026-09-21T08:00:01.000Z",
       },
     ],
@@ -114,29 +118,27 @@ afterEach(() => {
   vi.resetAllMocks()
 })
 
-it("adds a real catalogue product and confirms the sale and payment", async () => {
+it("checks out cash atomically and prints tender and change on the receipt", async () => {
   render(<SalesScreen />)
   const productButton = await screen.findByRole("button", { name: /Rice 10kg/ })
   fireEvent.click(productButton)
 
-  expect(await screen.findByDisplayValue("12.50")).toBeTruthy()
+  const cashReceived = await screen.findByLabelText("Cash received (KES)")
+  fireEvent.change(cashReceived, { target: { value: "20.00" } })
+  expect(await screen.findByText("Change due")).toBeTruthy()
   fireEvent.click(screen.getByRole("button", { name: "Complete sale" }))
 
-  await waitFor(() => expect(mocks.recordPayment).toHaveBeenCalledOnce())
-  expect(mocks.finalizeSale).toHaveBeenCalledWith(
+  await waitFor(() => expect(mocks.checkoutCashSale).toHaveBeenCalledOnce())
+  expect(mocks.checkoutCashSale).toHaveBeenCalledWith(
     [{ productId: product.id, unit: "each", quantity: 1 }],
-    expect.any(String)
-  )
-  expect(mocks.recordPayment).toHaveBeenCalledWith(
-    "sale-1",
-    "cash",
-    1250,
+    2000,
     expect.any(String)
   )
   expect((await screen.findByRole("status")).textContent).toContain(
-    "Sale confirmed"
+    "Change due KES 7.50"
   )
   expect(await screen.findByLabelText("Receipt")).toBeTruthy()
+  expect(screen.getByText("Change given")).toBeTruthy()
 })
 
 it("holds a basket locally and resumes it for a fresh server quote", async () => {
@@ -163,8 +165,22 @@ it("does not invent a sale when the server quote fails", async () => {
   expect(
     await screen.findByText("The current price could not be confirmed")
   ).toBeTruthy()
-  expect(mocks.finalizeSale).not.toHaveBeenCalled()
+  expect(mocks.checkoutCashSale).not.toHaveBeenCalled()
   expect(screen.getByRole("button", { name: "Complete sale" })).toHaveProperty(
+    "disabled",
+    true
+  )
+})
+
+it("does not present card or M-Pesa as working payment methods", async () => {
+  render(<SalesScreen />)
+  await screen.findByRole("button", { name: /Rice 10kg/ })
+
+  expect(screen.getByRole("button", { name: "Card" })).toHaveProperty(
+    "disabled",
+    true
+  )
+  expect(screen.getByRole("button", { name: "M-Pesa" })).toHaveProperty(
     "disabled",
     true
   )

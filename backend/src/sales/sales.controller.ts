@@ -49,6 +49,12 @@ export class SalesController {
     return this.sales.finalize(actor(req), body);
   }
 
+  @Post('checkout')
+  @StaffRoles('cashier', 'manager')
+  checkout(@Req() req: StaffRequest, @Body() body: unknown) {
+    return this.sales.checkout(actor(req), body);
+  }
+
   @Post(':saleId/payments')
   @StaffRoles('cashier', 'manager')
   recordPayment(@Req() req: StaffRequest, @Body() body: unknown) {

@@ -12,6 +12,7 @@ import type { PoolClient } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
 
 export type SaleActor = { userId: string; sessionId: string };
+type RequestTable = 'sale_request' | 'sale_payment_request';
 
 @Injectable()
 export class SalesWrites {
@@ -27,6 +28,39 @@ export class SalesWrites {
     payload: unknown,
     work: (client: PoolClient) => Promise<T>,
   ): Promise<T> {
+    return this.executeForRequestTable(
+      'sale_request',
+      actor,
+      requestId,
+      payload,
+      work,
+    );
+  }
+
+  async executePayment<T>(
+    actor: SaleActor,
+    requestId: string,
+    payload: unknown,
+    work: (client: PoolClient) => Promise<T>,
+  ): Promise<T> {
+    return this.executeForRequestTable(
+      'sale_payment_request',
+      actor,
+      requestId,
+      payload,
+      work,
+    );
+  }
+
+  private async executeForRequestTable<T>(
+    requestTable: RequestTable,
+    actor: SaleActor,
+    requestId: string,
+    payload: unknown,
+    work: (client: PoolClient) => Promise<T>,
+  ): Promise<T> {
+    const operation =
+      requestTable === 'sale_payment_request' ? 'payment' : 'sale';
     const fingerprint = createHash('sha256')
       .update(JSON.stringify(payload))
       .digest('hex');
@@ -57,13 +91,18 @@ export class SalesWrites {
         fingerprint: string;
         response: unknown;
       }>(
-        'SELECT actor_id, fingerprint, response FROM sale_request WHERE id = $1',
+        `SELECT actor_id, fingerprint, response FROM ${requestTable} WHERE id = $1`,
         [requestId],
       );
       const receipt = previous.rows[0];
       if (receipt) {
-        if (receipt.actor_id !== actor.userId || receipt.fingerprint !== fingerprint) {
-          throw new ConflictException('This request ID was already used for a different sale');
+        if (
+          receipt.actor_id !== actor.userId ||
+          receipt.fingerprint !== fingerprint
+        ) {
+          throw new ConflictException(
+            `This request ID was already used for a different ${operation}`,
+          );
         }
         await client.query('COMMIT');
         return receipt.response as T;
@@ -71,7 +110,7 @@ export class SalesWrites {
 
       const response = await work(client);
       await client.query(
-        'INSERT INTO sale_request (id, actor_id, fingerprint, response) VALUES ($1, $2, $3, $4)',
+        `INSERT INTO ${requestTable} (id, actor_id, fingerprint, response) VALUES ($1, $2, $3, $4)`,
         [requestId, actor.userId, fingerprint, JSON.stringify(response)],
       );
       await client.query('COMMIT');
@@ -87,7 +126,9 @@ export class SalesWrites {
       if (error instanceof HttpException) throw error;
       if (error && typeof error === 'object' && 'code' in error) {
         if (error.code === '23505') {
-          throw new ConflictException('This sale request is already committed. Reload and retry.');
+          throw new ConflictException(
+            `This ${operation} request is already committed. Reload and retry.`,
+          );
         }
       }
       this.logger.error(

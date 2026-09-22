@@ -11,6 +11,7 @@ import { PurchasesWrites } from '../src/purchases/purchases-writes.js';
 import { SuppliersService } from '../src/purchases/suppliers.service.js';
 import { ReportsService } from '../src/reports/reports.service.js';
 import { SalesService } from '../src/sales/sales.service.js';
+import { SalesLookupService } from '../src/sales/sales-lookup.service.js';
 import { SalesWrites } from '../src/sales/sales-writes.js';
 import { ShiftsService } from '../src/shifts/shifts.service.js';
 import { ShiftsWrites } from '../src/shifts/shifts-writes.js';
@@ -29,6 +30,7 @@ describe('PostgreSQL register and purchase business flows', () => {
   let suppliers: SuppliersService;
   let reports: ReportsService;
   let sales: SalesService;
+  let saleLookup: SalesLookupService;
   let shifts: ShiftsService;
   const schema = `business_${randomUUID().replaceAll('-', '')}`;
   const manager: StaffActor = {
@@ -105,6 +107,7 @@ describe('PostgreSQL register and purchase business flows', () => {
         SuppliersService,
         ReportsService,
         SalesService,
+        SalesLookupService,
         SalesWrites,
         ShiftsService,
         ShiftsWrites,
@@ -115,6 +118,7 @@ describe('PostgreSQL register and purchase business flows', () => {
     suppliers = fixture.get(SuppliersService);
     reports = fixture.get(ReportsService);
     sales = fixture.get(SalesService);
+    saleLookup = fixture.get(SalesLookupService);
     shifts = fixture.get(ShiftsService);
   });
 
@@ -232,7 +236,7 @@ describe('PostgreSQL register and purchase business flows', () => {
     );
   });
 
-  it('links a replay-safe cash payment to the active shift and closes against the movement ledger', async () => {
+  it('checks out tendered cash once, records change, and closes against the movement ledger', async () => {
     const opened = await shifts.openShift(cashier, {
       requestId: randomUUID(),
       reason: 'Cashier float',
@@ -244,18 +248,24 @@ describe('PostgreSQL register and purchase business flows', () => {
       status: 'open',
     });
 
-    const saleRequestId = randomUUID();
-    const saleInput = {
-      requestId: saleRequestId,
-      reason: 'Counter sale',
+    const checkoutInput = {
+      requestId: randomUUID(),
+      reason: 'Cash counter sale',
       lines: [{ productId, unit: 'each', quantity: 2 }],
+      cashTenderedMinor: 1000,
     };
     const [sale, replayedSale] = await Promise.all([
-      sales.finalize(cashier, saleInput),
-      sales.finalize(cashier, saleInput),
+      sales.checkout(cashier, checkoutInput),
+      sales.checkout(cashier, checkoutInput),
     ]);
     expect(replayedSale).toEqual(sale);
     expect(sale.totalMinor).toBe(500);
+    expect(sale.payment).toMatchObject({
+      amountMinor: 500,
+      tenderedMinor: 1000,
+      changeMinor: 500,
+      shiftId: opened.shiftId,
+    });
     expect(
       (
         await pool.query<{ quantity_minor: string }>(
@@ -265,19 +275,6 @@ describe('PostgreSQL register and purchase business flows', () => {
       ).rows[0].quantity_minor,
     ).toBe('8');
 
-    const paymentInput = {
-      requestId: randomUUID(),
-      saleId: sale.saleId,
-      kind: 'cash' as const,
-      amountMinor: 500,
-      reason: 'Cash received',
-    };
-    const [payment, replayedPayment] = await Promise.all([
-      sales.recordPayment(cashier, paymentInput),
-      sales.recordPayment(cashier, paymentInput),
-    ]);
-    expect(replayedPayment).toEqual(payment);
-    expect(payment.shiftId).toBe(opened.shiftId);
     expect(
       (
         await pool.query<{ count: number }>(
@@ -285,6 +282,32 @@ describe('PostgreSQL register and purchase business flows', () => {
         )
       ).rows[0].count,
     ).toBe(1);
+    expect(
+      (
+        await pool.query<{ amount_minor: string }>(
+          "SELECT amount_minor::text FROM cash_movement WHERE kind = 'cash_in'",
+        )
+      ).rows[0].amount_minor,
+    ).toBe('1000');
+    expect(
+      (
+        await pool.query<{ amount_minor: string }>(
+          "SELECT amount_minor::text FROM cash_movement WHERE kind = 'cash_out'",
+        )
+      ).rows[0].amount_minor,
+    ).toBe('500');
+    await expect(saleLookup.receipt(sale.saleId)).resolves.toMatchObject({
+      saleId: sale.saleId,
+      totalMinor: 500,
+      payments: [
+        {
+          paymentId: sale.payment.paymentId,
+          amountMinor: 500,
+          tenderedMinor: 1000,
+          changeMinor: 500,
+        },
+      ],
+    });
 
     const closed = await shifts.closeShift(cashier, {
       requestId: randomUUID(),
