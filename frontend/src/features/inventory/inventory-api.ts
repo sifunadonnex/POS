@@ -11,7 +11,7 @@ export type StockRow = {
 
 export type StockMovement = {
   id: string
-  kind: "opening" | "receive" | "adjustment" | "stocktake"
+  kind: "opening" | "receive" | "adjustment" | "sale" | "return" | "stocktake"
   deltaMinor: number
   quantityAfterMinor: number
   reason: string
@@ -103,6 +103,8 @@ function parseMovement(value: unknown): StockMovement {
     (row.kind !== "opening" &&
       row.kind !== "receive" &&
       row.kind !== "adjustment" &&
+      row.kind !== "sale" &&
+      row.kind !== "return" &&
       row.kind !== "stocktake") ||
     !isSafeInteger(row.deltaMinor) ||
     !isSafeInteger(row.quantityAfterMinor) ||

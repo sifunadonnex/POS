@@ -85,7 +85,11 @@ function movementLabel(kind: StockMovement["kind"]) {
       ? "Stocktake"
       : kind === "receive"
         ? "Received"
-        : "Opening"
+        : kind === "sale"
+          ? "Sale"
+          : kind === "return"
+            ? "Customer return"
+            : "Opening"
 }
 
 export function StockControlScreen() {

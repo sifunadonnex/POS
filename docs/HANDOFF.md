@@ -9,7 +9,7 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 ## Current environment and decisions
 
 - PostgreSQL 18 is installed and the `postgresql-x64-18` Windows service is running. Separate ignored development/test connection settings are present in `backend/.env` and `backend/.env.test`.
-- Migrations through `202609210002_payment_shift_reconciliation` are applied to `pay_and_go_dev`. The integration suites use disposable schemas only in the explicitly named `_test` database.
+- Migrations through `202609220001_cash_tender_checkout` are applied to `pay_and_go_dev`. The integration suites use disposable schemas only in the explicitly named `_test` database.
 - Two disposable local `.test` staff accounts were provisioned and marked verified for manual testing: one manager and one cashier. Their passwords are not stored in tracked files or this handoff. The manager must enroll authenticator MFA before manager-only features become available.
 - The local API and Vite frontend are stopped at this handoff. Start them separately when manual testing is needed.
 - Use an existing SMTP mailbox later for verification/recovery. Credentials belong only in private backend environment settings; no real email has been sent.
@@ -29,7 +29,7 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 - Staff workspace sidebar is grouped into Workspace, Sell, Inventory, Insights and Administration, with existing modules active and planned modules visibly marked as coming next rather than exposed as fake actions.
 - Sales register now uses active catalogue lookup/barcode search, server-authoritative basket quotes, and a single request-replay-safe cash checkout transaction. A cash checkout commits the sale, payment, tender, stock reduction and cash movements together; it calculates change before confirmation and includes cash received/change given on the retrievable receipt. It also supports device-local held basket drafts and a server-authoritative receipt lookup/reprint. A `GET /api/shifts/current` read lets register refreshes recover the active shift instead of opening a duplicate.
 - Confirmed payments attach to the active shift. Tendered cash records append-only `cash_in` and, where needed, `cash_out` change movements, so shift closing derives expected cash from the movement ledger. Card and M-Pesa are visibly unavailable until a verified provider confirmation workflow and M-Pesa STK Push adapter are implemented; they are no longer treated as paid by the register.
-- Backend stock API for opening, receiving and adjustments with append-only inventory movements and quantity validation for each/pack/kg/l units.
+- Backend stock API for opening, receiving and adjustments with append-only inventory movements and quantity validation for each/pack/kg/l units. Stock balance and movement-history reads normalize PostgreSQL `bigint` values to the numeric browser API contract; history also exposes sale and customer-return movements.
 - Manager Stock control workspace now loads real stock balances, supports search and paging, posts opening/receive/adjust movements with exact unit-aware quantities and replay-safe request IDs, and displays per-product movement history with loading, empty, error and retry states. It is wired into the manager-only Inventory sidebar; no low-stock threshold badge is shown because the current API does not provide an authoritative threshold.
 - Manager Purchase intake workspace now lists and creates suppliers through manager-only endpoints, searches active catalogue products, builds exact unit-aware receipt lines, previews totals, and posts supplier receipts through the existing transactional purchase endpoint with replay-safe retry handling. It is wired into the manager-only Inventory sidebar.
 - Manager Purchase reports workspace now filters a date-bounded reconciliation report, shows received/returned/net purchase totals, rolls activity up by supplier, reconciles each receipt against supplier returns, and drills into a signed supplier ledger. The reads are manager-only and derive from append-only receipt/return records; no browser cache is used for authoritative history.
@@ -51,6 +51,7 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 | Backend typecheck/build         | Passed                                                                                                                                                    |
 | Backend lint                    | Passed with two unused-parameter warnings in tests                                                                                                        |
 | Local API business flows        | Supplier receipt/return, reconciliation/ledger, register sale/payment and shift-close paths passed dedicated PostgreSQL business-flow coverage           |
+| Inventory / stocktake focus     | Inventory bigint response conversion: 3 backend unit tests, 8 Stock control/Stocktake frontend tests and 2 PostgreSQL business-flow tests passed          |
 | Development database            | Local PostgreSQL migrations through `202609220001_cash_tender_checkout` applied successfully                                                              |
 | Business invariants             | Regression coverage passed for server pricing, cumulative payments/returns, exact unit-aware totals, shift ownership and stocktake movement compatibility |
 | Frontend lint/typecheck         | Passed                                                                                                                                                    |
@@ -65,7 +66,7 @@ Database coverage includes migration up/repeat/down/reapply, auth transactions, 
 
 ## Concrete next step
 
-1. Perform an interactive cashier cash-sale walkthrough when a browser session is available: open shift, tender more than the total, confirm the receipt/change and close at the ledger-derived amount.
+1. Perform an interactive manager/cashier walkthrough when a browser session is available: load Stock control and Stocktake, post a movement/count, then open a shift, tender more than the sale total, confirm the receipt/change and close at the ledger-derived amount.
 2. Agree worked examples for fractional sale/refund rounding before enabling those cases, then add the rounding rules to the PostgreSQL business-flow suite.
 3. Design and implement card/M-Pesa provider confirmation as a durable payment-attempt/reconciliation flow before enabling either button; add M-Pesa STK Push only with approved credentials, callback endpoint and test workflow. Later complete SMTP delivery and the remaining [security verification checklist](SECURITY_VERIFICATION.md), then separately prove HostPinnacle runtime/database/TLS/jobs, phone access and backup/restore.
 

@@ -6,6 +6,8 @@ import { Pool } from 'pg';
 import { parseEnvironment } from '../src/config/environment.js';
 import { databaseOptions } from '../src/database/database.options.js';
 import { DatabaseService } from '../src/database/database.service.js';
+import { InventoryService } from '../src/inventory/inventory.service.js';
+import { InventoryWrites } from '../src/inventory/inventory-writes.js';
 import { PurchasesService } from '../src/purchases/purchases.service.js';
 import { PurchasesWrites } from '../src/purchases/purchases-writes.js';
 import { SuppliersService } from '../src/purchases/suppliers.service.js';
@@ -27,6 +29,7 @@ describe('PostgreSQL register and purchase business flows', () => {
   let pool: Pool;
   let fixture: TestingModule;
   let purchases: PurchasesService;
+  let inventory: InventoryService;
   let suppliers: SuppliersService;
   let reports: ReportsService;
   let sales: SalesService;
@@ -104,6 +107,8 @@ describe('PostgreSQL register and purchase business flows', () => {
       providers: [
         PurchasesService,
         PurchasesWrites,
+        InventoryService,
+        InventoryWrites,
         SuppliersService,
         ReportsService,
         SalesService,
@@ -115,6 +120,7 @@ describe('PostgreSQL register and purchase business flows', () => {
       ],
     }).compile();
     purchases = fixture.get(PurchasesService);
+    inventory = fixture.get(InventoryService);
     suppliers = fixture.get(SuppliersService);
     reports = fixture.get(ReportsService);
     sales = fixture.get(SalesService);
@@ -181,6 +187,14 @@ describe('PostgreSQL register and purchase business flows', () => {
         )
       ).rows[0].quantity_minor,
     ).toBe('10');
+    await expect(inventory.stock('', 0)).resolves.toMatchObject({
+      stock: [
+        {
+          productId,
+          quantityMinor: 10,
+        },
+      ],
+    });
 
     const day = (
       await pool.query<{ day: string }>(

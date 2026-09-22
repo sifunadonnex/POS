@@ -18,10 +18,18 @@ beforeEach(() => {
     if (sql.includes('SELECT u.id FROM "user" u JOIN session s')) {
       return { rowCount: 1, rows: [{ id: 'manager' }] };
     }
-    if (sql.includes('SELECT actor_id, fingerprint, response FROM inventory_request')) {
+    if (
+      sql.includes(
+        'SELECT actor_id, fingerprint, response FROM inventory_request',
+      )
+    ) {
       return { rows: [] };
     }
-    if (sql.includes('SELECT p.id, p.unit, p.active, COALESCE(s.quantity_minor, 0) AS quantity_minor')) {
+    if (
+      sql.includes(
+        'SELECT p.id, p.unit, p.active, COALESCE(s.quantity_minor, 0) AS quantity_minor',
+      )
+    ) {
       return {
         rows: [
           {
@@ -47,6 +55,80 @@ beforeEach(() => {
 });
 
 describe('InventoryService', () => {
+  it('normalizes PostgreSQL bigint balances and movement history for the API', async () => {
+    query.mockImplementation(async (sql: string) => {
+      if (sql.includes('SELECT p.id AS "productId"')) {
+        return {
+          rows: [
+            {
+              productId: productOneId,
+              sku: 'RICE',
+              name: 'Loose rice',
+              unit: 'kg',
+              quantityMinor: '1250',
+              active: true,
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM inventory_movement m')) {
+        return {
+          rows: [
+            {
+              id: 'movement-1',
+              kind: 'sale',
+              deltaMinor: '-250',
+              quantityAfterMinor: '1000',
+              reason: 'Cash checkout',
+              createdAt: '2026-09-22T08:00:00.000Z',
+              actorName: 'Cashier',
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+    const module = await Test.createTestingModule({
+      providers: [
+        InventoryService,
+        InventoryWrites,
+        {
+          provide: DatabaseService,
+          useValue: { connectionPool: { query, connect: vi.fn() } },
+        },
+      ],
+    }).compile();
+    const service = module.get(InventoryService);
+
+    await expect(service.stock('', 0)).resolves.toEqual({
+      stock: [
+        {
+          productId: productOneId,
+          sku: 'RICE',
+          name: 'Loose rice',
+          unit: 'kg',
+          quantityMinor: 1250,
+          active: true,
+        },
+      ],
+      hasMore: false,
+    });
+    await expect(service.history(productOneId, 0)).resolves.toEqual({
+      history: [
+        {
+          id: 'movement-1',
+          kind: 'sale',
+          deltaMinor: -250,
+          quantityAfterMinor: 1000,
+          reason: 'Cash checkout',
+          createdAt: '2026-09-22T08:00:00.000Z',
+          actorName: 'Cashier',
+        },
+      ],
+      hasMore: false,
+    });
+  });
+
   it('rejects negative stock adjustments when the batch would go below zero', async () => {
     const module = await Test.createTestingModule({
       providers: [
@@ -67,18 +149,25 @@ describe('InventoryService', () => {
     const service = module.get(InventoryService);
 
     await expect(
-      service.adjust({ userId: 'manager', sessionId: 'session' }, {
-        requestId: requestOneId,
-        reason: 'Audit fix',
-        productId: productOneId,
-        quantity: -6,
-      }),
+      service.adjust(
+        { userId: 'manager', sessionId: 'session' },
+        {
+          requestId: requestOneId,
+          reason: 'Audit fix',
+          productId: productOneId,
+          quantity: -6,
+        },
+      ),
     ).rejects.toThrow('Insufficient stock');
   });
 
   it('converts fractional kg quantities into exact minor-unit quantity values', async () => {
     query.mockImplementation(async (sql: string) => {
-      if (sql.includes('SELECT p.id, p.unit, p.active, COALESCE(s.quantity_minor, 0) AS quantity_minor')) {
+      if (
+        sql.includes(
+          'SELECT p.id, p.unit, p.active, COALESCE(s.quantity_minor, 0) AS quantity_minor',
+        )
+      ) {
         return {
           rows: [
             {
@@ -99,7 +188,11 @@ describe('InventoryService', () => {
       if (sql.includes('SELECT u.id FROM "user" u JOIN session s')) {
         return { rowCount: 1, rows: [{ id: 'manager' }] };
       }
-      if (sql.includes('SELECT actor_id, fingerprint, response FROM inventory_request')) {
+      if (
+        sql.includes(
+          'SELECT actor_id, fingerprint, response FROM inventory_request',
+        )
+      ) {
         return { rows: [] };
       }
       if (sql.includes('INSERT INTO inventory_stock')) {
@@ -129,12 +222,15 @@ describe('InventoryService', () => {
 
     const service = module.get(InventoryService);
 
-    const result = await service.adjust({ userId: 'manager', sessionId: 'session' }, {
-      requestId: requestTwoId,
-      reason: 'Stock count',
-      productId: productTwoId,
-      quantity: 1.25,
-    });
+    const result = await service.adjust(
+      { userId: 'manager', sessionId: 'session' },
+      {
+        requestId: requestTwoId,
+        reason: 'Stock count',
+        productId: productTwoId,
+        quantity: 1.25,
+      },
+    );
 
     expect(result.quantityMinor).toBe(2250);
   });

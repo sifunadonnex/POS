@@ -26,6 +26,28 @@ export type StockRow = {
   active: boolean;
 };
 
+type DatabaseStockRow = Omit<StockRow, 'quantityMinor'> & {
+  quantityMinor: string | number;
+};
+
+type DatabaseMovementRow = {
+  id: string;
+  kind: 'opening' | 'receive' | 'adjustment' | 'sale' | 'return' | 'stocktake';
+  deltaMinor: string | number;
+  quantityAfterMinor: string | number;
+  reason: string;
+  createdAt: string;
+  actorName: string;
+};
+
+function databaseInteger(value: string | number, name: string): number {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new Error(`Invalid ${name} from inventory database`);
+  }
+  return parsed;
+}
+
 @Injectable()
 export class InventoryService {
   constructor(
@@ -36,7 +58,9 @@ export class InventoryService {
   private toMinor(quantity: number, unit: StockRow['unit']): number {
     if (unit === 'each' || unit === 'pack') {
       if (!Number.isInteger(quantity)) {
-        throw new BadRequestException(`Quantity must be a whole number for ${unit}`);
+        throw new BadRequestException(
+          `Quantity must be a whole number for ${unit}`,
+        );
       }
       return quantity;
     }
@@ -45,14 +69,16 @@ export class InventoryService {
 
   async stock(search: unknown, page: unknown) {
     const query =
-      search === undefined || search === '' ? '' : textInput(search, 'search', 160);
+      search === undefined || search === ''
+        ? ''
+        : textInput(search, 'search', 160);
     const pageNumber = page === undefined ? 0 : Number(page);
     if (!Number.isInteger(pageNumber) || pageNumber < 0 || pageNumber > 200) {
       throw new BadRequestException('Invalid page');
     }
 
     try {
-      const result = await this.database.connectionPool.query<StockRow>(
+      const result = await this.database.connectionPool.query<DatabaseStockRow>(
         `SELECT p.id AS "productId", p.sku, p.name, p.unit,
         COALESCE(s.quantity_minor, 0) AS "quantityMinor", p.active
         FROM catalogue_product p
@@ -62,7 +88,10 @@ export class InventoryService {
         [query, pageNumber * 50],
       );
       return {
-        stock: result.rows.slice(0, 50),
+        stock: result.rows.slice(0, 50).map((row) => ({
+          ...row,
+          quantityMinor: databaseInteger(row.quantityMinor, 'stock quantity'),
+        })),
         hasMore: result.rows.length > 50,
       };
     } catch {
@@ -80,15 +109,23 @@ export class InventoryService {
     }
 
     try {
-      const result = await this.database.connectionPool.query(
-        `SELECT m.id, m.kind, m.delta_minor AS "deltaMinor", m.quantity_after_minor AS "quantityAfterMinor",
+      const result =
+        await this.database.connectionPool.query<DatabaseMovementRow>(
+          `SELECT m.id, m.kind, m.delta_minor AS "deltaMinor", m.quantity_after_minor AS "quantityAfterMinor",
         m.reason, m.created_at AS "createdAt", u.name AS "actorName"
         FROM inventory_movement m JOIN "user" u ON u.id = m.actor_id
         WHERE m.product_id = $1 ORDER BY m.created_at DESC LIMIT 51 OFFSET $2`,
-        [id, pageNumber * 50],
-      );
+          [id, pageNumber * 50],
+        );
       return {
-        history: result.rows.slice(0, 50),
+        history: result.rows.slice(0, 50).map((row) => ({
+          ...row,
+          deltaMinor: databaseInteger(row.deltaMinor, 'stock movement delta'),
+          quantityAfterMinor: databaseInteger(
+            row.quantityAfterMinor,
+            'stock movement balance',
+          ),
+        })),
         hasMore: result.rows.length > 50,
       };
     } catch {
@@ -122,7 +159,10 @@ export class InventoryService {
   }
 
   async adjust(actor: InventoryActor, value: unknown) {
-    const body = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+    const body =
+      value && typeof value === 'object'
+        ? (value as Record<string, unknown>)
+        : {};
     const productId = uuidInput(body.productId, 'productId');
     const input = requestInput(value);
 
@@ -154,7 +194,15 @@ export class InventoryService {
         const movement = await client.query<{ id: string }>(
           `INSERT INTO inventory_movement (id, product_id, kind, delta_minor, quantity_after_minor, actor_id, reason)
           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-          [randomUUID(), productId, 'adjustment', delta, after, actor.userId, input.reason],
+          [
+            randomUUID(),
+            productId,
+            'adjustment',
+            delta,
+            after,
+            actor.userId,
+            input.reason,
+          ],
         );
 
         return {
@@ -168,7 +216,10 @@ export class InventoryService {
   }
 
   async receive(actor: InventoryActor, value: unknown) {
-    const body = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+    const body =
+      value && typeof value === 'object'
+        ? (value as Record<string, unknown>)
+        : {};
     const productId = uuidInput(body.productId, 'productId');
     const input = requestInput(value);
 
@@ -176,7 +227,12 @@ export class InventoryService {
       actor,
       input.requestId,
       input.reason,
-      { productId, quantity: body.quantity, reason: input.reason, kind: 'receive' },
+      {
+        productId,
+        quantity: body.quantity,
+        reason: input.reason,
+        kind: 'receive',
+      },
       async (client) => {
         const product = await this.nextProduct(client, productId);
         const quantity = quantityInput(body.quantity, product.unit, 'quantity');
@@ -200,7 +256,15 @@ export class InventoryService {
         const movement = await client.query<{ id: string }>(
           `INSERT INTO inventory_movement (id, product_id, kind, delta_minor, quantity_after_minor, actor_id, reason)
           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-          [randomUUID(), productId, 'receive', delta, after, actor.userId, input.reason],
+          [
+            randomUUID(),
+            productId,
+            'receive',
+            delta,
+            after,
+            actor.userId,
+            input.reason,
+          ],
         );
 
         return {
@@ -214,7 +278,10 @@ export class InventoryService {
   }
 
   async opening(actor: InventoryActor, value: unknown) {
-    const body = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+    const body =
+      value && typeof value === 'object'
+        ? (value as Record<string, unknown>)
+        : {};
     const productId = uuidInput(body.productId, 'productId');
     const input = requestInput(value);
 
@@ -222,7 +289,12 @@ export class InventoryService {
       actor,
       input.requestId,
       input.reason,
-      { productId, quantity: body.quantity, reason: input.reason, kind: 'opening' },
+      {
+        productId,
+        quantity: body.quantity,
+        reason: input.reason,
+        kind: 'opening',
+      },
       async (client) => {
         const product = await this.nextProduct(client, productId);
         const quantity = quantityInput(body.quantity, product.unit, 'quantity');
@@ -246,7 +318,15 @@ export class InventoryService {
         const movement = await client.query<{ id: string }>(
           `INSERT INTO inventory_movement (id, product_id, kind, delta_minor, quantity_after_minor, actor_id, reason)
           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-          [randomUUID(), productId, 'opening', delta, after, actor.userId, input.reason],
+          [
+            randomUUID(),
+            productId,
+            'opening',
+            delta,
+            after,
+            actor.userId,
+            input.reason,
+          ],
         );
 
         return {
