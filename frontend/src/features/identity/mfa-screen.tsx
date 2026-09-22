@@ -1,4 +1,12 @@
 import { useRef, useState, type FormEvent } from "react"
+import {
+  ArrowLeft,
+  Check,
+  CircleAlert,
+  KeyRound,
+  ShieldCheck,
+  Smartphone,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -85,57 +93,106 @@ export function MfaScreen({
   }
   return (
     <section className="space-y-5" aria-label="Two-factor authentication">
-      <div>
-        <h2 className="text-lg font-semibold">
-          {enrollment ? "Set up your authenticator" : "Confirm it’s you"}
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {enrollment
-            ? "Managers must set up two-factor authentication before accessing staff controls."
-            : "Enter a code from your authenticator app, or use a recovery code."}
-        </p>
+      <div className="flex items-start gap-3">
+        <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <ShieldCheck className="size-5" aria-hidden="true" />
+        </div>
+        <div>
+          <p className="text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
+            {enrollment
+              ? setup
+                ? "Step 2 of 2"
+                : "Step 1 of 2"
+              : "Security check"}
+          </p>
+          <h2 className="mt-1 text-xl font-semibold tracking-tight">
+            {enrollment ? "Set up your authenticator" : "Confirm it’s you"}
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            {enrollment
+              ? "Managers add an extra verification step before accessing sensitive controls."
+              : "Use a fresh code from your authenticator app, or switch to a recovery code."}
+          </p>
+        </div>
       </div>
       {setup && (
-        <div className="space-y-4 rounded-lg border p-4">
-          <p className="text-sm">
-            In your authenticator app, add a time-based account named Pay &amp;
-            Go and enter this setup key:
-          </p>
-          <Label htmlFor="authenticator-secret">Setup key</Label>
-          <Input
-            id="authenticator-secret"
-            value={setup.secret}
-            readOnly
-            className="font-mono"
-          />
-          <h3 className="font-medium">Save your recovery codes</h3>
-          <p className="text-sm text-muted-foreground">
-            Store these somewhere private. Each code works once if you lose your
-            authenticator.
-          </p>
-          <ul className="grid grid-cols-2 gap-2 font-mono text-sm">
-            {setup.backupCodes.map((code) => (
-              <li key={code}>{code}</li>
-            ))}
-          </ul>
-          <Button
-            type="button"
-            variant={saved ? "secondary" : "outline"}
-            onClick={() => setSaved(true)}
-            disabled={saved}
-          >
-            {saved ? "Recovery codes saved" : "I saved my recovery codes"}
-          </Button>
+        <div className="space-y-5 rounded-xl border bg-muted/20 p-4">
+          <div className="flex gap-3">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-background font-semibold shadow-xs">
+              1
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-medium">Add Pay &amp; Go to your app</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Create a time-based account in your authenticator app, then
+                enter this setup key.
+              </p>
+              <Label htmlFor="authenticator-secret" className="mt-3">
+                Setup key
+              </Label>
+              <Input
+                id="authenticator-secret"
+                value={setup.secret}
+                readOnly
+                className="mt-2 font-mono tracking-wider"
+              />
+            </div>
+          </div>
+          <div className="flex gap-3 border-t pt-5">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-background font-semibold shadow-xs">
+              2
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-medium">Save your recovery codes</h3>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Store these somewhere private. Each code works once if you lose
+                your authenticator.
+              </p>
+              <ul className="mt-3 grid grid-cols-2 gap-2 font-mono text-xs">
+                {setup.backupCodes.map((code) => (
+                  <li
+                    key={code}
+                    className="rounded-md border bg-background px-2 py-1.5 text-center"
+                  >
+                    {code}
+                  </li>
+                ))}
+              </ul>
+              <Button
+                type="button"
+                variant={saved ? "secondary" : "outline"}
+                className="mt-3 gap-2"
+                onClick={() => setSaved(true)}
+                disabled={saved}
+              >
+                {saved && <Check className="size-4" aria-hidden="true" />}
+                {saved ? "Recovery codes saved" : "I saved my recovery codes"}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
       <form onSubmit={submit} className="space-y-4" aria-busy={pending}>
         {enrollment && !setup ? (
           <PasswordField disabled={pending} />
         ) : (
-          <div className="space-y-2">
-            <Label htmlFor="mfa-code">
-              {backup ? "Recovery code" : "Authenticator code"}
-            </Label>
+          <div className="space-y-2 rounded-xl border bg-background p-4">
+            <div className="flex items-center gap-2">
+              {backup ? (
+                <KeyRound
+                  className="size-4 text-muted-foreground"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Smartphone
+                  className="size-4 text-muted-foreground"
+                  aria-hidden="true"
+                />
+              )}
+              <Label htmlFor="mfa-code">
+                {backup ? "Recovery code" : "Authenticator code"}
+              </Label>
+            </div>
             <Input
               id="mfa-code"
               name="mfa-code"
@@ -143,16 +200,29 @@ export function MfaScreen({
               inputMode={backup ? "text" : "numeric"}
               pattern={backup ? undefined : "[0-9]{6}"}
               maxLength={backup ? 32 : 6}
+              placeholder={backup ? "Enter one saved code" : "000000"}
               required
               disabled={pending || (enrollment && !saved)}
-              className="h-11 font-mono"
+              className="h-12 text-center font-mono text-lg tracking-[0.35em]"
             />
+            {enrollment && setup && !saved && (
+              <p className="text-xs text-muted-foreground">
+                Confirm that you saved the recovery codes before continuing.
+              </p>
+            )}
           </div>
         )}
         {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
+          <div
+            role="alert"
+            className="flex gap-2 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm text-destructive"
+          >
+            <CircleAlert
+              className="mt-0.5 size-4 shrink-0"
+              aria-hidden="true"
+            />
+            <p>{error}</p>
+          </div>
         )}
         <Button
           type="submit"
@@ -169,7 +239,8 @@ export function MfaScreen({
       {!enrollment && (
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
+          className="w-full gap-2"
           disabled={pending}
           onClick={() => {
             setBackup(!backup)
@@ -183,9 +254,11 @@ export function MfaScreen({
         <Button
           type="button"
           variant="ghost"
+          className="w-full gap-2"
           disabled={pending}
           onClick={onCancel}
         >
+          <ArrowLeft className="size-4" aria-hidden="true" />
           Back to sign in
         </Button>
       )}

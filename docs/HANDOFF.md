@@ -23,7 +23,7 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 - Catalogue categories/products with `each`, `pack`, `kg` and `l` sale units. Prices are exact integer minor units; `kg`/`l` later use 0.001 quantity steps while `each`/`pack` use whole quantities.
 - Unique SKU/barcodes, archive/reactivate, immutable unit after creation, optimistic revisions, append-only product/category history, manager reason capture and idempotent request receipts.
 - UTF-8 CSV preview/import with bounded size/rows, create-only semantics, conflict checks and one-transaction all-or-nothing import.
-- Responsive shadcn/Base UI screens for identity, staff security and catalogue workflows.
+- Responsive shadcn/Base UI screens for identity, staff security and catalogue workflows. Authentication now uses an image-backed retail entry shell with a focused staff sign-in panel, guided recovery/email-verification states, staged MFA enrollment/challenge UI, accessible password visibility controls and explicit loading/offline/locked states. The project-local background was generated without logos, text or identifiable people.
 - Product UI direction is now aligned to a clean Dynamics 365 Commerce-inspired operational shell, using shadcn components and a dense commercial dashboard layout rather than a consumer SaaS aesthetic.
 - Manager dashboard now loads the real daily report summary, presents operational KPIs/payment mix with loading and retry states, and keeps cashier actions honest until each module is available.
 - Staff workspace sidebar is grouped into Workspace, Sell, Inventory, Insights and Administration, with existing modules active and planned modules visibly marked as coming next rather than exposed as fake actions.
@@ -40,7 +40,7 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 - Forward migrations `202609210001_business_invariants` and `202609210002_payment_shift_reconciliation` permit `stocktake` inventory movements, enforce non-negative stock, permit only one open shift per cashier, allow a single open-to-closed shift transition, and link confirmed payments to shift reconciliation.
 - Fractional minor-unit line totals are rejected with a clear error until the documented rounding examples are agreed; no silent rounding was introduced.
 
-## Verification on 21 September 2026
+## Verification on 22 September 2026
 
 | Area                            | Result                                                                                                                                                    |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -53,10 +53,10 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 | Development database            | Local PostgreSQL migrations through `202609210002_payment_shift_reconciliation` applied successfully                                                       |
 | Business invariants             | Regression coverage passed for server pricing, cumulative payments/returns, exact unit-aware totals, shift ownership and stocktake movement compatibility |
 | Frontend lint/typecheck         | Passed                                                                                                                                                    |
-| Frontend tests                  | 59 tests in 18 files passed serially                                                                                                                      |
+| Frontend tests                  | 60 tests in 18 files passed serially                                                                                                                      |
 | Frontend production build       | Passed                                                                                                                                                    |
 | Frontend formatting/diff checks | Prettier check and `git diff --check` passed                                                                                                              |
-| Frontend visual/browser check   | Vite started for this module; browser connector exposed no browser session, so visual interaction remains unverified                                  |
+| Frontend visual/browser check   | Vite started on port 5179 for the auth redesign; browser connector exposed no browser session, so responsive visual interaction remains unverified      |
 
 The first parallel test attempt saturated local worker startup and produced timeouts; all affected suites passed when rerun serially. A stale identity integration assertion was updated to include the already-implemented security fields. No test or compiler/lint rule was weakened.
 

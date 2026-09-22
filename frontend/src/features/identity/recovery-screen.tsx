@@ -1,4 +1,12 @@
 import { useRef, useState, type FormEvent } from "react"
+import {
+  ArrowLeft,
+  CheckCircle2,
+  CircleAlert,
+  KeyRound,
+  MailCheck,
+  Send,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -73,30 +81,63 @@ export function RecoveryScreen({
       setPending(false)
     }
   }
+  const reset = recovery.purpose === "reset"
   return (
     <section className="space-y-5" aria-label="Account recovery">
-      <div>
-        <h2 className="text-lg font-semibold">
-          {recovery.purpose === "reset"
-            ? hasToken
-              ? "Choose a new password"
-              : "Reset your password"
-            : "Verify your email"}
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {hasToken
-            ? "Use this link only for your own staff account."
-            : "Enter the email address your manager registered."}
-        </p>
+      <div className="flex items-start gap-3">
+        <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          {reset ? (
+            <KeyRound className="size-5" aria-hidden="true" />
+          ) : (
+            <MailCheck className="size-5" aria-hidden="true" />
+          )}
+        </div>
+        <div>
+          <p className="text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
+            {reset ? "Account recovery" : "Email confirmation"}
+          </p>
+          <h2 className="mt-1 text-xl font-semibold tracking-tight">
+            {reset
+              ? hasToken
+                ? "Choose a new password"
+                : "Reset your password"
+              : "Verify your email"}
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            {hasToken
+              ? reset
+                ? "Create a strong replacement password for your staff account."
+                : "Confirm this email before opening the staff workspace."
+              : "Enter the email address registered by your manager."}
+          </p>
+        </div>
       </div>
       {done ? (
-        <p role="status">
-          {hasToken
-            ? recovery.purpose === "reset"
-              ? "Password changed. Sign in with your new password."
-              : "Email verified. You can now sign in."
-            : "Request accepted. If this account needs a link, check its email inbox."}
-        </p>
+        <div
+          role="status"
+          className="flex gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-4"
+        >
+          <CheckCircle2
+            className="mt-0.5 size-5 shrink-0 text-emerald-600 dark:text-emerald-400"
+            aria-hidden="true"
+          />
+          <div>
+            <p className="font-medium">
+              {hasToken
+                ? reset
+                  ? "Password updated"
+                  : "Email verified"
+                : "Request accepted"}
+            </p>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              {hasToken
+                ? reset
+                  ? "Password changed. Sign in with your new password."
+                  : "Email verified. You can now sign in."
+                : "If this account needs a link, check its email inbox."}
+            </p>
+          </div>
+        </div>
       ) : (
         <form onSubmit={submit} className="space-y-4" aria-busy={pending}>
           {!hasToken && (
@@ -111,6 +152,7 @@ export function RecoveryScreen({
                 maxLength={254}
                 disabled={pending}
                 className="h-11"
+                placeholder="you@shop.example"
               />
             </div>
           )}
@@ -128,29 +170,54 @@ export function RecoveryScreen({
                 newPassword
                 disabled={pending}
               />
-              <p className="text-sm text-muted-foreground">
+              <p className="rounded-lg border bg-muted/35 p-3 text-sm leading-6 text-muted-foreground">
                 Use 12–128 characters. Changing your password signs out your
                 existing sessions.
               </p>
             </>
           )}
           {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
+            <div
+              role="alert"
+              className="flex gap-2 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm text-destructive"
+            >
+              <CircleAlert
+                className="mt-0.5 size-4 shrink-0"
+                aria-hidden="true"
+              />
+              <p>{error}</p>
+            </div>
+          )}
+          {!hasToken && (
+            <p className="text-xs leading-5 text-muted-foreground">
+              For your security, the response is the same whether or not the
+              address belongs to an account.
             </p>
           )}
-          <Button type="submit" className="h-11 w-full" disabled={pending}>
+          <Button
+            type="submit"
+            className="h-11 w-full gap-2"
+            disabled={pending}
+          >
             {pending
               ? "Working…"
               : hasToken
-                ? recovery.purpose === "reset"
+                ? reset
                   ? "Change password"
                   : "Verify email"
                 : "Request email link"}
+            {!pending && <Send className="size-4" aria-hidden="true" />}
           </Button>
         </form>
       )}
-      <Button type="button" variant="ghost" onClick={onBack} disabled={pending}>
+      <Button
+        type="button"
+        variant="ghost"
+        className="gap-2 px-0"
+        onClick={onBack}
+        disabled={pending}
+      >
+        <ArrowLeft className="size-4" aria-hidden="true" />
         Back to sign in
       </Button>
     </section>

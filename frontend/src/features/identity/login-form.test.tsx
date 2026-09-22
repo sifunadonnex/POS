@@ -25,6 +25,19 @@ function fill() {
 }
 
 describe("staff login", () => {
+  it("lets staff inspect and hide a typed password without changing it", () => {
+    render(<LoginForm onSignedIn={vi.fn()} />)
+    const password = screen.getByLabelText<HTMLInputElement>("Password")
+    fireEvent.change(password, { target: { value: "test-password-123" } })
+
+    expect(password.type).toBe("password")
+    fireEvent.click(screen.getByRole("button", { name: "Show password" }))
+    expect(password.type).toBe("text")
+    expect(password.value).toBe("test-password-123")
+    fireEvent.click(screen.getByRole("button", { name: "Hide password" }))
+    expect(password.type).toBe("password")
+  })
+
   it("submits credentials without remembering a shared till and reports success only after confirmation", async () => {
     let resolve: (value: { error: null }) => void = () => {
       throw new Error("Not initialized")

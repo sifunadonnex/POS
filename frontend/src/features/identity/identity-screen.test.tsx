@@ -39,6 +39,7 @@ it("shows session loading and then the sign-in form", async () => {
   render(<IdentityScreen />)
   expect(screen.getByRole("status").textContent).toContain("Checking")
   expect(await screen.findByLabelText("Email")).toBeTruthy()
+  expect(screen.getByText("Every shift starts with a clear view.")).toBeTruthy()
 })
 
 it("preserves typed credentials when returning to the signed-out tab", async () => {
