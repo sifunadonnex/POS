@@ -44,7 +44,9 @@ export class StocktakeWrites {
       const allowed = await client.query(
         `SELECT u.id FROM "user" u JOIN session s ON s."userId" = u.id
         WHERE u.id = $1 AND s.id = $2 AND u.role IN ('manager', 'cashier') AND NOT u.disabled
-        AND u."emailVerified" AND u."twoFactorEnabled" AND s."mfaVerified"
+        AND u."emailVerified"
+        AND ((u.role = 'cashier' AND NOT u."twoFactorEnabled")
+          OR (u."twoFactorEnabled" AND s."mfaVerified"))
         AND s."expiresAt" > now() AND s."lastActivityAt" > now() - interval '15 minutes' FOR SHARE OF u, s`,
         [actor.userId, actor.sessionId],
       );
@@ -62,8 +64,13 @@ export class StocktakeWrites {
       );
       const receipt = previous.rows[0];
       if (receipt) {
-        if (receipt.actor_id !== actor.userId || receipt.fingerprint !== fingerprint) {
-          throw new ConflictException('This request ID was already used for a different stocktake');
+        if (
+          receipt.actor_id !== actor.userId ||
+          receipt.fingerprint !== fingerprint
+        ) {
+          throw new ConflictException(
+            'This request ID was already used for a different stocktake',
+          );
         }
         await client.query('COMMIT');
         return receipt.response as T;
@@ -87,10 +94,14 @@ export class StocktakeWrites {
       if (error instanceof HttpException) throw error;
       if (error && typeof error === 'object' && 'code' in error) {
         if (error.code === '23505') {
-          throw new ConflictException('This stocktake request is already committed. Reload and retry.');
+          throw new ConflictException(
+            'This stocktake request is already committed. Reload and retry.',
+          );
         }
       }
-      throw new ServiceUnavailableException('The stocktake could not be completed. Retry the same request to check its outcome.');
+      throw new ServiceUnavailableException(
+        'The stocktake could not be completed. Retry the same request to check its outcome.',
+      );
     } finally {
       client?.release();
     }

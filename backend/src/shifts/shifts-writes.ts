@@ -48,7 +48,9 @@ export class ShiftsWrites {
       const allowed = await client.query(
         `SELECT u.id FROM "user" u JOIN session s ON s."userId" = u.id
         WHERE u.id = $1 AND s.id = $2 AND u.role IN ('cashier', 'manager') AND NOT u.disabled
-        AND u."emailVerified" AND u."twoFactorEnabled" AND s."mfaVerified"
+        AND u."emailVerified"
+        AND ((u.role = 'cashier' AND NOT u."twoFactorEnabled")
+          OR (u."twoFactorEnabled" AND s."mfaVerified"))
         AND s."expiresAt" > now() AND s."lastActivityAt" > now() - interval '15 minutes' FOR SHARE OF u, s`,
         [actor.userId, actor.sessionId],
       );

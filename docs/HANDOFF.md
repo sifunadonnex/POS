@@ -2,7 +2,7 @@
 
 **Updated:** 22 September 2026
 
-**Current phase:** Local backend business flows and the manager-facing inventory/sales workspaces are progressing through stock intake and sales operations, with the Returns, Stocktake and Purchase reconciliation workspaces now wired for operator use. Supplier purchase receipts, supplier directory management, supplier ledgers, purchase reconciliation, inventory movement recording, sales, returns, shifts, reports and stocktake are implemented and verified locally. SMTP delivery, full interactive browser checks and HostPinnacle deployment remain pending.
+**Current phase:** Local backend business flows and the manager-facing inventory/sales workspaces are progressing through stock intake and sales operations, with the Returns, Stocktake and Purchase reconciliation workspaces now wired for operator use. Supplier purchase receipts, supplier directory management, supplier ledgers, purchase reconciliation, inventory movement recording, sales, returns, shifts, reports and stocktake are implemented and verified locally. The current manager/cashier browser walkthrough is complete; SMTP delivery and HostPinnacle deployment remain pending.
 
 Read root/scoped AGENTS and the architecture before changes. Reinspect Git and source; this is a snapshot.
 
@@ -19,6 +19,7 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 
 - Better Auth 1.7.4 email/password sessions with controlled staff accounts, required verification, recovery/password change, authenticator MFA and recovery codes.
 - Server-side manager/cashier authorization, manager staff administration, suspension/session revocation, security audit and 15-minute inactivity locking. Public signup and direct role/profile mutation are blocked.
+- Transactional sale, return, purchase, shift and stocktake writes enforce the same conditional MFA policy as the identity boundary: managers and any 2FA-enabled cashier require a verified MFA session, while a verified password-only cashier remains authorized for cashier work.
 - Durable encrypted SMTP outbox and retry worker are implemented; SMTP acceptance/inbox delivery and hosted scheduling remain unverified.
 - Catalogue categories/products with `each`, `pack`, `kg` and `l` sale units. Prices are exact integer minor units; `kg`/`l` later use 0.001 quantity steps while `each`/`pack` use whole quantities.
 - Unique SKU/barcodes, archive/reactivate, immutable unit after creation, optimistic revisions, append-only product/category history, manager reason capture and idempotent request receipts.
@@ -45,8 +46,8 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 
 | Area                            | Result                                                                                                                                                    |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Backend unit                    | Previous full baseline: 106 tests in 21 files; current sales service focus: 8 tests passed                                                                |
-| PostgreSQL integration          | Previous full baseline: 17 tests in 4 files; current cash-checkout business-flow focus: 2 tests passed against a disposable `_test` schema             |
+| Backend unit                    | 108 tests in 21 files passed                                                                                                                              |
+| PostgreSQL integration          | Current cash-checkout business-flow focus: 2 tests passed against a disposable `_test` schema, including a password-only cashier regression fixture     |
 | HTTP/e2e                        | 20 tests in 3 files passed                                                                                                                                |
 | Backend typecheck/build         | Passed                                                                                                                                                    |
 | Backend lint                    | Passed with two unused-parameter warnings in tests                                                                                                        |
@@ -58,20 +59,20 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 | Frontend tests                  | Previous full baseline: 60 tests in 18 files; current sales API/register focus: 8 tests passed                                                           |
 | Frontend production build       | Passed                                                                                                                                                    |
 | Frontend formatting/diff checks | Prettier check and `git diff --check` passed                                                                                                              |
-| Frontend visual/browser check   | Vite started on port 5179 for the auth redesign; browser connector exposed no browser session, so responsive visual interaction remains unverified      |
+| Frontend visual/browser check   | Real local browser walkthrough passed for manager password/MFA access, product creation, opening stock, stocktake, cashier shift open, over-tender cash checkout, receipt/change and zero-variance close |
 
 The first parallel test attempt saturated local worker startup and produced timeouts; all affected suites passed when rerun serially. A stale identity integration assertion was updated to include the already-implemented security fields. No test or compiler/lint rule was weakened.
 
-Database coverage includes migration up/repeat/down/reapply, auth transactions, catalogue concurrent idempotent replay, conflict rollback, price history, stale edits, atomic CSV import, archival and transactional manager/MFA checks. Dedicated PostgreSQL coverage now verifies replay-safe supplier receipts/returns, reconciliation and signed supplier ledger reads, plus a replay-safe cash checkout with tender/change, receipt lookup and shift-close movement reconciliation. This does not replace real SMTP, visual/browser, load, backup/restore or hosted verification.
+Database coverage includes migration up/repeat/down/reapply, auth transactions, catalogue concurrent idempotent replay, conflict rollback, price history, stale edits, atomic CSV import, archival and transactional manager/MFA checks. Dedicated PostgreSQL coverage now verifies replay-safe supplier receipts/returns, reconciliation and signed supplier ledger reads, plus a replay-safe cash checkout with tender/change, receipt lookup and shift-close movement reconciliation. The browser walkthrough left clearly named disposable product, inventory, stocktake, sale and shift records in the local development database. This does not replace real SMTP, load, backup/restore or hosted verification.
 
 ## Concrete next step
 
-1. Perform an interactive manager/cashier walkthrough when a browser session is available: load Stock control and Stocktake, post a movement/count, then open a shift, tender more than the sale total, confirm the receipt/change and close at the ledger-derived amount.
-2. Agree worked examples for fractional sale/refund rounding before enabling those cases, then add the rounding rules to the PostgreSQL business-flow suite.
-3. Design and implement card/M-Pesa provider confirmation as a durable payment-attempt/reconciliation flow before enabling either button; add M-Pesa STK Push only with approved credentials, callback endpoint and test workflow. Later complete SMTP delivery and the remaining [security verification checklist](SECURITY_VERIFICATION.md), then separately prove HostPinnacle runtime/database/TLS/jobs, phone access and backup/restore.
+1. Agree worked examples for fractional sale/refund rounding before enabling those cases, then add the rounding rules to the PostgreSQL business-flow suite.
+2. Design and implement card/M-Pesa provider confirmation as a durable payment-attempt/reconciliation flow before enabling either button; add M-Pesa STK Push only with approved credentials, callback endpoint and test workflow.
+3. Complete SMTP delivery and the remaining [security verification checklist](SECURITY_VERIFICATION.md), then separately prove HostPinnacle runtime/database/TLS/jobs, phone access and backup/restore.
 
 ## Git and deferred hosting
 
-The catalogue workflow is committed at `9fdcef8`. This audit leaves deliberate PostgreSQL lock corrections, business-flow integration coverage and handoff updates uncommitted; no commit or push was requested. Private environment files, generated builds and `.local/` scratch files remain ignored.
+The current authorization-boundary correction, password-only cashier regression fixture and handoff update are uncommitted; no commit or push was requested. Private environment files and generated builds remain ignored. Task-created `.local/` browser scratch files are removed before handoff.
 
 HostPinnacle target: `https://dev.sifulabs.co.ke/`. Earlier panel evidence showed Node 22.23.2 starting successfully, dependency installation failing under allocation limits, and a later application-lock error. Preserve `backend/app.cjs`, packaging scripts and [the deployment runbook](HOSTPINNACLE_DEPLOYMENT.md); hosted state is still unknown.

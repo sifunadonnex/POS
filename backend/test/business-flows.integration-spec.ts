@@ -80,20 +80,22 @@ describe('PostgreSQL register and purchase business flows', () => {
     }
 
     for (const actor of [manager, cashier]) {
+      const managerSecurity = actor.role === 'manager';
       await pool.query(
         `INSERT INTO "user" (id, name, email, role, "emailVerified", "twoFactorEnabled")
-        VALUES ($1, $2, $3, $4, true, true)`,
+        VALUES ($1, $2, $3, $4, true, $5)`,
         [
           actor.userId,
           `${actor.role} integration`,
           `${actor.role}-${schema}@example.test`,
           actor.role,
+          managerSecurity,
         ],
       );
       await pool.query(
         `INSERT INTO session (id, "userId", token, "expiresAt", "mfaVerified")
-        VALUES ($1, $2, $3, now() + interval '1 hour', true)`,
-        [actor.sessionId, actor.userId, randomUUID()],
+        VALUES ($1, $2, $3, now() + interval '1 hour', $4)`,
+        [actor.sessionId, actor.userId, randomUUID(), managerSecurity],
       );
     }
 
