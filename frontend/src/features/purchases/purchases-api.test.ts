@@ -1,5 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest"
-import { getSuppliers, purchaseRequest } from "./purchases-api"
+import {
+  getSupplierLedger,
+  getSuppliers,
+  purchaseRequest,
+} from "./purchases-api"
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -49,4 +53,61 @@ it("surfaces a rejected purchase write", async () => {
     message: "Supplier not found",
     status: 404,
   })
+})
+
+it("parses signed supplier ledger entries", async () => {
+  const fetch = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        supplier: {
+          id: "11111111-1111-4111-8111-111111111111",
+          name: "Alpha Foods",
+          createdAt: "2026-09-21T08:00:00.000Z",
+        },
+        from: "2026-09-09",
+        to: "2026-09-21",
+        hasMore: false,
+        entries: [
+          {
+            entryId: "receipt-1",
+            kind: "receipt",
+            receiptId: "receipt-1",
+            amountMinor: 20000,
+            signedMinor: 20000,
+            reason: "Delivery note 1042",
+            createdAt: "2026-09-21T08:00:00.000Z",
+          },
+          {
+            entryId: "return-1",
+            kind: "return",
+            receiptId: "receipt-1",
+            amountMinor: 5000,
+            signedMinor: -5000,
+            reason: "Damaged goods",
+            createdAt: "2026-09-21T09:00:00.000Z",
+          },
+        ],
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    )
+  )
+  vi.stubGlobal("fetch", fetch)
+
+  await expect(
+    getSupplierLedger(
+      "11111111-1111-4111-8111-111111111111",
+      "2026-09-09",
+      "2026-09-21"
+    )
+  ).resolves.toMatchObject({
+    supplier: expect.objectContaining({ name: "Alpha Foods" }),
+    entries: [
+      expect.objectContaining({ signedMinor: 20000 }),
+      expect.objectContaining({ signedMinor: -5000 }),
+    ],
+  })
+  expect(fetch).toHaveBeenCalledWith(
+    "/api/purchases/suppliers/11111111-1111-4111-8111-111111111111/ledger?from=2026-09-09&to=2026-09-21&page=0",
+    expect.objectContaining({ method: "GET" })
+  )
 })

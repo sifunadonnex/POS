@@ -13,6 +13,22 @@ export type PurchaseResult = {
   status: "received"
 }
 
+export type SupplierLedger = {
+  supplier: Supplier
+  from: string
+  to: string
+  entries: Array<{
+    entryId: string
+    kind: "receipt" | "return"
+    receiptId: string
+    amountMinor: number
+    signedMinor: number
+    reason: string
+    createdAt: string
+  }>
+  hasMore: boolean
+}
+
 export class PurchaseError extends Error {
   readonly status: number
 
@@ -65,6 +81,54 @@ function parsePurchaseResult(value: unknown): PurchaseResult {
     supplierId: result.supplierId,
     totalMinor: result.totalMinor,
     status: "received",
+  }
+}
+
+function parseSupplierLedger(value: unknown): SupplierLedger {
+  const result = object(value)
+  if (
+    !isDate(result.from) ||
+    !isDate(result.to) ||
+    !result.supplier ||
+    typeof result.supplier !== "object" ||
+    !Array.isArray(result.entries) ||
+    typeof result.hasMore !== "boolean"
+  ) {
+    throw new Error("Invalid supplier ledger response")
+  }
+  const entries = result.entries.map((value) => {
+    const entry = object(value)
+    if (
+      typeof entry.entryId !== "string" ||
+      (entry.kind !== "receipt" && entry.kind !== "return") ||
+      typeof entry.receiptId !== "string" ||
+      typeof entry.amountMinor !== "number" ||
+      !Number.isSafeInteger(entry.amountMinor) ||
+      typeof entry.signedMinor !== "number" ||
+      !Number.isSafeInteger(entry.signedMinor) ||
+      typeof entry.reason !== "string" ||
+      !isDate(entry.createdAt)
+    ) {
+      throw new Error("Invalid supplier ledger entry")
+    }
+    const kind: "receipt" | "return" =
+      entry.kind === "receipt" ? "receipt" : "return"
+    return {
+      entryId: entry.entryId,
+      kind,
+      receiptId: entry.receiptId,
+      amountMinor: entry.amountMinor,
+      signedMinor: entry.signedMinor,
+      reason: entry.reason,
+      createdAt: entry.createdAt,
+    }
+  })
+  return {
+    supplier: parseSupplier(result.supplier),
+    from: result.from,
+    to: result.to,
+    entries,
+    hasMore: result.hasMore,
   }
 }
 
@@ -126,6 +190,25 @@ export async function getSuppliers(search = "", page = 0) {
     suppliers: value.suppliers.map(parseSupplier),
     hasMore: value.hasMore,
   }
+}
+
+export async function getSupplierLedger(
+  supplierId: string,
+  from: string,
+  to: string,
+  page = 0
+) {
+  return parseSupplierLedger(
+    await purchaseRequest(
+      `suppliers/${encodeURIComponent(supplierId)}/ledger?${new URLSearchParams(
+        {
+          from,
+          to,
+          page: String(page),
+        }
+      )}`
+    )
+  )
 }
 
 export async function createSupplier(body: {

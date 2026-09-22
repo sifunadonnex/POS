@@ -4,6 +4,7 @@ import {
   Get,
   Inject,
   Post,
+  Param,
   Query,
   Req,
 } from '@nestjs/common';
@@ -36,6 +37,17 @@ export class PurchasesController {
   @StaffRoles('manager')
   createSupplier(@Req() req: StaffRequest, @Body() body: unknown) {
     return this.suppliers.create(actor(req), body);
+  }
+
+  @Get('suppliers/:supplierId/ledger')
+  @StaffRoles('manager')
+  supplierLedger(
+    @Param('supplierId') supplierId: string,
+    @Query('from') from: unknown,
+    @Query('to') to: unknown,
+    @Query('page') page: unknown,
+  ) {
+    return this.suppliers.ledger(supplierId, from, to, page);
   }
 
   @Post('receive')

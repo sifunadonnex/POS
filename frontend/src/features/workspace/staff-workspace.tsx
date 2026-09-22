@@ -26,6 +26,7 @@ import { StaffAdminScreen } from "../identity/staff-admin-screen"
 import type { Staff } from "../identity/identity-api"
 import { StockControlScreen } from "../inventory/stock-control-screen"
 import { PurchaseIntakeScreen } from "../purchases/purchase-intake-screen"
+import { PurchaseReconciliationScreen } from "../reports/purchase-reconciliation-screen"
 import { ReturnsScreen } from "../returns/returns-screen"
 import { StocktakeScreen } from "../stocktake/stocktake-screen"
 import { DashboardScreen } from "./dashboard-screen"
@@ -122,10 +123,9 @@ const navigationSections: Array<{
     items: [
       {
         id: "reports",
-        label: "Daily reports",
-        description: "Sales, payments and exceptions",
+        label: "Purchase reports",
+        description: "Supplier ledger and purchase reconciliation",
         icon: BarChart3,
-        available: false,
         managerOnly: true,
       },
     ],
@@ -216,8 +216,8 @@ const pageDetails: Record<
   },
   reports: {
     section: "Insights",
-    title: "Daily reports",
-    description: "Detailed sales and exception reports will appear here next.",
+    title: "Purchase reports",
+    description: "Reconcile supplier receipts, returns and net purchase cost.",
   },
 }
 
@@ -422,6 +422,8 @@ export function StaffWorkspace({
             <PurchaseIntakeScreen />
           ) : tab === "stocktake" && manager ? (
             <StocktakeScreen />
+          ) : tab === "reports" && manager ? (
+            <PurchaseReconciliationScreen />
           ) : tab === "staff" && manager ? (
             <StaffAdminScreen currentUserId={staff.id} />
           ) : tab === "audit" && manager ? (

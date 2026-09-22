@@ -94,3 +94,62 @@ it('creates a supplier through the replay-safe purchase writer', async () => {
     [expect.any(String), 'Beta Wholesale'],
   );
 });
+
+it('returns signed supplier ledger entries for the selected date range', async () => {
+  const query = vi
+    .fn()
+    .mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'supplier-1',
+          name: 'Alpha Foods',
+          createdAt: '2026-09-21T08:00:00.000Z',
+        },
+      ],
+    })
+    .mockResolvedValueOnce({
+      rows: [
+        {
+          entry_id: 'receipt-1',
+          kind: 'receipt',
+          receipt_id: 'receipt-1',
+          amount_minor: '20000',
+          reason: 'Delivery note 1042',
+          created_at: '2026-09-21T08:00:00.000Z',
+        },
+        {
+          entry_id: 'return-1',
+          kind: 'return',
+          receipt_id: 'receipt-1',
+          amount_minor: '5000',
+          reason: 'Damaged goods',
+          created_at: '2026-09-21T09:00:00.000Z',
+        },
+      ],
+    });
+  const module = await Test.createTestingModule({
+    providers: [
+      SuppliersService,
+      PurchasesWrites,
+      {
+        provide: DatabaseService,
+        useValue: { connectionPool: { query } },
+      },
+    ],
+  }).compile();
+
+  const result = await module
+    .get(SuppliersService)
+    .ledger(
+      '11111111-1111-4111-8111-111111111111',
+      '2026-09-01',
+      '2026-09-21',
+      0,
+    );
+
+  expect(result.supplier.name).toBe('Alpha Foods');
+  expect(result.entries.map((entry) => entry.signedMinor)).toEqual([
+    20000, -5000,
+  ]);
+  expect(result.hasMore).toBe(false);
+});
