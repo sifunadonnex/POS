@@ -37,6 +37,7 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 - Manager Stocktake workspace now loads authoritative stock balances, supports search and paging, accepts exact unit-aware physical counts, previews the reconciliation delta, and posts replay-safe counts through the transactional stocktake endpoint. It is wired into the manager-only Inventory sidebar.
 - Supplier purchase receipt and supplier-return flows with request replay protection, supplier validation, exact unit-aware totals, cumulative return limits, stock movement logging and append-only receipt history. Supplier directory listing and manager creation are now available.
 - Sales, customer returns, shifts, reports and stocktake flows are transactional and replay-safe. Checkout and refunds use server-authoritative catalogue/sale prices; split payments and repeated returns cannot exceed their source totals.
+- Stock-changing product reads now lock only the catalogue row in PostgreSQL. This preserves per-product serialization without trying to lock the nullable inventory side of a left join, which previously prevented first receipts and sales from committing.
 - Forward migrations `202609210001_business_invariants` and `202609210002_payment_shift_reconciliation` permit `stocktake` inventory movements, enforce non-negative stock, permit only one open shift per cashier, allow a single open-to-closed shift transition, and link confirmed payments to shift reconciliation.
 - Fractional minor-unit line totals are rejected with a clear error until the documented rounding examples are agreed; no silent rounding was introduced.
 
@@ -45,11 +46,11 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 | Area                            | Result                                                                                                                                                    |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Backend unit                    | 106 tests in 21 files passed serially                                                                                                                     |
-| PostgreSQL integration          | 15 tests in 3 files passed against disposable `_test` schemas                                                                                             |
+| PostgreSQL integration          | 17 tests in 4 files passed against disposable `_test` schemas                                                                                             |
 | HTTP/e2e                        | 20 tests in 3 files passed                                                                                                                                |
 | Backend typecheck/build         | Passed                                                                                                                                                    |
 | Backend lint                    | Passed with two unused-parameter warnings in tests                                                                                                        |
-| Local API business flows        | Stock/sales/purchase/receipt/reconciliation paths passed unit and HTTP contract coverage; PostgreSQL business-flow integration remains pending           |
+| Local API business flows        | Supplier receipt/return, reconciliation/ledger, register sale/payment and shift-close paths passed dedicated PostgreSQL business-flow coverage           |
 | Development database            | Local PostgreSQL migrations through `202609210002_payment_shift_reconciliation` applied successfully                                                       |
 | Business invariants             | Regression coverage passed for server pricing, cumulative payments/returns, exact unit-aware totals, shift ownership and stocktake movement compatibility |
 | Frontend lint/typecheck         | Passed                                                                                                                                                    |
@@ -60,17 +61,16 @@ Read root/scoped AGENTS and the architecture before changes. Reinspect Git and s
 
 The first parallel test attempt saturated local worker startup and produced timeouts; all affected suites passed when rerun serially. A stale identity integration assertion was updated to include the already-implemented security fields. No test or compiler/lint rule was weakened.
 
-Database coverage includes migration up/repeat/down/reapply, auth transactions, catalogue concurrent idempotent replay, conflict rollback, price history, stale edits, atomic CSV import, archival and transactional manager/MFA checks. The new stock/sales/purchase paths have unit and HTTP coverage but still need a dedicated PostgreSQL business-flow integration suite. This does not replace real SMTP, visual/browser, load, backup/restore or hosted verification.
+Database coverage includes migration up/repeat/down/reapply, auth transactions, catalogue concurrent idempotent replay, conflict rollback, price history, stale edits, atomic CSV import, archival and transactional manager/MFA checks. Dedicated PostgreSQL coverage now verifies replay-safe supplier receipts/returns, reconciliation and signed supplier ledger reads, plus cash sale/payment/shift-close movement reconciliation. This does not replace real SMTP, visual/browser, load, backup/restore or hosted verification.
 
 ## Concrete next step
 
-1. Extend the register, purchase intake and reconciliation paths with dedicated PostgreSQL business-flow integration coverage beyond migration validation.
-2. Agree worked examples for fractional sale/refund rounding before enabling those cases, then add the rounding rules to the PostgreSQL business-flow suite.
-3. Perform the browser-based manager walkthrough when a browser session is available, including report filtering and supplier-ledger drill-down.
-4. Later complete SMTP delivery and the remaining [security verification checklist](SECURITY_VERIFICATION.md), then separately prove HostPinnacle runtime/database/TLS/jobs, phone access and backup/restore.
+1. Agree worked examples for fractional sale/refund rounding before enabling those cases, then add the rounding rules to the PostgreSQL business-flow suite.
+2. Perform the browser-based manager walkthrough when a browser session is available, including report filtering and supplier-ledger drill-down.
+3. Later complete SMTP delivery and the remaining [security verification checklist](SECURITY_VERIFICATION.md), then separately prove HostPinnacle runtime/database/TLS/jobs, phone access and backup/restore.
 
 ## Git and deferred hosting
 
-The catalogue workflow is committed at `9fdcef8`. This audit leaves only deliberate test/documentation corrections uncommitted; no commit or push was requested. Private environment files, generated builds and `.local/` scratch files remain ignored.
+The catalogue workflow is committed at `9fdcef8`. This audit leaves deliberate PostgreSQL lock corrections, business-flow integration coverage and handoff updates uncommitted; no commit or push was requested. Private environment files, generated builds and `.local/` scratch files remain ignored.
 
 HostPinnacle target: `https://dev.sifulabs.co.ke/`. Earlier panel evidence showed Node 22.23.2 starting successfully, dependency installation failing under allocation limits, and a later application-lock error. Preserve `backend/app.cjs`, packaging scripts and [the deployment runbook](HOSTPINNACLE_DEPLOYMENT.md); hosted state is still unknown.

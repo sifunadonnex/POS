@@ -90,7 +90,14 @@ export class PurchasesWrites {
           throw new ConflictException('This purchase request is already committed. Reload and retry.');
         }
       }
-      throw new ServiceUnavailableException('The purchase could not be completed. Retry the same request to check its outcome.');
+      this.logger.error(
+        error instanceof Error
+          ? `Purchase transaction failed: ${error.message}`
+          : 'Purchase transaction failed with an unknown error',
+      );
+      throw new ServiceUnavailableException(
+        'The purchase could not be completed. Retry the same request to check its outcome.',
+      );
     } finally {
       client?.release();
     }

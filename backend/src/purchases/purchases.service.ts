@@ -153,7 +153,7 @@ export class PurchasesService {
             `SELECT p.id, p.unit, p.active, COALESCE(s.quantity_minor, 0) AS quantity_minor
             FROM catalogue_product p
             LEFT JOIN inventory_stock s ON s.product_id = p.id
-            WHERE p.id = $1 FOR UPDATE`,
+            WHERE p.id = $1 FOR UPDATE OF p`,
             [productId],
           );
           const row = product.rows[0];
@@ -385,7 +385,7 @@ export class PurchasesService {
             `SELECT p.id, p.unit, p.active, COALESCE(s.quantity_minor, 0) AS quantity_minor
             FROM catalogue_product p
             LEFT JOIN inventory_stock s ON s.product_id = p.id
-            WHERE p.id = $1 FOR UPDATE`,
+            WHERE p.id = $1 FOR UPDATE OF p`,
             [productId],
           );
           const row = product.rows[0];

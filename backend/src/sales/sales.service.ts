@@ -284,7 +284,7 @@ export class SalesService {
           }>(
             `SELECT p.id, p.unit, p.price_minor::text, p.active, COALESCE(s.quantity_minor, 0)::text AS quantity_minor
             FROM catalogue_product p LEFT JOIN inventory_stock s ON s.product_id = p.id
-            WHERE p.id = $1 FOR UPDATE`,
+            WHERE p.id = $1 FOR UPDATE OF p`,
             [line.productId],
           );
           const row = product.rows[0];

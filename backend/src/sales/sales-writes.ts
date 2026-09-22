@@ -90,7 +90,14 @@ export class SalesWrites {
           throw new ConflictException('This sale request is already committed. Reload and retry.');
         }
       }
-      throw new ServiceUnavailableException('The checkout could not be confirmed. Retry the same request to check its outcome.');
+      this.logger.error(
+        error instanceof Error
+          ? `Sale transaction failed: ${error.message}`
+          : 'Sale transaction failed with an unknown error',
+      );
+      throw new ServiceUnavailableException(
+        'The checkout could not be confirmed. Retry the same request to check its outcome.',
+      );
     } finally {
       client?.release();
     }
