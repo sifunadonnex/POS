@@ -36,6 +36,36 @@ describe('SalesService', () => {
     expect(quote.lines[2].lineTotalMinor).toBe(2100);
   });
 
+  it('rounds fractional line totals to the nearest minor unit, half up', () => {
+    const service = new SalesService();
+
+    const quote = service.quoteBasket([
+      {
+        productId: '11111111-1111-4111-8111-111111111111',
+        unit: 'kg',
+        quantity: 0.125,
+        priceMinor: 18005,
+      },
+      {
+        productId: '22222222-2222-4222-8222-222222222222',
+        unit: 'l',
+        quantity: 0.5,
+        priceMinor: 1001,
+      },
+      {
+        productId: '33333333-3333-4333-8333-333333333333',
+        unit: 'kg',
+        quantity: 0.499,
+        priceMinor: 1001,
+      },
+    ]);
+
+    expect(quote.lines.map((line) => line.lineTotalMinor)).toEqual([
+      2251, 501, 499,
+    ]);
+    expect(quote.totalMinor).toBe(3251);
+  });
+
   it('rejects invalid fractional quantities for whole-unit products', () => {
     const service = new SalesService();
 

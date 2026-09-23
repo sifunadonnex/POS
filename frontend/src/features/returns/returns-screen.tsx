@@ -60,10 +60,12 @@ function refundTotal(sale: ReturnSale, quantities: Record<string, string>) {
       if (quantities[line.productId]) return null
       continue
     }
-    const raw = quantity * BigInt(line.unitPriceMinor)
-    if (line.unit !== "each" && line.unit !== "pack" && raw % 1000n !== 0n)
-      return null
-    total += line.unit === "each" || line.unit === "pack" ? raw : raw / 1000n
+    if (quantity > BigInt(line.availableQuantityMinor)) return null
+    const scale = line.unit === "each" || line.unit === "pack" ? 1n : 1000n
+    const returned = BigInt(line.returnedQuantityMinor)
+    const price = BigInt(line.unitPriceMinor)
+    const rounded = (value: bigint) => (value * price + scale / 2n) / scale
+    total += rounded(returned + quantity) - rounded(returned)
   }
   return total
 }
@@ -156,7 +158,7 @@ export function ReturnsScreen() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!sale || total === null || total === 0n || saving) {
+    if (!sale || total === null || saving) {
       setSubmitError(
         "Select at least one valid quantity within the remaining refundable balance."
       )
@@ -178,6 +180,12 @@ export function ReturnsScreen() {
         productId: line.productId,
         quantityMinor: line.quantityMinor.toString(),
       }))
+    if (lines.length === 0) {
+      setSubmitError(
+        "Select at least one valid quantity within the remaining refundable balance."
+      )
+      return
+    }
     const next = pending ?? {
       saleId: sale.saleId,
       reason: reason.trim(),
@@ -494,7 +502,7 @@ export function ReturnsScreen() {
                       saving ||
                       Boolean(pending && !pending.uncertain) ||
                       total === null ||
-                      total === 0n
+                      !Object.values(quantities).some((value) => value.trim())
                     }
                   >
                     {saving

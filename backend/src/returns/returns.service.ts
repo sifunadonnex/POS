@@ -6,6 +6,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { roundedLineTotalMinor } from '../common/minor-unit-rounding.js';
 import { type ReturnActor, ReturnsWrites } from './returns-writes.js';
 
 export type ReturnLineInput = {
@@ -53,7 +54,7 @@ export class ReturnsService {
       if (
         !Number.isFinite(quantityMinor) ||
         quantityMinor <= 0 ||
-        !Number.isInteger(quantityMinor)
+        !Number.isSafeInteger(quantityMinor)
       ) {
         throw new BadRequestException(
           `Return line ${index} has an invalid quantityMinor`,
@@ -78,13 +79,7 @@ export class ReturnsService {
     unitPriceMinor: number,
     unit: 'each' | 'pack' | 'kg' | 'l',
   ): number {
-    const raw = BigInt(quantityMinor) * BigInt(unitPriceMinor);
-    if (unit !== 'each' && unit !== 'pack' && raw % 1000n !== 0n) {
-      throw new BadRequestException(
-        'Refund line is fractional in minor units; rounding policy is required',
-      );
-    }
-    const total = unit === 'each' || unit === 'pack' ? raw : raw / 1000n;
+    const total = roundedLineTotalMinor(quantityMinor, unitPriceMinor, unit);
     if (total > BigInt(Number.MAX_SAFE_INTEGER))
       throw new BadRequestException('Refund line is too large');
     return Number(total);
@@ -157,6 +152,7 @@ export class ReturnsService {
             product_id: string;
             unit: 'each' | 'pack' | 'kg' | 'l';
             unit_price_minor: number;
+            line_total_minor: number;
           };
           row: {
             id: string;
@@ -177,8 +173,9 @@ export class ReturnsService {
             unit: 'each' | 'pack' | 'kg' | 'l';
             quantity_minor: number;
             unit_price_minor: number;
+            line_total_minor: number;
           }>(
-            `SELECT sl.id, sl.product_id, p.unit, sl.quantity_minor, sl.unit_price_minor
+            `SELECT sl.id, sl.product_id, p.unit, sl.quantity_minor, sl.unit_price_minor, sl.line_total_minor
             FROM sale s
             JOIN sale_line sl ON sl.sale_id = s.id
             JOIN catalogue_product p ON p.id = sl.product_id
@@ -219,11 +216,21 @@ export class ReturnsService {
             (pendingReturns.get(source.id) ?? 0) + line.quantityMinor,
           );
 
-          const lineAmount = this.lineTotalMinor(
-            line.quantityMinor,
+          const cumulativeQuantity = returnedQuantity + line.quantityMinor;
+          const refundedBefore = this.lineTotalMinor(
+            returnedQuantity,
             Number(source.unit_price_minor),
             source.unit,
           );
+          const refundedAfter =
+            cumulativeQuantity === Number(source.quantity_minor)
+              ? Number(source.line_total_minor)
+              : this.lineTotalMinor(
+                  cumulativeQuantity,
+                  Number(source.unit_price_minor),
+                  source.unit,
+                );
+          const lineAmount = refundedAfter - refundedBefore;
           amountMinor += lineAmount;
 
           const product = await client.query<{

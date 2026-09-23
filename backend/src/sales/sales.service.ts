@@ -6,6 +6,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { roundedLineTotalMinor } from '../common/minor-unit-rounding.js';
 import { DatabaseService } from '../database/database.service.js';
 import { type SaleActor, SalesWrites } from './sales-writes.js';
 
@@ -58,10 +59,6 @@ type RequestedBasketLine = {
   quantity: number;
 };
 
-function isInteger(value: number): boolean {
-  return Number.isFinite(value) && Number.isInteger(value);
-}
-
 @Injectable()
 export class SalesService {
   constructor(
@@ -75,7 +72,7 @@ export class SalesService {
     }
 
     if (unit === 'each' || unit === 'pack') {
-      if (!isInteger(quantity)) {
+      if (!Number.isSafeInteger(quantity)) {
         throw new BadRequestException(
           'Quantity for each and pack must be a whole number',
         );
@@ -84,6 +81,9 @@ export class SalesService {
     }
 
     const thousands = Math.round(quantity * 1000);
+    if (!Number.isSafeInteger(thousands)) {
+      throw new BadRequestException('Quantity is too large');
+    }
     if (Math.abs(thousands / 1000 - quantity) > 1e-9) {
       throw new BadRequestException(
         'Quantity for kg and l must use increments of 0.001',
@@ -148,16 +148,11 @@ export class SalesService {
         'Price must be a non-negative integer minor amount',
       );
     }
-    const quantityInThousandths =
-      BigInt(this.toMinor(quantity, unit)) *
-      (unit === 'each' || unit === 'pack' ? 1000n : 1n);
-    const totalInThousandths = quantityInThousandths * BigInt(priceMinor);
-    if (totalInThousandths % 1000n !== 0n) {
-      throw new BadRequestException(
-        'Line total is fractional in minor units; rounding policy is required',
-      );
-    }
-    const total = totalInThousandths / 1000n;
+    const total = roundedLineTotalMinor(
+      this.toMinor(quantity, unit),
+      priceMinor,
+      unit,
+    );
     if (total > BigInt(Number.MAX_SAFE_INTEGER))
       throw new BadRequestException('Line total is too large');
     return Number(total);

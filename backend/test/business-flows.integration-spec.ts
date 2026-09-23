@@ -12,6 +12,8 @@ import { PurchasesService } from '../src/purchases/purchases.service.js';
 import { PurchasesWrites } from '../src/purchases/purchases-writes.js';
 import { SuppliersService } from '../src/purchases/suppliers.service.js';
 import { ReportsService } from '../src/reports/reports.service.js';
+import { ReturnsService } from '../src/returns/returns.service.js';
+import { ReturnsWrites } from '../src/returns/returns-writes.js';
 import { SalesService } from '../src/sales/sales.service.js';
 import { SalesLookupService } from '../src/sales/sales-lookup.service.js';
 import { SalesWrites } from '../src/sales/sales-writes.js';
@@ -32,6 +34,7 @@ describe('PostgreSQL register and purchase business flows', () => {
   let inventory: InventoryService;
   let suppliers: SuppliersService;
   let reports: ReportsService;
+  let returns: ReturnsService;
   let sales: SalesService;
   let saleLookup: SalesLookupService;
   let shifts: ShiftsService;
@@ -47,6 +50,7 @@ describe('PostgreSQL register and purchase business flows', () => {
     role: 'cashier',
   };
   const productId = randomUUID();
+  const fractionalProductId = randomUUID();
 
   beforeAll(async () => {
     const url = process.env.TEST_DATABASE_URL;
@@ -104,7 +108,6 @@ describe('PostgreSQL register and purchase business flows', () => {
       VALUES ($1, 'FLOUR-2KG', 'Premium flour', 'each', 250, true)`,
       [productId],
     );
-
     fixture = await Test.createTestingModule({
       providers: [
         PurchasesService,
@@ -113,6 +116,8 @@ describe('PostgreSQL register and purchase business flows', () => {
         InventoryWrites,
         SuppliersService,
         ReportsService,
+        ReturnsService,
+        ReturnsWrites,
         SalesService,
         SalesLookupService,
         SalesWrites,
@@ -125,6 +130,7 @@ describe('PostgreSQL register and purchase business flows', () => {
     inventory = fixture.get(InventoryService);
     suppliers = fixture.get(SuppliersService);
     reports = fixture.get(ReportsService);
+    returns = fixture.get(ReturnsService);
     sales = fixture.get(SalesService);
     saleLookup = fixture.get(SalesLookupService);
     shifts = fixture.get(ShiftsService);
@@ -353,6 +359,63 @@ describe('PostgreSQL register and purchase business flows', () => {
       refundMinor: 0,
       closedShiftCount: 1,
       varianceMinor: 0,
+    });
+  });
+
+  it('rounds a fractional sale half up and allocates repeated refunds cumulatively', async () => {
+    await pool.query(
+      `INSERT INTO catalogue_product (id, sku, name, unit, price_minor, active)
+      VALUES ($1, 'OIL-KG', 'Cooking oil by weight', 'kg', 1001, true)`,
+      [fractionalProductId],
+    );
+    await pool.query(
+      `INSERT INTO inventory_stock (product_id, unit, quantity_minor)
+      VALUES ($1, 'kg', 2000)`,
+      [fractionalProductId],
+    );
+    await shifts.openShift(cashier, {
+      requestId: randomUUID(),
+      reason: 'Fractional sale float',
+      openingCashMinor: 0,
+    });
+    const sale = await sales.checkout(cashier, {
+      requestId: randomUUID(),
+      reason: 'Fractional counter sale',
+      lines: [{ productId: fractionalProductId, unit: 'kg', quantity: 1 }],
+      cashTenderedMinor: 1100,
+    });
+    expect(sale.totalMinor).toBe(1001);
+
+    const returnQuantities = [333, 333, 333, 1];
+    const expectedRefunds = [333, 334, 333, 1];
+    for (const [index, quantityMinor] of returnQuantities.entries()) {
+      const result = await returns.createReturn(manager, {
+        requestId: randomUUID(),
+        saleId: sale.saleId,
+        reason: `Fractional return ${index + 1}`,
+        lines: [{ productId: fractionalProductId, quantityMinor }],
+      });
+      expect(result.amountMinor).toBe(expectedRefunds[index]);
+    }
+
+    const stored = await pool.query<{
+      line_total_minor: string;
+      refund_minor: string;
+      returned_quantity_minor: string;
+      stock_quantity_minor: string;
+    }>(
+      `SELECT sl.line_total_minor::text,
+      (SELECT SUM(amount_minor)::text FROM sale_refund WHERE sale_id = s.id) AS refund_minor,
+      (SELECT SUM(quantity_minor)::text FROM sale_return_line WHERE sale_line_id = sl.id) AS returned_quantity_minor,
+      (SELECT quantity_minor::text FROM inventory_stock WHERE product_id = sl.product_id) AS stock_quantity_minor
+      FROM sale s JOIN sale_line sl ON sl.sale_id = s.id WHERE s.id = $1`,
+      [sale.saleId],
+    );
+    expect(stored.rows[0]).toEqual({
+      line_total_minor: '1001',
+      refund_minor: '1001',
+      returned_quantity_minor: '1000',
+      stock_quantity_minor: '2000',
     });
   });
 });

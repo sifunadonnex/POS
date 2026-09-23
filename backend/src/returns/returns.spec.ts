@@ -45,6 +45,7 @@ describe('ReturnsService', () => {
               unit: 'kg',
               quantity_minor: 2000,
               unit_price_minor: 3200,
+              line_total_minor: 6400,
             },
           ],
         };

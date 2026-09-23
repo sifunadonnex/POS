@@ -165,7 +165,7 @@ The following is the product roadmap. Section 12 identifies the first test relea
 | Audit | User, time, action, reason and relevant before/after values | Separate tamper-resistant storage and alerting |
 | Integrations | Test adapters and clear simulated status | M-Pesa, eTIMS, accounting and messaging |
 
-The user confirmed weight and volume sales on 15 September 2026. The implemented catalogue uses `each`, `pack`, `kg` and `l`; planned quantity steps are 1 for `each`/`pack` and 0.001 for `kg`/`l`. Checkout fractional-line rounding examples still need definition before sale-total implementation. Expiry tracking and split-payment requirements remain open.
+The user confirmed weight and volume sales on 15 September 2026. The implemented catalogue uses `each`, `pack`, `kg` and `l`; quantity steps are 1 for `each`/`pack` and 0.001 for `kg`/`l`. Checkout and customer-return rounding now follow the explicit worked examples below. Expiry tracking and split-payment requirements remain open.
 
 ## 7. Data and transaction rules
 
@@ -198,6 +198,21 @@ Include branch and till identifiers in transactions from the start, using one br
 - Derive stock from an append-only movement ledger. Cached balances must be rebuildable.
 - Define a cost method with the shop before presenting profit reports; initially propose weighted-average cost with sale-time cost snapshots.
 - Keep application-level audit records append-only. Privileged hosting/database access can still alter records; stronger independent tamper resistance is a later improvement.
+
+#### Sale and customer-return rounding
+
+- Convert `kg`/`l` quantities to integer thousandths before multiplying; never calculate payable amounts with binary floating-point arithmetic.
+- Round each non-negative sale line to the nearest minor currency unit after multiplying quantity by the integer-minor-unit price. An exact half minor unit rounds up. Sum the rounded line totals to obtain the sale total.
+- Allocate repeated partial refunds from the rounded cumulative returned quantity: the current refund is the rounded cumulative value after this return minus the rounded cumulative value before it. This prevents return order from creating extra value and makes a full return equal the immutable original sale-line total.
+- This rule currently applies to checkout and customer returns. Supplier receipt and supplier-return lines still require exact minor-unit totals until their costing policy is explicitly extended.
+
+| Case | Exact calculation | Stored/paid result |
+| --- | --- | --- |
+| Whole items | 2 × KES 25.00 | KES 50.00 |
+| Fraction below half | 0.499 kg × KES 10.01 = KES 4.99499 | KES 4.99 |
+| Exact half | 0.500 l × KES 10.01 = KES 5.005 | KES 5.01 |
+| Fraction above half | 0.125 kg × KES 180.05 = KES 22.50625 | KES 22.51 |
+| Repeated partial returns | A 1.000 kg line at KES 10.01 is returned as 0.333 + 0.333 + 0.333 + 0.001 kg | Refunds KES 3.33, KES 3.34, KES 3.33 and KES 0.01; total KES 10.01 |
 
 ### 7.3 Separate sale, payment, and fiscal states
 
@@ -434,12 +449,12 @@ Retain SQL migrations, modular APIs, stable IDs, and explicit provider adapters 
 5. Which HostPinnacle package, Node.js/PostgreSQL versions, resource limits and backup features are actually available?
 6. Is online-only checkout acceptable for live trading, or must offline operation be implemented before launch?
 7. What eTIMS and M-Pesa setup does the shop already have?
-8. Weight and volume sales use `kg`/`l` with 0.001 quantity steps. Which fractional line-total rounding examples apply? Are expiry batches, split payments or credit required immediately?
+8. Are expiry batches, split payments or credit required immediately, and should the checkout rounding policy also govern fractional supplier costs?
 9. What approval limits, stock policy and cost method should apply?
 10. Who handles backups, support and recovery, and what downtime/data loss can the shop accept?
 11. Which owned domain/subdomain should host the isolated test deployment?
 
-These questions refine the pilot. Local PostgreSQL authentication and catalogue verification now pass, including weight/volume catalogue units. Real SMTP, full interactive browser checks, deployment and phone access remain required before the hosted pilot. Inventory is the next business milestone; checkout rounding must be decided before sale totals are implemented.
+These questions refine the pilot. Local PostgreSQL authentication, catalogue, inventory, purchasing, checkout and customer-return flows now have database-backed coverage, including weight/volume sale and refund rounding. Real SMTP, full interactive browser checks, deployment and phone access remain required before the hosted pilot.
 
 ## 16. Decision log
 
@@ -463,6 +478,7 @@ These questions refine the pilot. Local PostgreSQL authentication and catalogue 
 | ADR-016 | PostgreSQL was reported absent, so database work was temporarily deferred | Superseded: PostgreSQL 18 is now running and local migrations/integration pass | 2026-09-15 |
 | ADR-017 | Finish remaining login/security work before the full POS backlog | User-confirmed priority | 2026-09-15 |
 | ADR-018 | Existing SMTP mailbox for verification/recovery; encrypted PostgreSQL email jobs with bounded retries | Mailbox selected by user; implementation added, delivery and hosted scheduling unverified | 2026-09-15 |
-| ADR-019 | Include weight and volume sales in the first catalogue/checkout | Catalogue implemented with `kg`/`l` 0.001 steps; checkout rounding still pending | 2026-09-15 |
+| ADR-019 | Include weight and volume sales in the first catalogue/checkout | Implemented with `kg`/`l` 0.001 steps and explicit sale/refund rounding | 2026-09-15 |
+| ADR-020 | Round non-negative checkout lines to the nearest minor unit with exact halves up; allocate partial refunds from cumulative rounded value | Implemented locally with unit, UI and PostgreSQL regression coverage; supplier-cost extension remains open | 2026-09-23 |
 
 Provider claims cited above were reviewed on 14 September 2026. Recheck plan terms when creating accounts or enabling live integrations.

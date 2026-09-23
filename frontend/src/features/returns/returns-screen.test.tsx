@@ -112,3 +112,28 @@ it("retries an uncertain return with the same request and request ID", async () 
     mocks.createReturn.mock.calls[0]
   )
 })
+
+it("previews cumulative half-up rounding for a partial fractional refund", async () => {
+  mocks.getSale.mockResolvedValue({
+    ...summary,
+    lines: [
+      {
+        ...sale.lines[0],
+        unit: "kg" as const,
+        soldQuantityMinor: 1000,
+        returnedQuantityMinor: 333,
+        availableQuantityMinor: 667,
+        unitPriceMinor: 1001,
+      },
+    ],
+  })
+  render(<ReturnsScreen />)
+  fireEvent.click(await screen.findByRole("button", { name: /Sale 11111111/ }))
+  fireEvent.change(await screen.findByLabelText("Return quantity"), {
+    target: { value: "0.333" },
+  })
+
+  expect(screen.getByText("Refund total").parentElement?.textContent).toContain(
+    "KES 3.34"
+  )
+})
