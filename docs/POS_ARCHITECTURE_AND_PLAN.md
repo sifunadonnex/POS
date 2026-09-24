@@ -262,6 +262,8 @@ Start with fake cash and simulated M-Pesa/eTIMS adapters. Use isolated test reco
 
 Exercise successful, failed, duplicate, delayed, and unknown payment responses through tests. Using a sandbox does not make the production payment flow free or approved.
 
+The local backend now has a provider-neutral durable payment-attempt foundation. Starting an external payment records the request fingerprint, sale, originating shift, exact outstanding amount and an append-only initial event before any gateway call. Provider results append events and may create a paid sale-payment record only when the provider reference and confirmed amount match. Pending or unknown attempts block a second charge until reconciliation; failed attempts may be retried with a new request ID. The application runtime uses a disabled gateway, and deterministic gateway behavior exists only in automated tests, so card and M-Pesa remain unavailable in the register.
+
 ### 9.2 M-Pesa
 
 Use Daraja for integration when the core checkout is stable. Confirm the shop's Till/PayBill arrangement and provider onboarding requirements at that point. [Safaricom Daraja](https://developer.safaricom.co.ke/apis)
@@ -480,5 +482,6 @@ These questions refine the pilot. Local PostgreSQL authentication, catalogue, in
 | ADR-018 | Existing SMTP mailbox for verification/recovery; encrypted PostgreSQL email jobs with bounded retries | Mailbox selected by user; implementation added, delivery and hosted scheduling unverified | 2026-09-15 |
 | ADR-019 | Include weight and volume sales in the first catalogue/checkout | Implemented with `kg`/`l` 0.001 steps and explicit sale/refund rounding | 2026-09-15 |
 | ADR-020 | Round non-negative checkout lines to the nearest minor unit with exact halves up; allocate partial refunds from cumulative rounded value | Implemented locally with unit, UI and PostgreSQL regression coverage; supplier-cost extension remains open | 2026-09-23 |
+| ADR-021 | Persist external payment attempts and append-only provider events before confirmation; accept payment only on an exact amount/reference match and reconcile unknown outcomes before retry | Provider-neutral backend and tests implemented; runtime gateway, callback route and register methods remain disabled pending provider approval/configuration | 2026-09-23 |
 
 Provider claims cited above were reviewed on 14 September 2026. Recheck plan terms when creating accounts or enabling live integrations.

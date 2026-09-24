@@ -8,6 +8,15 @@ import { databaseOptions } from '../src/database/database.options.js';
 import { DatabaseService } from '../src/database/database.service.js';
 import { InventoryService } from '../src/inventory/inventory.service.js';
 import { InventoryWrites } from '../src/inventory/inventory-writes.js';
+import { PaymentAttemptsService } from '../src/payments/payment-attempts.service.js';
+import { PaymentAttemptsStore } from '../src/payments/payment-attempts.store.js';
+import {
+  PAYMENT_GATEWAY,
+  type GatewayPaymentInput,
+  type GatewayPaymentResult,
+  type PaymentAttemptStatus,
+  type PaymentGateway,
+} from '../src/payments/payment-gateway.js';
 import { PurchasesService } from '../src/purchases/purchases.service.js';
 import { PurchasesWrites } from '../src/purchases/purchases-writes.js';
 import { SuppliersService } from '../src/purchases/suppliers.service.js';
@@ -32,6 +41,7 @@ describe('PostgreSQL register and purchase business flows', () => {
   let fixture: TestingModule;
   let purchases: PurchasesService;
   let inventory: InventoryService;
+  let paymentAttempts: PaymentAttemptsService;
   let suppliers: SuppliersService;
   let reports: ReportsService;
   let returns: ReturnsService;
@@ -51,6 +61,35 @@ describe('PostgreSQL register and purchase business flows', () => {
   };
   const productId = randomUUID();
   const fractionalProductId = randomUUID();
+  let initiationStatus: PaymentAttemptStatus = 'confirmed';
+  let reconciliationStatus: PaymentAttemptStatus = 'confirmed';
+  let confirmationAmountDelta = 0;
+  const gateway: PaymentGateway = {
+    name: 'integration_gateway',
+    supports: vi.fn(() => true),
+    initiate: vi.fn(
+      async (input: GatewayPaymentInput): Promise<GatewayPaymentResult> => ({
+        status: initiationStatus,
+        amountMinor:
+          initiationStatus === 'confirmed'
+            ? input.amountMinor + confirmationAmountDelta
+            : undefined,
+        providerReference: `integration-${input.attemptId}`,
+        providerEventId: `initiation-${input.attemptId}`,
+        detailCode:
+          initiationStatus === 'unknown' ? 'provider_timeout' : undefined,
+      }),
+    ),
+    reconcile: vi.fn(
+      async (input: GatewayPaymentInput): Promise<GatewayPaymentResult> => ({
+        status: reconciliationStatus,
+        amountMinor:
+          reconciliationStatus === 'confirmed' ? input.amountMinor : undefined,
+        providerReference: input.providerReference,
+        providerEventId: `reconciliation-${input.attemptId}`,
+      }),
+    ),
+  };
 
   beforeAll(async () => {
     const url = process.env.TEST_DATABASE_URL;
@@ -114,6 +153,9 @@ describe('PostgreSQL register and purchase business flows', () => {
         PurchasesWrites,
         InventoryService,
         InventoryWrites,
+        PaymentAttemptsService,
+        PaymentAttemptsStore,
+        { provide: PAYMENT_GATEWAY, useValue: gateway },
         SuppliersService,
         ReportsService,
         ReturnsService,
@@ -128,6 +170,7 @@ describe('PostgreSQL register and purchase business flows', () => {
     }).compile();
     purchases = fixture.get(PurchasesService);
     inventory = fixture.get(InventoryService);
+    paymentAttempts = fixture.get(PaymentAttemptsService);
     suppliers = fixture.get(SuppliersService);
     reports = fixture.get(ReportsService);
     returns = fixture.get(ReturnsService);
@@ -416,6 +459,166 @@ describe('PostgreSQL register and purchase business flows', () => {
       refund_minor: '1001',
       returned_quantity_minor: '1000',
       stock_quantity_minor: '2000',
+    });
+  });
+
+  it('confirms, deduplicates, and reconciles durable external payment attempts', async () => {
+    initiationStatus = 'confirmed';
+    reconciliationStatus = 'confirmed';
+    confirmationAmountDelta = 0;
+    const immediateSale = await sales.finalize(cashier, {
+      requestId: randomUUID(),
+      reason: 'External payment sale',
+      lines: [{ productId, unit: 'each', quantity: 1 }],
+    });
+    const immediateRequestId = randomUUID();
+    const immediateInput = {
+      requestId: immediateRequestId,
+      saleId: immediateSale.saleId,
+      kind: 'card',
+      reason: 'Verified terminal payment',
+    };
+    const immediate = await paymentAttempts.start(cashier, immediateInput);
+    const replayedImmediate = await paymentAttempts.start(
+      cashier,
+      immediateInput,
+    );
+    expect(immediate).toMatchObject({
+      saleId: immediateSale.saleId,
+      kind: 'card',
+      amountMinor: 250,
+      status: 'confirmed',
+      provider: 'integration_gateway',
+      providerReference: `integration-${immediate.attemptId}`,
+      paymentId: expect.any(String),
+    });
+    expect(replayedImmediate).toEqual(immediate);
+    expect(gateway.initiate).toHaveBeenCalledTimes(1);
+    await expect(
+      saleLookup.receipt(immediateSale.saleId),
+    ).resolves.toMatchObject({
+      totalMinor: 250,
+      payments: [
+        expect.objectContaining({
+          paymentId: immediate.paymentId,
+          kind: 'card',
+          amountMinor: 250,
+        }),
+      ],
+    });
+
+    initiationStatus = 'unknown';
+    const delayedSale = await sales.finalize(cashier, {
+      requestId: randomUUID(),
+      reason: 'Delayed provider sale',
+      lines: [{ productId, unit: 'each', quantity: 1 }],
+    });
+    const delayed = await paymentAttempts.start(cashier, {
+      requestId: randomUUID(),
+      saleId: delayedSale.saleId,
+      kind: 'mpesa',
+      reason: 'Customer mobile payment',
+    });
+    expect(delayed).toMatchObject({ status: 'unknown', paymentId: null });
+    await expect(saleLookup.receipt(delayedSale.saleId)).rejects.toThrow(
+      'Payment is not complete',
+    );
+    await expect(
+      paymentAttempts.start(cashier, {
+        requestId: randomUUID(),
+        saleId: delayedSale.saleId,
+        kind: 'mpesa',
+        reason: 'Duplicate mobile payment',
+      }),
+    ).rejects.toThrow('requiring confirmation');
+
+    reconciliationStatus = 'confirmed';
+    const reconciled = await paymentAttempts.reconcile(
+      cashier,
+      delayed.attemptId,
+    );
+    const replayedReconciliation = await paymentAttempts.reconcile(
+      cashier,
+      delayed.attemptId,
+    );
+    expect(reconciled).toMatchObject({
+      status: 'confirmed',
+      paymentId: expect.any(String),
+    });
+    expect(replayedReconciliation).toEqual(reconciled);
+    expect(gateway.reconcile).toHaveBeenCalledTimes(1);
+
+    initiationStatus = 'failed';
+    const retrySale = await sales.finalize(cashier, {
+      requestId: randomUUID(),
+      reason: 'Failed provider sale',
+      lines: [{ productId, unit: 'each', quantity: 1 }],
+    });
+    const failed = await paymentAttempts.start(cashier, {
+      requestId: randomUUID(),
+      saleId: retrySale.saleId,
+      kind: 'card',
+      reason: 'Declined terminal payment',
+    });
+    expect(failed).toMatchObject({ status: 'failed', paymentId: null });
+    initiationStatus = 'confirmed';
+    const retried = await paymentAttempts.start(cashier, {
+      requestId: randomUUID(),
+      saleId: retrySale.saleId,
+      kind: 'card',
+      reason: 'Approved terminal retry',
+    });
+    expect(retried).toMatchObject({
+      status: 'confirmed',
+      paymentId: expect.any(String),
+    });
+
+    confirmationAmountDelta = 1;
+    const mismatchSale = await sales.finalize(cashier, {
+      requestId: randomUUID(),
+      reason: 'Mismatched provider sale',
+      lines: [{ productId, unit: 'each', quantity: 1 }],
+    });
+    const mismatched = await paymentAttempts.start(cashier, {
+      requestId: randomUUID(),
+      saleId: mismatchSale.saleId,
+      kind: 'mpesa',
+      reason: 'Mismatched mobile confirmation',
+    });
+    expect(mismatched).toMatchObject({ status: 'unknown', paymentId: null });
+    confirmationAmountDelta = 0;
+    const matched = await paymentAttempts.reconcile(
+      cashier,
+      mismatched.attemptId,
+    );
+    expect(matched).toMatchObject({
+      status: 'confirmed',
+      paymentId: expect.any(String),
+    });
+
+    const stored = await pool.query<{
+      attempt_count: number;
+      event_count: number;
+      payment_count: number;
+      cash_movement_count: number;
+    }>(
+      `SELECT
+      (SELECT COUNT(*)::int FROM payment_attempt WHERE sale_id IN ($1, $2, $3, $4)) AS attempt_count,
+      (SELECT COUNT(*)::int FROM payment_attempt_event pae JOIN payment_attempt pa ON pa.id = pae.attempt_id WHERE pa.sale_id IN ($1, $2, $3, $4)) AS event_count,
+      (SELECT COUNT(*)::int FROM sale_payment WHERE sale_id IN ($1, $2, $3, $4) AND status = 'paid') AS payment_count,
+      (SELECT COUNT(*)::int FROM cash_movement cm JOIN sale_payment sp ON sp.id = cm.payment_id WHERE sp.sale_id IN ($1, $2, $3, $4)) AS cash_movement_count`,
+      [
+        immediateSale.saleId,
+        delayedSale.saleId,
+        retrySale.saleId,
+        mismatchSale.saleId,
+      ],
+    );
+    expect(stored.rows[0]).toEqual({
+      attempt_count: 5,
+      event_count: 12,
+      payment_count: 4,
+      cash_movement_count: 0,
     });
   });
 });
