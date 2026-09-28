@@ -14,7 +14,7 @@
 
 ## 1. Purpose and revision
 
-This is the development reference for Pay & Go. Version 0.7 records the locally verified authentication/catalogue foundation and payment-to-shift cash reconciliation while retaining the user's existing HostPinnacle hosting target. The user has confirmed that PostgreSQL and a Node.js application management feature are listed in the hosting panel.
+This is the development reference for Pay & Go. Version 0.8 records the locally verified authentication/catalogue foundation, payment-to-shift cash reconciliation and capability-gated external-payment register flow while retaining the user's existing HostPinnacle hosting target. The user has confirmed that PostgreSQL and a Node.js application management feature are listed in the hosting panel.
 
 Working conventions are defined in [project rules](../AGENTS.md), with scoped [frontend rules](../frontend/AGENTS.md) and [backend rules](../backend/AGENTS.md). Read the [current handoff](HANDOFF.md) for actual implementation and verification status. A planned feature is not an implemented feature.
 
@@ -262,7 +262,7 @@ Start with fake cash and simulated M-Pesa/eTIMS adapters. Use isolated test reco
 
 Exercise successful, failed, duplicate, delayed, and unknown payment responses through tests. Using a sandbox does not make the production payment flow free or approved.
 
-The local backend now has a provider-neutral durable payment-attempt foundation. Starting an external payment records the request fingerprint, sale, originating shift, exact outstanding amount and an append-only initial event before any gateway call. Provider results append events and may create a paid sale-payment record only when the provider reference and confirmed amount match. Pending or unknown attempts block a second charge until reconciliation; failed attempts may be retried with a new request ID. The application runtime uses a disabled gateway, and deterministic gateway behavior exists only in automated tests, so card and M-Pesa remain unavailable in the register.
+The local backend now has a provider-neutral durable payment-attempt foundation. Starting an external payment records the request fingerprint, sale, originating shift, exact outstanding amount and an append-only initial event before any gateway call. Provider results append events and may create a paid sale-payment record only when the provider reference and confirmed amount match. Pending or unknown attempts block a second charge until reconciliation; failed attempts may be retried with a new request ID. The register discovers card/M-Pesa availability from the backend, starts attempts only for supported methods, displays confirmed/pending/failed/unknown outcomes, blocks basket or shift changes during unresolved attempts and retains a recovery checkpoint across browser refreshes. The application runtime still uses a disabled gateway, so both choices remain unavailable outside automated tests until a provider is approved and configured.
 
 ### 9.2 M-Pesa
 
@@ -482,6 +482,6 @@ These questions refine the pilot. Local PostgreSQL authentication, catalogue, in
 | ADR-018 | Existing SMTP mailbox for verification/recovery; encrypted PostgreSQL email jobs with bounded retries | Mailbox selected by user; implementation added, delivery and hosted scheduling unverified | 2026-09-15 |
 | ADR-019 | Include weight and volume sales in the first catalogue/checkout | Implemented with `kg`/`l` 0.001 steps and explicit sale/refund rounding | 2026-09-15 |
 | ADR-020 | Round non-negative checkout lines to the nearest minor unit with exact halves up; allocate partial refunds from cumulative rounded value | Implemented locally with unit, UI and PostgreSQL regression coverage; supplier-cost extension remains open | 2026-09-23 |
-| ADR-021 | Persist external payment attempts and append-only provider events before confirmation; accept payment only on an exact amount/reference match and reconcile unknown outcomes before retry | Provider-neutral backend and tests implemented; runtime gateway, callback route and register methods remain disabled pending provider approval/configuration | 2026-09-23 |
+| ADR-021 | Persist external payment attempts and append-only provider events before confirmation; accept payment only on an exact amount/reference match and reconcile unknown outcomes before retry | Provider-neutral backend and capability-aware register flow implemented; runtime gateway and callback route remain disabled pending provider approval/configuration | 2026-09-23 |
 
 Provider claims cited above were reviewed on 14 September 2026. Recheck plan terms when creating accounts or enabling live integrations.

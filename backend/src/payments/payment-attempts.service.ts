@@ -78,6 +78,13 @@ export class PaymentAttemptsService {
     @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGateway,
   ) {}
 
+  capabilities() {
+    return {
+      card: this.gateway.supports('card'),
+      mpesa: this.gateway.supports('mpesa'),
+    };
+  }
+
   async start(
     actor: PaymentActor,
     value: unknown,

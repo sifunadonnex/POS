@@ -31,12 +31,22 @@ import { getProductByBarcode, getProducts } from "../catalogue/catalogue-api"
 import { displayPrice, errorMessage } from "../catalogue/catalogue-format"
 import {
   checkoutCashSale,
+  finalizeSale,
   getReceipt,
   quoteBasket,
   type BasketQuote,
   type PaymentKind,
   type SaleReceipt,
 } from "../sales/sales-api"
+import {
+  getPaymentCapabilities,
+  reconcilePaymentAttempt,
+  startPaymentAttempt,
+  type ExternalPaymentKind,
+  type PaymentAttempt,
+  type PaymentAttemptStatus,
+  type PaymentCapabilities,
+} from "../sales/payment-attempts-api"
 import {
   closeShift,
   getCurrentShift,
@@ -59,14 +69,21 @@ const paymentOptions: Array<{
   kind: PaymentKind
   label: string
   icon: typeof WalletCards
-  available: boolean
 }> = [
-  { kind: "cash", label: "Cash", icon: CircleDollarSign, available: true },
-  { kind: "card", label: "Card", icon: CreditCard, available: false },
-  { kind: "mpesa", label: "M-Pesa", icon: Smartphone, available: false },
+  { kind: "cash", label: "Cash", icon: CircleDollarSign },
+  { kind: "card", label: "Card", icon: CreditCard },
+  { kind: "mpesa", label: "M-Pesa", icon: Smartphone },
 ]
 
+type ExternalPaymentFlow = {
+  saleId: string
+  kind: ExternalPaymentKind
+  requestId: string
+  attempt: Pick<PaymentAttempt, "attemptId" | "status"> | null
+}
+
 const HELD_BASKETS_KEY = "paygo-held-baskets"
+const EXTERNAL_PAYMENT_KEY = "paygo-external-payment"
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -76,6 +93,10 @@ function record(value: unknown): Record<string, unknown> | null {
 
 function isSaleUnit(value: unknown): value is SaleUnit {
   return value === "each" || value === "pack" || value === "kg" || value === "l"
+}
+
+function isPaymentAttemptStatus(value: unknown): value is PaymentAttemptStatus {
+  return value === "pending" || value === "unknown" || value === "failed"
 }
 
 function isProduct(value: unknown): value is Product {
@@ -96,6 +117,39 @@ function isProduct(value: unknown): value is Product {
     Array.isArray(product.barcodes) &&
     product.barcodes.every((barcode) => typeof barcode === "string")
   )
+}
+
+function readExternalPayment(): ExternalPaymentFlow | null {
+  if (typeof window === "undefined") return null
+  try {
+    const value = record(
+      JSON.parse(window.localStorage.getItem(EXTERNAL_PAYMENT_KEY) ?? "null")
+    )
+    if (
+      !value ||
+      typeof value.saleId !== "string" ||
+      typeof value.requestId !== "string" ||
+      (value.kind !== "card" && value.kind !== "mpesa")
+    ) {
+      return null
+    }
+    const flow: Omit<ExternalPaymentFlow, "attempt"> = {
+      saleId: value.saleId,
+      requestId: value.requestId,
+      kind: value.kind,
+    }
+    if (value.attempt === null) return { ...flow, attempt: null }
+    const savedAttempt = record(value.attempt)
+    if (!savedAttempt || typeof savedAttempt.attemptId !== "string") return null
+    const status = savedAttempt.status
+    if (!isPaymentAttemptStatus(status)) return null
+    return {
+      ...flow,
+      attempt: { attemptId: savedAttempt.attemptId, status },
+    }
+  } catch {
+    return null
+  }
 }
 
 function readHeldBaskets(): HeldBasket[] {
@@ -191,7 +245,14 @@ export function SalesScreen() {
   const [quote, setQuote] = useState<BasketQuote | null>(null)
   const [quoteLoading, setQuoteLoading] = useState(false)
   const [quoteError, setQuoteError] = useState("")
-  const [paymentKind, setPaymentKind] = useState<PaymentKind>("cash")
+  const [externalPayment, setExternalPayment] =
+    useState<ExternalPaymentFlow | null>(readExternalPayment)
+  const [paymentKind, setPaymentKind] = useState<PaymentKind>(
+    externalPayment?.kind ?? "cash"
+  )
+  const [paymentCapabilities, setPaymentCapabilities] =
+    useState<PaymentCapabilities>({ card: false, mpesa: false })
+  const [paymentCapabilitiesError, setPaymentCapabilitiesError] = useState("")
   const [paymentAmount, setPaymentAmount] = useState("")
   const [checkoutError, setCheckoutError] = useState("")
   const [successMessage, setSuccessMessage] = useState("")
@@ -213,7 +274,8 @@ export function SalesScreen() {
         categoryId: "",
         page: 0,
       }),
-    ]).then(([shiftResult, productsResult]) => {
+      getPaymentCapabilities(),
+    ]).then(([shiftResult, productsResult, capabilitiesResult]) => {
       if (!current) return
       if (shiftResult.status === "fulfilled") {
         setShift(shiftResult.value)
@@ -227,6 +289,13 @@ export function SalesScreen() {
       } else {
         setCatalogueError(errorMessage(productsResult.reason))
       }
+      if (capabilitiesResult.status === "fulfilled") {
+        setPaymentCapabilities(capabilitiesResult.value)
+        setPaymentCapabilitiesError("")
+      } else {
+        setPaymentCapabilities({ card: false, mpesa: false })
+        setPaymentCapabilitiesError(errorMessage(capabilitiesResult.reason))
+      }
       setShiftLoading(false)
       setCatalogueLoading(false)
     })
@@ -234,6 +303,21 @@ export function SalesScreen() {
       current = false
     }
   }, [])
+
+  useEffect(() => {
+    try {
+      if (externalPayment) {
+        window.localStorage.setItem(
+          EXTERNAL_PAYMENT_KEY,
+          JSON.stringify(externalPayment)
+        )
+      } else {
+        window.localStorage.removeItem(EXTERNAL_PAYMENT_KEY)
+      }
+    } catch {
+      // The server remains authoritative if browser storage is unavailable.
+    }
+  }, [externalPayment])
 
   const basketLines = useMemo(
     () =>
@@ -251,20 +335,25 @@ export function SalesScreen() {
     cashTenderedMinor !== null && cashTenderedMinor >= totalMinor
       ? cashTenderedMinor - totalMinor
       : null
+  const selectedPaymentAvailable =
+    paymentKind === "cash" || paymentCapabilities[paymentKind]
+  const basketLocked = checkoutBusy || Boolean(externalPayment)
   const canComplete =
     Boolean(shift) &&
-    basket.length > 0 &&
-    Boolean(quote) &&
-    !quoteLoading &&
-    paymentKind === "cash" &&
-    cashTenderedMinor !== null &&
-    cashTenderedMinor >= totalMinor &&
-    !checkoutBusy
+    !checkoutBusy &&
+    (Boolean(externalPayment) ||
+      (basket.length > 0 &&
+        Boolean(quote) &&
+        !quoteLoading &&
+        selectedPaymentAvailable &&
+        (paymentKind !== "cash" ||
+          (cashTenderedMinor !== null && cashTenderedMinor >= totalMinor))))
 
   function updateBasket(next: BasketItem[]) {
     setBasket(next)
     setCheckoutError("")
     setSuccessMessage("")
+    setExternalPayment(null)
     checkoutRequest.current = null
     const sequence = ++quoteSequence.current
     if (!next.length) {
@@ -333,7 +422,7 @@ export function SalesScreen() {
   }
 
   function holdBasket() {
-    if (!basket.length || checkoutBusy) return
+    if (!basket.length || basketLocked) return
     const held: HeldBasket = {
       id: requestId(),
       createdAt: new Date().toISOString(),
@@ -351,7 +440,7 @@ export function SalesScreen() {
   }
 
   function resumeBasket(id: string) {
-    if (basket.length || checkoutBusy) return
+    if (basket.length || basketLocked) return
     const held = heldBaskets.find((candidate) => candidate.id === id)
     if (!held) return
     const next = heldBaskets.filter((candidate) => candidate.id !== id)
@@ -466,7 +555,7 @@ export function SalesScreen() {
 
   async function finishShift(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!shift) return
+    if (!shift || basketLocked) return
     const amount = minorFromInput(closingCash)
     if (amount === null) {
       setShiftError("Enter counted closing cash as a valid KES amount.")
@@ -491,34 +580,89 @@ export function SalesScreen() {
   }
 
   async function completeSale() {
+    if (!shift) return
+    if (!externalPayment && (!quote || !selectedPaymentAvailable)) return
     if (
-      !quote ||
-      !shift ||
-      cashTenderedMinor === null ||
-      cashTenderedMinor < totalMinor
-    )
+      paymentKind === "cash" &&
+      (cashTenderedMinor === null || cashTenderedMinor < totalMinor)
+    ) {
       return
+    }
     setCheckoutBusy(true)
     setCheckoutError("")
     setSuccessMessage("")
     try {
-      const result = await checkoutCashSale(
-        basketLines,
-        cashTenderedMinor,
-        checkoutRequest.current ?? (checkoutRequest.current = requestId())
+      if (paymentKind === "cash") {
+        if (cashTenderedMinor === null) return
+        const result = await checkoutCashSale(
+          basketLines,
+          cashTenderedMinor,
+          checkoutRequest.current ?? (checkoutRequest.current = requestId())
+        )
+        updateBasket([])
+        setSuccessMessage(
+          result.payment.changeMinor > 0
+            ? `Sale confirmed. Change due ${money(result.payment.changeMinor)}. Sale reference ${result.saleId.slice(0, 8)} is recorded.`
+            : `Sale confirmed. Sale reference ${result.saleId.slice(0, 8)} is recorded.`
+        )
+        void loadReceipt(result.saleId)
+        return
+      }
+
+      let flow = externalPayment
+      if (!flow) {
+        const sale = await finalizeSale(
+          basketLines,
+          checkoutRequest.current ?? (checkoutRequest.current = requestId())
+        )
+        flow = {
+          saleId: sale.saleId,
+          kind: paymentKind,
+          requestId: requestId(),
+          attempt: null,
+        }
+        setExternalPayment(flow)
+      }
+
+      if (
+        flow.attempt?.status === "pending" ||
+        flow.attempt?.status === "unknown"
+      ) {
+        const attempt = await reconcilePaymentAttempt(flow.attempt.attemptId)
+        await applyExternalPayment(flow, attempt)
+        return
+      }
+
+      if (flow.attempt?.status === "failed") {
+        flow = { ...flow, requestId: requestId(), attempt: null }
+        setExternalPayment(flow)
+      }
+      const attempt = await startPaymentAttempt(
+        flow.saleId,
+        flow.kind,
+        flow.requestId
       )
-      updateBasket([])
-      setSuccessMessage(
-        result.payment.changeMinor > 0
-          ? `Sale confirmed. Change due ${money(result.payment.changeMinor)}. Sale reference ${result.saleId.slice(0, 8)} is recorded.`
-          : `Sale confirmed. Sale reference ${result.saleId.slice(0, 8)} is recorded.`
-      )
-      void loadReceipt(result.saleId)
+      await applyExternalPayment(flow, attempt)
     } catch (failure: unknown) {
       setCheckoutError(errorMessage(failure))
     } finally {
       setCheckoutBusy(false)
     }
+  }
+
+  async function applyExternalPayment(
+    flow: ExternalPaymentFlow,
+    attempt: PaymentAttempt
+  ) {
+    setExternalPayment({ ...flow, attempt })
+    if (attempt.status !== "confirmed") return
+
+    updateBasket([])
+    const label = attempt.kind === "mpesa" ? "M-Pesa" : "Card"
+    setSuccessMessage(
+      `${label} payment confirmed. Sale reference ${attempt.saleId.slice(0, 8)} is recorded.`
+    )
+    await loadReceipt(attempt.saleId)
   }
 
   return (
@@ -555,6 +699,7 @@ export function SalesScreen() {
             <Button
               variant="outline"
               size="sm"
+              disabled={basketLocked}
               onClick={() => setShowCloseShift((value) => !value)}
             >
               {showCloseShift ? "Keep shift open" : "Close shift"}
@@ -649,13 +794,13 @@ export function SalesScreen() {
                   placeholder="Closing cash (KES)"
                   value={closingCash}
                   onChange={(event) => setClosingCash(event.target.value)}
-                  disabled={shiftAction !== null}
+                  disabled={shiftAction !== null || basketLocked}
                 />
               </div>
               <Button
                 type="submit"
                 variant="destructive"
-                disabled={shiftAction !== null}
+                disabled={shiftAction !== null || basketLocked}
               >
                 {shiftAction === "closing" ? "Closing…" : "Confirm close"}
               </Button>
@@ -745,7 +890,7 @@ export function SalesScreen() {
                       key={product.id}
                       className="group rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                       onClick={() => addProduct(product)}
-                      disabled={!shift || checkoutBusy}
+                      disabled={!shift || basketLocked}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -834,7 +979,7 @@ export function SalesScreen() {
                         variant="outline"
                         className="gap-1.5"
                         onClick={() => resumeBasket(held.id)}
-                        disabled={Boolean(basket.length) || checkoutBusy}
+                        disabled={Boolean(basket.length) || basketLocked}
                       >
                         <Play className="size-3.5" aria-hidden="true" />
                         Resume
@@ -845,7 +990,7 @@ export function SalesScreen() {
                         variant="ghost"
                         aria-label={`Remove held basket ${held.id.slice(0, 8)}`}
                         onClick={() => removeHeldBasket(held.id)}
-                        disabled={checkoutBusy}
+                        disabled={basketLocked}
                       >
                         <X className="size-4" aria-hidden="true" />
                       </Button>
@@ -987,7 +1132,7 @@ export function SalesScreen() {
                   size="sm"
                   className="gap-1.5"
                   onClick={holdBasket}
-                  disabled={!basket.length || checkoutBusy}
+                  disabled={!basket.length || basketLocked}
                 >
                   <PauseCircle className="size-3.5" aria-hidden="true" />
                   Hold
@@ -1031,7 +1176,7 @@ export function SalesScreen() {
                           size="icon"
                           className="size-8 shrink-0"
                           aria-label={`Remove ${product.name}`}
-                          disabled={checkoutBusy}
+                          disabled={basketLocked}
                           onClick={() => adjustQuantity(product.id, -quantity)}
                         >
                           <Trash2 className="size-4" aria-hidden="true" />
@@ -1044,7 +1189,7 @@ export function SalesScreen() {
                             size="icon"
                             className="size-8"
                             aria-label={`Decrease ${product.name}`}
-                            disabled={checkoutBusy}
+                            disabled={basketLocked}
                             onClick={() =>
                               adjustQuantity(
                                 product.id,
@@ -1062,7 +1207,7 @@ export function SalesScreen() {
                             size="icon"
                             className="size-8"
                             aria-label={`Increase ${product.name}`}
-                            disabled={checkoutBusy}
+                            disabled={basketLocked}
                             onClick={() =>
                               adjustQuantity(
                                 product.id,
@@ -1100,58 +1245,75 @@ export function SalesScreen() {
             <div className="space-y-2">
               <Label>Payment method</Label>
               <div className="grid grid-cols-3 gap-2">
-                {paymentOptions.map(
-                  ({ kind, label, icon: Icon, available }) => (
+                {paymentOptions.map(({ kind, label, icon: Icon }) => {
+                  const available = kind === "cash" || paymentCapabilities[kind]
+                  return (
                     <Button
                       type="button"
                       key={kind}
                       variant={paymentKind === kind ? "secondary" : "outline"}
                       className="h-auto flex-col gap-1 py-2 text-xs"
                       aria-pressed={paymentKind === kind}
-                      disabled={checkoutBusy || !basket.length || !available}
+                      disabled={basketLocked || !basket.length || !available}
                       onClick={() => setPaymentKind(kind)}
                     >
                       <Icon className="size-4" aria-hidden="true" />
                       {label}
                     </Button>
                   )
-                )}
+                })}
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="payment-amount">Cash received (KES)</Label>
-              <Input
-                id="payment-amount"
-                inputMode="decimal"
-                value={paymentAmount}
-                onChange={(event) => setPaymentAmount(event.target.value)}
-                disabled={checkoutBusy || !basket.length}
-                aria-describedby="payment-help"
-              />
-              <p id="payment-help" className="text-xs text-muted-foreground">
-                Enter the cash handed over. Change is calculated before the sale
-                is confirmed; split payments are not enabled yet.
-              </p>
-              {cashTenderedMinor !== null && cashTenderedMinor < totalMinor && (
-                <p className="text-xs text-destructive">
-                  Cash received is {money(totalMinor - cashTenderedMinor)}{" "}
-                  short.
+            {paymentKind === "cash" ? (
+              <div className="space-y-2">
+                <Label htmlFor="payment-amount">Cash received (KES)</Label>
+                <Input
+                  id="payment-amount"
+                  inputMode="decimal"
+                  value={paymentAmount}
+                  onChange={(event) => setPaymentAmount(event.target.value)}
+                  disabled={basketLocked || !basket.length}
+                  aria-describedby="payment-help"
+                />
+                <p id="payment-help" className="text-xs text-muted-foreground">
+                  Enter the cash handed over. Change is calculated before the
+                  sale is confirmed; split payments are not enabled yet.
                 </p>
-              )}
-              {changeMinor !== null && (
-                <div className="flex items-center justify-between rounded-lg bg-muted px-3 py-2 text-sm">
-                  <span className="text-muted-foreground">Change due</span>
-                  <span className="font-semibold tabular-nums">
-                    {money(changeMinor)}
-                  </span>
-                </div>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Card and M-Pesa require verified provider confirmation and are
-                not available in this register yet.
+                {cashTenderedMinor !== null &&
+                  cashTenderedMinor < totalMinor && (
+                    <p className="text-xs text-destructive">
+                      Cash received is {money(totalMinor - cashTenderedMinor)}{" "}
+                      short.
+                    </p>
+                  )}
+                {changeMinor !== null && (
+                  <div className="flex items-center justify-between rounded-lg bg-muted px-3 py-2 text-sm">
+                    <span className="text-muted-foreground">Change due</span>
+                    <span className="font-semibold tabular-nums">
+                      {money(changeMinor)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : externalPayment ? (
+              <ExternalPaymentNotice flow={externalPayment} />
+            ) : (
+              <p className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+                The sale is finalized before the provider request starts. Only a
+                verified provider confirmation records the payment and opens the
+                receipt.
               </p>
-            </div>
+            )}
+
+            {(paymentCapabilitiesError ||
+              (!paymentCapabilities.card && !paymentCapabilities.mpesa)) && (
+              <p className="text-xs text-muted-foreground">
+                {paymentCapabilitiesError
+                  ? "Card and M-Pesa availability could not be verified. Cash remains available."
+                  : "Card and M-Pesa are disabled until a payment provider is configured and verified."}
+              </p>
+            )}
 
             <Button
               className="w-full gap-2"
@@ -1167,12 +1329,52 @@ export function SalesScreen() {
               ) : (
                 <CheckCircle2 className="size-4" aria-hidden="true" />
               )}
-              {checkoutBusy ? "Confirming…" : "Complete sale"}
+              {checkoutBusy
+                ? externalPayment?.attempt?.status === "pending" ||
+                  externalPayment?.attempt?.status === "unknown"
+                  ? "Checking payment…"
+                  : paymentKind === "cash"
+                    ? "Confirming…"
+                    : "Starting payment…"
+                : externalPayment?.attempt?.status === "pending" ||
+                    externalPayment?.attempt?.status === "unknown"
+                  ? "Check payment status"
+                  : externalPayment?.attempt?.status === "failed"
+                    ? "Retry payment"
+                    : externalPayment
+                      ? "Retry payment request"
+                      : "Complete sale"}
             </Button>
           </CardContent>
         </Card>
       </div>
     </section>
+  )
+}
+
+function ExternalPaymentNotice({ flow }: { flow: ExternalPaymentFlow }) {
+  const reference = flow.attempt?.attemptId.slice(0, 8)
+  const status = flow.attempt?.status
+  const message =
+    status === "pending"
+      ? "The provider still reports this payment as pending. Do not collect another payment; check this attempt again."
+      : status === "unknown"
+        ? "The payment result is unknown. Do not collect another payment; reconcile this attempt before continuing."
+        : status === "failed"
+          ? "The provider reported that this payment failed and no payment was recorded. You can retry the payment for the same sale."
+          : "The sale is finalized, but starting the provider request was not confirmed. Retry the same request; do not create another sale."
+
+  return (
+    <div
+      className="space-y-1 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-100"
+      role="status"
+    >
+      <p className="font-medium">
+        {status ? `Payment ${status}` : "Payment request unconfirmed"}
+        {reference ? ` · ${reference}` : ""}
+      </p>
+      <p>{message}</p>
+    </div>
   )
 }
 

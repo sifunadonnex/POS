@@ -22,6 +22,12 @@ export class PaymentAttemptsController {
     private readonly attempts: PaymentAttemptsService,
   ) {}
 
+  @Get('capabilities')
+  @StaffRoles('cashier', 'manager')
+  capabilities() {
+    return this.attempts.capabilities();
+  }
+
   @Post()
   @StaffRoles('cashier', 'manager')
   start(@Req() req: StaffRequest, @Body() body: unknown) {

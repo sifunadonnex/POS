@@ -4,6 +4,22 @@ import { PaymentAttemptsStore } from './payment-attempts.store.js';
 import { DisabledPaymentGateway, PAYMENT_GATEWAY } from './payment-gateway.js';
 
 describe('PaymentAttemptsService', () => {
+  it('reports that external methods are unavailable with the disabled gateway', async () => {
+    const fixture = await Test.createTestingModule({
+      providers: [
+        PaymentAttemptsService,
+        { provide: PaymentAttemptsStore, useValue: {} },
+        DisabledPaymentGateway,
+        { provide: PAYMENT_GATEWAY, useExisting: DisabledPaymentGateway },
+      ],
+    }).compile();
+
+    expect(fixture.get(PaymentAttemptsService).capabilities()).toEqual({
+      card: false,
+      mpesa: false,
+    });
+  });
+
   it('keeps external payments unavailable without a configured gateway', async () => {
     const fixture = await Test.createTestingModule({
       providers: [
