@@ -2,9 +2,9 @@
 
 **Status:** Local development active; HostPinnacle deployment verification deferred
 
-**Version:** 0.7
+**Version:** 0.9
 
-**Last updated:** 21 September 2026
+**Last updated:** 28 September 2026
 
 **Budget objective:** Zero application licence fees and no additional hosting subscription for the first test shop, within the existing HostPinnacle package. Existing hosting/domain renewals still apply.
 
@@ -14,7 +14,7 @@
 
 ## 1. Purpose and revision
 
-This is the development reference for Pay & Go. Version 0.8 records the locally verified authentication/catalogue foundation, payment-to-shift cash reconciliation and capability-gated external-payment register flow while retaining the user's existing HostPinnacle hosting target. The user has confirmed that PostgreSQL and a Node.js application management feature are listed in the hosting panel.
+This is the development reference for Pay & Go. Version 0.9 records the locally verified authentication/catalogue foundation, payment-to-shift cash reconciliation, capability-gated external-payment register flow and disabled-by-default Daraja M-Pesa Express adapter while retaining the user's existing HostPinnacle hosting target. The user has confirmed that PostgreSQL and a Node.js application management feature are listed in the hosting panel.
 
 Working conventions are defined in [project rules](../AGENTS.md), with scoped [frontend rules](../frontend/AGENTS.md) and [backend rules](../backend/AGENTS.md). Read the [current handoff](HANDOFF.md) for actual implementation and verification status. A planned feature is not an implemented feature.
 
@@ -262,15 +262,15 @@ Start with fake cash and simulated M-Pesa/eTIMS adapters. Use isolated test reco
 
 Exercise successful, failed, duplicate, delayed, and unknown payment responses through tests. Using a sandbox does not make the production payment flow free or approved.
 
-The local backend now has a provider-neutral durable payment-attempt foundation. Starting an external payment records the request fingerprint, sale, originating shift, exact outstanding amount and an append-only initial event before any gateway call. Provider results append events and may create a paid sale-payment record only when the provider reference and confirmed amount match. Pending or unknown attempts block a second charge until reconciliation; failed attempts may be retried with a new request ID. The register discovers card/M-Pesa availability from the backend, starts attempts only for supported methods, displays confirmed/pending/failed/unknown outcomes, blocks basket or shift changes during unresolved attempts and retains a recovery checkpoint across browser refreshes. The application runtime still uses a disabled gateway, so both choices remain unavailable outside automated tests until a provider is approved and configured.
+The local backend now has a provider-neutral durable payment-attempt foundation. Starting an external payment records the request fingerprint, sale, originating shift, exact outstanding amount and an append-only initial event before any gateway call. Provider results append events and may create a paid sale-payment record only when the provider reference and confirmed amount match. Pending or unknown attempts block a second charge until reconciliation; failed attempts may be retried with a new request ID. The register discovers card/M-Pesa availability from the backend, starts attempts only for supported methods, displays confirmed/pending/failed/unknown outcomes, blocks basket or shift changes during unresolved attempts and retains a recovery checkpoint across browser refreshes. Card stays unavailable. M-Pesa becomes available only when the complete Daraja configuration passes startup validation; it remains disabled in the checked-in example and current private environment.
 
 ### 9.2 M-Pesa
 
-Use Daraja for integration when the core checkout is stable. Confirm the shop's Till/PayBill arrangement and provider onboarding requirements at that point. [Safaricom Daraja](https://developer.safaricom.co.ke/apis)
+Safaricom Daraja M-Pesa Express is the selected automated M-Pesa workflow. The server adapter uses OAuth, submits STK Push requests for a normalized Kenyan customer number, and accepts asynchronous results on a public callback route. The register supports only whole-KES M-Pesa totals because the STK amount is an integer; a non-whole total must use another tender. Confirm the shop's Till/PayBill arrangement and matching transaction type during onboarding. [Safaricom Daraja](https://developer.safaricom.co.ke/apis)
 
 A manual M-Pesa tender can be included in a controlled live pilot only with a defined verification procedure: authorized staff verify merchant receipt, record the reference and amount, and reconcile it. Clearly distinguish this from API-confirmed payment. A customer screenshot or typed transaction code alone is not confirmation.
 
-Automatic payment initiation/callbacks need a stable public HTTPS callback endpoint. The hosted NestJS API can provide a dedicated callback route if HostPinnacle permits the required requests. Verify reachability, timeouts, security rules and durable callback processing before enabling real automated payments. Browser sessions must not be required for provider callbacks; validate them using the provider-supported controls and reconciliation.
+Automatic payment initiation/callbacks need a stable public HTTPS endpoint at `/api/payment-attempts/mpesa/callback`. The route does not require a browser session; it requires an unpredictable server-configured callback token added to the callback URL, then matches the provider reference, receipt and exact amount before confirmation. Successful status-query responses do not contain enough amount evidence to confirm payment, so they remain unknown until an exact callback or supported authoritative reconciliation result arrives. Verify callback query-string preservation, reachability, timeouts, duplicate delivery and delayed delivery before enabling the adapter. The operating checklist is in [Daraja setup](MPESA_DARAJA_SETUP.md).
 
 Payment attempts must retain internal IDs, provider references, amount, status and relevant timestamps. Match receipt/amount to the intended sale, deduplicate callbacks, and reconcile uncertainty before retrying a charge.
 
@@ -482,6 +482,7 @@ These questions refine the pilot. Local PostgreSQL authentication, catalogue, in
 | ADR-018 | Existing SMTP mailbox for verification/recovery; encrypted PostgreSQL email jobs with bounded retries | Mailbox selected by user; implementation added, delivery and hosted scheduling unverified | 2026-09-15 |
 | ADR-019 | Include weight and volume sales in the first catalogue/checkout | Implemented with `kg`/`l` 0.001 steps and explicit sale/refund rounding | 2026-09-15 |
 | ADR-020 | Round non-negative checkout lines to the nearest minor unit with exact halves up; allocate partial refunds from cumulative rounded value | Implemented locally with unit, UI and PostgreSQL regression coverage; supplier-cost extension remains open | 2026-09-23 |
-| ADR-021 | Persist external payment attempts and append-only provider events before confirmation; accept payment only on an exact amount/reference match and reconcile unknown outcomes before retry | Provider-neutral backend and capability-aware register flow implemented; runtime gateway and callback route remain disabled pending provider approval/configuration | 2026-09-23 |
+| ADR-021 | Persist external payment attempts and append-only provider events before confirmation; accept payment only on an exact amount/reference match and reconcile unknown outcomes before retry | Provider-neutral backend and capability-aware register flow implemented and retained by the Daraja adapter | 2026-09-23 |
+| ADR-022 | Use Safaricom Daraja M-Pesa Express for automated M-Pesa; enable only with complete server-side credentials, whole-KES amounts, a token-protected public HTTPS callback and exact callback amount/reference confirmation | Adapter, callback and register phone capture implemented; disabled pending credentials and sandbox/callback verification | 2026-09-28 |
 
-Provider claims cited above were reviewed on 14 September 2026. Recheck plan terms when creating accounts or enabling live integrations.
+Provider claims cited above were reviewed on 28 September 2026. Recheck plan terms when creating accounts or enabling live integrations.

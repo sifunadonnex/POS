@@ -333,6 +333,29 @@ export class PaymentAttemptsStore {
     }
   }
 
+  async byProviderReference(
+    provider: string,
+    providerReference: string,
+  ): Promise<PaymentAttemptRecord> {
+    try {
+      const result =
+        await this.database.connectionPool.query<PaymentAttemptRecord>(
+          `${this.attemptSelect()}
+        WHERE pa.provider = $1 AND pa.provider_reference = $2`,
+          [provider, providerReference],
+        );
+      if (!result.rowCount) {
+        throw new NotFoundException('Payment attempt not found');
+      }
+      return result.rows[0];
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new ServiceUnavailableException(
+        'The payment callback could not be matched',
+      );
+    }
+  }
+
   toResult(row: PaymentAttemptRecord): PaymentAttemptResult {
     return {
       attemptId: row.id,

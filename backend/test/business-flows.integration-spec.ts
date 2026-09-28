@@ -12,6 +12,8 @@ import { PaymentAttemptsService } from '../src/payments/payment-attempts.service
 import { PaymentAttemptsStore } from '../src/payments/payment-attempts.store.js';
 import {
   PAYMENT_GATEWAY,
+  InvalidGatewayCallbackError,
+  type GatewayCallbackResult,
   type GatewayPaymentInput,
   type GatewayPaymentResult,
   type PaymentAttemptStatus,
@@ -64,6 +66,8 @@ describe('PostgreSQL register and purchase business flows', () => {
   let initiationStatus: PaymentAttemptStatus = 'confirmed';
   let reconciliationStatus: PaymentAttemptStatus = 'confirmed';
   let confirmationAmountDelta = 0;
+  let callbackReference = '';
+  let callbackAmountMinor = 0;
   const gateway: PaymentGateway = {
     name: 'integration_gateway',
     supports: vi.fn(() => true),
@@ -89,6 +93,17 @@ describe('PostgreSQL register and purchase business flows', () => {
         providerEventId: `reconciliation-${input.attemptId}`,
       }),
     ),
+    callback: vi.fn((token: unknown): GatewayCallbackResult => {
+      if (token !== 'integration-callback-token') {
+        throw new InvalidGatewayCallbackError();
+      }
+      return {
+        status: 'confirmed',
+        amountMinor: callbackAmountMinor,
+        providerReference: callbackReference,
+        providerEventId: `callback-${callbackReference}`,
+      };
+    }),
   };
 
   beforeAll(async () => {
@@ -518,6 +533,7 @@ describe('PostgreSQL register and purchase business flows', () => {
       saleId: delayedSale.saleId,
       kind: 'mpesa',
       reason: 'Customer mobile payment',
+      payerPhone: '0712345678',
     });
     expect(delayed).toMatchObject({ status: 'unknown', paymentId: null });
     await expect(saleLookup.receipt(delayedSale.saleId)).rejects.toThrow(
@@ -529,24 +545,33 @@ describe('PostgreSQL register and purchase business flows', () => {
         saleId: delayedSale.saleId,
         kind: 'mpesa',
         reason: 'Duplicate mobile payment',
+        payerPhone: '0712345678',
       }),
     ).rejects.toThrow('requiring confirmation');
 
-    reconciliationStatus = 'confirmed';
-    const reconciled = await paymentAttempts.reconcile(
-      cashier,
-      delayed.attemptId,
+    await expect(paymentAttempts.callback('wrong-token', {})).rejects.toThrow();
+    callbackReference = delayed.providerReference ?? '';
+    callbackAmountMinor = delayed.amountMinor;
+    const callbackAcknowledgement = await paymentAttempts.callback(
+      'integration-callback-token',
+      {},
     );
-    const replayedReconciliation = await paymentAttempts.reconcile(
-      cashier,
-      delayed.attemptId,
+    const replayedCallback = await paymentAttempts.callback(
+      'integration-callback-token',
+      {},
     );
-    expect(reconciled).toMatchObject({
-      status: 'confirmed',
-      paymentId: expect.any(String),
+    expect(callbackAcknowledgement).toEqual({
+      ResultCode: 0,
+      ResultDesc: 'Accepted',
     });
-    expect(replayedReconciliation).toEqual(reconciled);
-    expect(gateway.reconcile).toHaveBeenCalledTimes(1);
+    expect(replayedCallback).toEqual(callbackAcknowledgement);
+    await expect(saleLookup.receipt(delayedSale.saleId)).resolves.toMatchObject(
+      {
+        payments: [
+          expect.objectContaining({ kind: 'mpesa', amountMinor: 250 }),
+        ],
+      },
+    );
 
     initiationStatus = 'failed';
     const retrySale = await sales.finalize(cashier, {
@@ -584,6 +609,7 @@ describe('PostgreSQL register and purchase business flows', () => {
       saleId: mismatchSale.saleId,
       kind: 'mpesa',
       reason: 'Mismatched mobile confirmation',
+      payerPhone: '0712345678',
     });
     expect(mismatched).toMatchObject({ status: 'unknown', paymentId: null });
     confirmationAmountDelta = 0;
@@ -595,6 +621,7 @@ describe('PostgreSQL register and purchase business flows', () => {
       status: 'confirmed',
       paymentId: expect.any(String),
     });
+    expect(gateway.reconcile).toHaveBeenCalledTimes(1);
 
     const stored = await pool.query<{
       attempt_count: number;

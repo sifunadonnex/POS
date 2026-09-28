@@ -2,12 +2,14 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Inject,
   Param,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
-import { StaffRoles } from '../identity/access.metadata.js';
+import { PublicRoute, StaffRoles } from '../identity/access.metadata.js';
 import type { StaffRequest } from '../identity/staff.guard.js';
 import { PaymentAttemptsService } from './payment-attempts.service.js';
 
@@ -26,6 +28,13 @@ export class PaymentAttemptsController {
   @StaffRoles('cashier', 'manager')
   capabilities() {
     return this.attempts.capabilities();
+  }
+
+  @Post('mpesa/callback')
+  @HttpCode(200)
+  @PublicRoute()
+  callback(@Query('token') token: unknown, @Body() body: unknown) {
+    return this.attempts.callback(token, body);
   }
 
   @Post()

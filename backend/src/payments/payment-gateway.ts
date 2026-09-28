@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 
 export const PAYMENT_GATEWAY = Symbol('PAYMENT_GATEWAY');
 
+export class InvalidGatewayCallbackError extends Error {}
+
 export type ExternalPaymentKind = 'card' | 'mpesa';
 export type PaymentAttemptStatus =
   'pending' | 'confirmed' | 'failed' | 'unknown';
@@ -11,6 +13,7 @@ export type GatewayPaymentInput = {
   saleId: string;
   kind: ExternalPaymentKind;
   amountMinor: number;
+  payerPhone?: string;
   providerReference?: string;
 };
 
@@ -22,11 +25,16 @@ export type GatewayPaymentResult = {
   detailCode?: string;
 };
 
+export type GatewayCallbackResult = GatewayPaymentResult & {
+  providerReference: string;
+};
+
 export interface PaymentGateway {
   readonly name: string;
   supports(kind: ExternalPaymentKind): boolean;
   initiate(input: GatewayPaymentInput): Promise<GatewayPaymentResult>;
   reconcile(input: GatewayPaymentInput): Promise<GatewayPaymentResult>;
+  callback?(token: unknown, value: unknown): GatewayCallbackResult;
 }
 
 @Injectable()

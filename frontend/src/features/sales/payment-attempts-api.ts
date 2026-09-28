@@ -153,13 +153,15 @@ export async function getPaymentCapabilities(): Promise<PaymentCapabilities> {
 export async function startPaymentAttempt(
   saleId: string,
   kind: ExternalPaymentKind,
-  requestId: string
+  requestId: string,
+  payerPhone?: string
 ): Promise<PaymentAttempt> {
   return attempt(
     await paymentRequest("", {
       saleId,
       kind,
       requestId,
+      ...(payerPhone ? { payerPhone } : {}),
       reason: `${kind} register payment`,
     })
   )

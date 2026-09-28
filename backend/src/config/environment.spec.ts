@@ -61,4 +61,47 @@ describe('environment configuration', () => {
       }),
     ).toThrow('loopback');
   });
+
+  it('keeps Daraja disabled by default and validates a complete configuration', () => {
+    expect(parseEnvironment(base).daraja).toBeNull();
+    const daraja = parseEnvironment({
+      ...base,
+      DARAJA_ENABLED: 'true',
+      DARAJA_ENVIRONMENT: 'sandbox',
+      DARAJA_CONSUMER_KEY: 'consumer-key',
+      DARAJA_CONSUMER_SECRET: 'consumer-secret',
+      DARAJA_SHORTCODE: '174379',
+      DARAJA_PASSKEY: 'a-secure-online-passkey',
+      DARAJA_TRANSACTION_TYPE: 'CustomerPayBillOnline',
+      DARAJA_CALLBACK_URL:
+        'https://payments.example.test/api/payment-attempts/mpesa/callback',
+      DARAJA_CALLBACK_TOKEN: 'a'.repeat(32),
+    }).daraja;
+    expect(daraja).toMatchObject({
+      environment: 'sandbox',
+      shortCode: '174379',
+      transactionType: 'CustomerPayBillOnline',
+    });
+  });
+
+  it('rejects incomplete or unsafe Daraja configuration', () => {
+    expect(() => parseEnvironment({ ...base, DARAJA_ENABLED: 'yes' })).toThrow(
+      'DARAJA_ENABLED',
+    );
+    expect(() => parseEnvironment({ ...base, DARAJA_ENABLED: 'true' })).toThrow(
+      'DARAJA_SHORTCODE',
+    );
+    expect(() =>
+      parseEnvironment({
+        ...base,
+        DARAJA_ENABLED: 'true',
+        DARAJA_CONSUMER_KEY: 'consumer-key',
+        DARAJA_CONSUMER_SECRET: 'consumer-secret',
+        DARAJA_SHORTCODE: '174379',
+        DARAJA_PASSKEY: 'a-secure-online-passkey',
+        DARAJA_CALLBACK_URL: 'http://localhost/callback',
+        DARAJA_CALLBACK_TOKEN: 'a'.repeat(32),
+      }),
+    ).toThrow('HTTPS URL');
+  });
 });

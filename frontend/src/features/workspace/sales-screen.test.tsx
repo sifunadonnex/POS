@@ -228,7 +228,8 @@ it("records a confirmed external payment before showing the receipt", async () =
   expect(mocks.startPaymentAttempt).toHaveBeenCalledWith(
     "sale-1",
     "card",
-    expect.any(String)
+    expect.any(String),
+    undefined
   )
   expect(await screen.findByText(/Card payment confirmed/)).toBeTruthy()
   expect(await screen.findByLabelText("Receipt")).toBeTruthy()
@@ -236,6 +237,19 @@ it("records a confirmed external payment before showing the receipt", async () =
 
 it("freezes an unknown external payment and reconciles the same attempt", async () => {
   mocks.getPaymentCapabilities.mockResolvedValue({ card: false, mpesa: true })
+  mocks.quoteBasket.mockResolvedValue({
+    subtotalMinor: 1200,
+    totalMinor: 1200,
+    lines: [
+      {
+        productId: product.id,
+        unit: "each",
+        quantity: 1,
+        priceMinor: 1200,
+        lineTotalMinor: 1200,
+      },
+    ],
+  })
   const unknownAttempt = {
     attemptId: "attempt-1",
     saleId: "sale-1",
@@ -243,7 +257,7 @@ it("freezes an unknown external payment and reconciles the same attempt", async 
     kind: "mpesa",
     provider: "verified-provider",
     providerReference: "provider-1",
-    amountMinor: 1250,
+    amountMinor: 1200,
     status: "unknown",
     paymentId: null,
     createdAt: "2026-09-28T08:00:00.000Z",
@@ -263,6 +277,9 @@ it("freezes an unknown external payment and reconciles the same attempt", async 
   const mpesa = screen.getByRole("button", { name: "M-Pesa" })
   await waitFor(() => expect(mpesa).toHaveProperty("disabled", false))
   fireEvent.click(mpesa)
+  fireEvent.change(screen.getByLabelText("Customer M-Pesa phone"), {
+    target: { value: "0712345678" },
+  })
   fireEvent.click(screen.getByRole("button", { name: "Complete sale" }))
 
   expect(await screen.findByText("Payment unknown · attempt-")).toBeTruthy()
@@ -277,6 +294,45 @@ it("freezes an unknown external payment and reconciles the same attempt", async 
   expect(await screen.findByText(/M-Pesa payment confirmed/)).toBeTruthy()
   expect(mocks.finalizeSale).toHaveBeenCalledOnce()
   expect(mocks.startPaymentAttempt).toHaveBeenCalledOnce()
+  expect(mocks.startPaymentAttempt).toHaveBeenCalledWith(
+    "sale-1",
+    "mpesa",
+    expect.any(String),
+    "0712345678"
+  )
+})
+
+it("requires a valid phone and whole-KES total for M-Pesa", async () => {
+  mocks.getPaymentCapabilities.mockResolvedValue({ card: false, mpesa: true })
+  mocks.quoteBasket.mockResolvedValue({
+    subtotalMinor: 1251,
+    totalMinor: 1251,
+    lines: [
+      {
+        productId: product.id,
+        unit: "each",
+        quantity: 1,
+        priceMinor: 1251,
+        lineTotalMinor: 1251,
+      },
+    ],
+  })
+
+  render(<SalesScreen />)
+  fireEvent.click(await screen.findByRole("button", { name: /Rice 10kg/ }))
+  const mpesa = screen.getByRole("button", { name: "M-Pesa" })
+  await waitFor(() => expect(mpesa).toHaveProperty("disabled", false))
+  fireEvent.click(mpesa)
+  fireEvent.change(screen.getByLabelText("Customer M-Pesa phone"), {
+    target: { value: "123" },
+  })
+
+  expect(await screen.findByText(/whole-KES total/)).toBeTruthy()
+  expect(screen.getByRole("button", { name: "Complete sale" })).toHaveProperty(
+    "disabled",
+    true
+  )
+  expect(mocks.finalizeSale).not.toHaveBeenCalled()
 })
 
 it("restores an unresolved payment after a register refresh", async () => {

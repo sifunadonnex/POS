@@ -206,6 +206,16 @@ function minorFromInput(value: string): number | null {
   return minor <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(minor) : null
 }
 
+function validMpesaPhone(value: string) {
+  const compact = value.trim().replace(/[\s()-]/g, "")
+  const normalized = compact.startsWith("+254")
+    ? compact.slice(1)
+    : compact.startsWith("0")
+      ? `254${compact.slice(1)}`
+      : compact
+  return /^254(?:7|1)\d{8}$/.test(normalized)
+}
+
 function money(value: number) {
   return displayPrice(String(value))
 }
@@ -254,6 +264,7 @@ export function SalesScreen() {
     useState<PaymentCapabilities>({ card: false, mpesa: false })
   const [paymentCapabilitiesError, setPaymentCapabilitiesError] = useState("")
   const [paymentAmount, setPaymentAmount] = useState("")
+  const [mpesaPhone, setMpesaPhone] = useState("")
   const [checkoutError, setCheckoutError] = useState("")
   const [successMessage, setSuccessMessage] = useState("")
   const [checkoutBusy, setCheckoutBusy] = useState(false)
@@ -346,6 +357,8 @@ export function SalesScreen() {
         Boolean(quote) &&
         !quoteLoading &&
         selectedPaymentAvailable &&
+        (paymentKind !== "mpesa" ||
+          (totalMinor % 100 === 0 && validMpesaPhone(mpesaPhone))) &&
         (paymentKind !== "cash" ||
           (cashTenderedMinor !== null && cashTenderedMinor >= totalMinor))))
 
@@ -354,6 +367,7 @@ export function SalesScreen() {
     setCheckoutError("")
     setSuccessMessage("")
     setExternalPayment(null)
+    setMpesaPhone("")
     checkoutRequest.current = null
     const sequence = ++quoteSequence.current
     if (!next.length) {
@@ -640,7 +654,8 @@ export function SalesScreen() {
       const attempt = await startPaymentAttempt(
         flow.saleId,
         flow.kind,
-        flow.requestId
+        flow.requestId,
+        flow.kind === "mpesa" ? mpesaPhone : undefined
       )
       await applyExternalPayment(flow, attempt)
     } catch (failure: unknown) {
@@ -1298,6 +1313,35 @@ export function SalesScreen() {
               </div>
             ) : externalPayment ? (
               <ExternalPaymentNotice flow={externalPayment} />
+            ) : paymentKind === "mpesa" ? (
+              <div className="space-y-2">
+                <Label htmlFor="mpesa-phone">Customer M-Pesa phone</Label>
+                <Input
+                  id="mpesa-phone"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder="0712 345 678"
+                  value={mpesaPhone}
+                  onChange={(event) => setMpesaPhone(event.target.value)}
+                  disabled={basketLocked || !basket.length}
+                  aria-describedby="mpesa-help"
+                />
+                <p id="mpesa-help" className="text-xs text-muted-foreground">
+                  The customer receives an STK prompt. The sale is paid only
+                  after Daraja confirms the exact amount.
+                </p>
+                {mpesaPhone && !validMpesaPhone(mpesaPhone) && (
+                  <p className="text-xs text-destructive">
+                    Enter a Kenyan mobile number such as 0712345678.
+                  </p>
+                )}
+                {totalMinor % 100 !== 0 && (
+                  <p className="text-xs text-destructive">
+                    M-Pesa STK Push requires a whole-KES total. Use cash for
+                    this basket.
+                  </p>
+                )}
+              </div>
             ) : (
               <p className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
                 The sale is finalized before the provider request starts. Only a

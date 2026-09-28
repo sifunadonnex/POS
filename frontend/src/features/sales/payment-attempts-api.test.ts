@@ -65,7 +65,8 @@ it("starts and reconciles a replay-safe external payment attempt", async () => {
     startPaymentAttempt(
       confirmedAttempt.saleId,
       "mpesa",
-      "55555555-5555-4555-8555-555555555555"
+      "55555555-5555-4555-8555-555555555555",
+      "0712345678"
     )
   ).resolves.toMatchObject({ status: "confirmed" })
   await expect(
@@ -81,6 +82,7 @@ it("starts and reconciles a replay-safe external payment attempt", async () => {
         saleId: confirmedAttempt.saleId,
         kind: "mpesa",
         requestId: "55555555-5555-4555-8555-555555555555",
+        payerPhone: "0712345678",
         reason: "mpesa register payment",
       }),
     })

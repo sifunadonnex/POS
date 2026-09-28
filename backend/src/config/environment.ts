@@ -35,6 +35,93 @@ function integer(
   return result;
 }
 
+function enabled(value: string | undefined, name: string): boolean {
+  const input = value ?? 'false';
+  if (input !== 'true' && input !== 'false') {
+    throw new Error(`${name} must be true or false`);
+  }
+  return input === 'true';
+}
+
+function required(
+  value: string | undefined,
+  name: string,
+  minimum: number,
+  maximum: number,
+): string {
+  const result = value?.trim() ?? '';
+  if (result.length < minimum || result.length > maximum) {
+    throw new Error(`${name} is required when DARAJA_ENABLED is true`);
+  }
+  return result;
+}
+
+function darajaConfiguration(env: NodeJS.ProcessEnv) {
+  if (!enabled(env.DARAJA_ENABLED, 'DARAJA_ENABLED')) return null;
+  const environment = env.DARAJA_ENVIRONMENT ?? 'sandbox';
+  if (environment !== 'sandbox' && environment !== 'production') {
+    throw new Error('DARAJA_ENVIRONMENT must be sandbox or production');
+  }
+  const transactionType =
+    env.DARAJA_TRANSACTION_TYPE ?? 'CustomerPayBillOnline';
+  if (
+    transactionType !== 'CustomerPayBillOnline' &&
+    transactionType !== 'CustomerBuyGoodsOnline'
+  ) {
+    throw new Error(
+      'DARAJA_TRANSACTION_TYPE must be CustomerPayBillOnline or CustomerBuyGoodsOnline',
+    );
+  }
+  const shortCode = required(env.DARAJA_SHORTCODE, 'DARAJA_SHORTCODE', 5, 12);
+  if (!/^\d+$/.test(shortCode)) {
+    throw new Error('DARAJA_SHORTCODE must contain only digits');
+  }
+  let callbackUrl: URL;
+  try {
+    callbackUrl = new URL(
+      required(env.DARAJA_CALLBACK_URL, 'DARAJA_CALLBACK_URL', 12, 500),
+    );
+    if (
+      callbackUrl.protocol !== 'https:' ||
+      callbackUrl.username ||
+      callbackUrl.password ||
+      callbackUrl.search ||
+      callbackUrl.hash
+    ) {
+      throw new Error();
+    }
+  } catch {
+    throw new Error(
+      'DARAJA_CALLBACK_URL must be an HTTPS URL without credentials, query parameters or fragments',
+    );
+  }
+  return {
+    environment,
+    consumerKey: required(
+      env.DARAJA_CONSUMER_KEY,
+      'DARAJA_CONSUMER_KEY',
+      8,
+      200,
+    ),
+    consumerSecret: required(
+      env.DARAJA_CONSUMER_SECRET,
+      'DARAJA_CONSUMER_SECRET',
+      8,
+      200,
+    ),
+    shortCode,
+    passkey: required(env.DARAJA_PASSKEY, 'DARAJA_PASSKEY', 16, 500),
+    transactionType,
+    callbackUrl: callbackUrl.toString(),
+    callbackToken: required(
+      env.DARAJA_CALLBACK_TOKEN,
+      'DARAJA_CALLBACK_TOKEN',
+      32,
+      200,
+    ),
+  } as const;
+}
+
 export function parseEnvironment(env: NodeJS.ProcessEnv) {
   const nodeEnv = env.NODE_ENV ?? 'development';
   if (!['development', 'test', 'production'].includes(nodeEnv)) {
@@ -76,6 +163,7 @@ export function parseEnvironment(env: NodeJS.ProcessEnv) {
     databaseUrl: url.toString(),
     databaseTls: tls === 'verify',
     databasePoolMax: integer(env.DATABASE_POOL_MAX, 5, 20, 'DATABASE_POOL_MAX'),
+    daraja: darajaConfiguration(env),
   };
 }
 

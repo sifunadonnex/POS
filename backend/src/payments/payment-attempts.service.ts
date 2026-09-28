@@ -4,6 +4,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import {
   PaymentAttemptsStore,
@@ -14,6 +15,7 @@ import {
 } from './payment-attempts.store.js';
 import {
   PAYMENT_GATEWAY,
+  InvalidGatewayCallbackError,
   type ExternalPaymentKind,
   type GatewayPaymentResult,
   type PaymentAttemptStatus,
@@ -25,6 +27,7 @@ type StartAttemptBody = {
   saleId?: unknown;
   kind?: unknown;
   reason?: unknown;
+  payerPhone?: unknown;
 };
 
 const UUID =
@@ -55,6 +58,24 @@ function kind(value: unknown): ExternalPaymentKind {
     throw new BadRequestException('Payment kind must be card or mpesa');
   }
   return value;
+}
+
+function mpesaPhone(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new BadRequestException('Provide the customer M-Pesa phone number');
+  }
+  const compact = value.trim().replace(/[\s()-]/g, '');
+  const normalized = compact.startsWith('+254')
+    ? compact.slice(1)
+    : compact.startsWith('0')
+      ? `254${compact.slice(1)}`
+      : compact;
+  if (!/^254(?:7|1)\d{8}$/.test(normalized)) {
+    throw new BadRequestException(
+      'Provide a Kenyan mobile number such as 0712345678',
+    );
+  }
+  return normalized;
 }
 
 function providerText(value: unknown, maximum = 200): string | undefined {
@@ -95,6 +116,8 @@ export class PaymentAttemptsService {
     const saleId = uuid(body.saleId, 'sale ID');
     const paymentKind = kind(body.kind);
     const reason = text(body.reason, 'Reason', 200);
+    const payerPhone =
+      paymentKind === 'mpesa' ? mpesaPhone(body.payerPhone) : undefined;
     if (!this.gateway.supports(paymentKind)) {
       throw new ConflictException(
         'Card and M-Pesa payments are not configured for this register',
@@ -104,7 +127,7 @@ export class PaymentAttemptsService {
       throw new Error('Payment gateway name is invalid');
     }
 
-    const payload = { saleId, kind: paymentKind, reason };
+    const payload = { saleId, kind: paymentKind, reason, payerPhone };
     const fingerprint = createHash('sha256')
       .update(JSON.stringify(payload))
       .digest('hex');
@@ -124,6 +147,7 @@ export class PaymentAttemptsService {
         saleId: prepared.record.sale_id,
         kind: prepared.record.kind,
         amountMinor: Number(prepared.record.amount_minor),
+        payerPhone,
       });
     } catch {
       result = {
@@ -185,6 +209,31 @@ export class PaymentAttemptsService {
       'reconciliation',
       this.normalizeGatewayResult(attempt, result),
     );
+  }
+
+  async callback(token: unknown, value: unknown) {
+    if (!this.gateway.callback) {
+      throw new NotFoundException();
+    }
+    let result: GatewayPaymentResult & { providerReference: string };
+    try {
+      result = this.gateway.callback(token, value);
+    } catch (error) {
+      if (error instanceof InvalidGatewayCallbackError) {
+        throw new NotFoundException();
+      }
+      throw new BadRequestException('Invalid payment callback');
+    }
+    const attempt = await this.store.byProviderReference(
+      this.gateway.name,
+      result.providerReference,
+    );
+    await this.store.apply(
+      attempt.id,
+      'callback',
+      this.normalizeGatewayResult(attempt, result),
+    );
+    return { ResultCode: 0, ResultDesc: 'Accepted' };
   }
 
   private normalizeGatewayResult(
