@@ -79,7 +79,7 @@ describe('ReportsService', () => {
   });
 
   it('returns aggregate sales and cash summary for a day', async () => {
-    const query = vi.fn(async (sql: string, params?: unknown[]) => {
+    const query = vi.fn(async (sql: string, _params?: unknown[]) => {
       if (sql.includes('sale_payment') && sql.includes('kind')) {
         return {
           rows: [
@@ -179,6 +179,113 @@ describe('ReportsService', () => {
     expect(result.lowStockCount).toBe(2);
   });
 
+  it('returns daily, cashier, payment and product sales insights', async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes('COUNT(DISTINCT actor_id)')) {
+        return {
+          rows: [
+            {
+              sale_count: '4',
+              gross_sales_minor: '26000',
+              refund_count: '1',
+              refund_minor: '2000',
+              active_cashier_count: '2',
+            },
+          ],
+        };
+      }
+      if (sql.includes('generate_series')) {
+        return {
+          rows: [
+            {
+              day: '2026-09-27',
+              sale_count: 1,
+              gross_sales_minor: '6000',
+              refund_minor: '0',
+            },
+            {
+              day: '2026-09-28',
+              sale_count: 3,
+              gross_sales_minor: '20000',
+              refund_minor: '2000',
+            },
+          ],
+        };
+      }
+      if (sql.includes('sales_by_actor')) {
+        return {
+          rows: [
+            {
+              cashier_id: 'cashier-1',
+              cashier_name: 'Amina Cashier',
+              sale_count: 3,
+              gross_sales_minor: '20000',
+              refund_minor: '2000',
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM sale_payment')) {
+        return {
+          rows: [
+            { kind: 'cash', payment_count: 3, amount_minor: '18000' },
+            { kind: 'mpesa', payment_count: 1, amount_minor: '8000' },
+          ],
+        };
+      }
+      if (sql.includes('FROM sale_line')) {
+        return {
+          rows: [
+            {
+              product_id: 'product-1',
+              product_name: 'Premium flour',
+              unit: 'each',
+              quantity_minor: '4',
+              gross_sales_minor: '12000',
+              sale_count: 3,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+    const module = await Test.createTestingModule({
+      providers: [
+        ReportsService,
+        {
+          provide: DatabaseService,
+          useValue: { connectionPool: { query } },
+        },
+      ],
+    }).compile();
+
+    const result = await module
+      .get(ReportsService)
+      .salesInsights('2026-09-27', '2026-09-28');
+
+    expect(result.summary).toEqual({
+      saleCount: 4,
+      grossSalesMinor: 26000,
+      refundCount: 1,
+      refundMinor: 2000,
+      netSalesMinor: 24000,
+      averageBasketMinor: 6500,
+      activeCashierCount: 2,
+    });
+    expect(result.daily).toHaveLength(2);
+    expect(result.daily[1]).toMatchObject({ netSalesMinor: 18000 });
+    expect(result.cashiers[0]).toMatchObject({
+      cashierName: 'Amina Cashier',
+      netSalesMinor: 18000,
+      averageBasketMinor: 6667,
+    });
+    expect(result.paymentMix).toHaveLength(2);
+    expect(result.topProducts[0]).toMatchObject({
+      productName: 'Premium flour',
+      grossSalesMinor: 12000,
+    });
+  });
+
   it('rejects invalid date input', async () => {
     const module = await Test.createTestingModule({
       providers: [
@@ -194,5 +301,12 @@ describe('ReportsService', () => {
 
     const service = module.get(ReportsService);
     await expect(service.summary('bad-date')).rejects.toThrow('YYYY-MM-DD');
+    await expect(service.summary('2026-02-31')).rejects.toThrow('YYYY-MM-DD');
+    await expect(
+      service.salesInsights('2026-09-29', '2026-09-01'),
+    ).rejects.toThrow('start date');
+    await expect(
+      service.salesInsights('2026-01-01', '2026-09-29'),
+    ).rejects.toThrow('93 days');
   });
 });

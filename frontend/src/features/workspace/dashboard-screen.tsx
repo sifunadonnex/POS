@@ -428,8 +428,8 @@ export function DashboardScreen({
                 />
                 <WorkArea
                   icon={BarChart3}
-                  title="Purchase reports"
-                  description="Review supplier ledgers and purchase reconciliation."
+                  title="Reports"
+                  description="Review sales trends, cashier performance and purchasing."
                   action="Open reports"
                   label="Insights"
                   onClick={() => onNavigate("reports")}

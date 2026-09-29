@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest"
-import { getPurchaseReconciliation } from "./reports-api"
+import { getPurchaseReconciliation, getSalesInsights } from "./reports-api"
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -78,4 +78,80 @@ it("surfaces a rejected purchase reconciliation report", async () => {
   await expect(
     getPurchaseReconciliation("2026-09-01", "2026-09-21")
   ).rejects.toThrow("Manager access required")
+})
+
+it("parses sales trends, cashier performance and product metrics", async () => {
+  const fetch = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        from: "2026-09-27",
+        to: "2026-09-28",
+        days: 2,
+        summary: {
+          saleCount: 4,
+          grossSalesMinor: 26000,
+          refundCount: 1,
+          refundMinor: 2000,
+          netSalesMinor: 24000,
+          averageBasketMinor: 6500,
+          activeCashierCount: 2,
+        },
+        daily: [
+          {
+            day: "2026-09-27",
+            saleCount: 1,
+            grossSalesMinor: 6000,
+            refundMinor: 0,
+            netSalesMinor: 6000,
+          },
+          {
+            day: "2026-09-28",
+            saleCount: 3,
+            grossSalesMinor: 20000,
+            refundMinor: 2000,
+            netSalesMinor: 18000,
+          },
+        ],
+        cashiers: [
+          {
+            cashierId: "cashier-1",
+            cashierName: "Amina Cashier",
+            saleCount: 3,
+            grossSalesMinor: 20000,
+            refundMinor: 2000,
+            netSalesMinor: 18000,
+            averageBasketMinor: 6667,
+          },
+        ],
+        paymentMix: [
+          { kind: "cash", paymentCount: 3, amountMinor: 18000 },
+          { kind: "mpesa", paymentCount: 1, amountMinor: 8000 },
+        ],
+        topProducts: [
+          {
+            productId: "product-1",
+            productName: "Premium flour",
+            unit: "each",
+            quantityMinor: 4,
+            grossSalesMinor: 12000,
+            saleCount: 3,
+          },
+        ],
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    )
+  )
+  vi.stubGlobal("fetch", fetch)
+
+  await expect(
+    getSalesInsights("2026-09-27", "2026-09-28")
+  ).resolves.toMatchObject({
+    summary: { netSalesMinor: 24000, averageBasketMinor: 6500 },
+    cashiers: [expect.objectContaining({ cashierName: "Amina Cashier" })],
+    topProducts: [expect.objectContaining({ productName: "Premium flour" })],
+  })
+  expect(fetch).toHaveBeenCalledWith(
+    "/api/reports/sales?from=2026-09-27&to=2026-09-28",
+    expect.objectContaining({ credentials: "same-origin" })
+  )
 })

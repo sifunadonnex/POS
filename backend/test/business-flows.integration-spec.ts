@@ -647,5 +647,24 @@ describe('PostgreSQL register and purchase business flows', () => {
       payment_count: 4,
       cash_movement_count: 0,
     });
+
+    const reportDay = (
+      await pool.query<{ day: string }>(
+        "SELECT to_char(now() AT TIME ZONE 'Africa/Nairobi', 'YYYY-MM-DD') AS day",
+      )
+    ).rows[0].day;
+    const insights = await reports.salesInsights(reportDay, reportDay);
+    expect(insights.summary.saleCount).toBeGreaterThanOrEqual(4);
+    expect(insights.summary.grossSalesMinor).toBeGreaterThanOrEqual(1000);
+    expect(insights.daily).toHaveLength(1);
+    expect(insights.daily[0]?.day).toBe(reportDay);
+    expect(insights.cashiers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ cashierId: cashier.userId }),
+      ]),
+    );
+    expect(insights.topProducts).toEqual(
+      expect.arrayContaining([expect.objectContaining({ productId })]),
+    );
   });
 });

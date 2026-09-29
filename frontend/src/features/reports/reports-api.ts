@@ -47,6 +47,50 @@ export type PurchaseReconciliation = {
   }>
 }
 
+export type SalesInsights = {
+  from: string
+  to: string
+  days: number
+  summary: {
+    saleCount: number
+    grossSalesMinor: number
+    refundCount: number
+    refundMinor: number
+    netSalesMinor: number
+    averageBasketMinor: number
+    activeCashierCount: number
+  }
+  daily: Array<{
+    day: string
+    saleCount: number
+    grossSalesMinor: number
+    refundMinor: number
+    netSalesMinor: number
+  }>
+  cashiers: Array<{
+    cashierId: string
+    cashierName: string
+    saleCount: number
+    grossSalesMinor: number
+    refundMinor: number
+    netSalesMinor: number
+    averageBasketMinor: number
+  }>
+  paymentMix: Array<{
+    kind: "cash" | "card" | "mpesa"
+    paymentCount: number
+    amountMinor: number
+  }>
+  topProducts: Array<{
+    productId: string
+    productName: string
+    unit: "each" | "pack" | "kg" | "l"
+    quantityMinor: number
+    grossSalesMinor: number
+    saleCount: number
+  }>
+}
+
 function isDate(value: unknown): value is string {
   return typeof value === "string" && Number.isFinite(Date.parse(value))
 }
@@ -56,6 +100,17 @@ function integer(value: unknown, allowNegative = false): value is number {
     typeof value === "number" &&
     Number.isSafeInteger(value) &&
     (allowNegative || value >= 0)
+  )
+}
+
+function isDay(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false
+  }
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  return (
+    Number.isFinite(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === value
   )
 }
 
@@ -280,4 +335,182 @@ export async function getPurchaseReconciliation(
     throw new Error(message)
   }
   return parsePurchaseReconciliation(result)
+}
+
+function parseSalesInsights(value: unknown): SalesInsights {
+  if (!value || typeof value !== "object") {
+    throw new Error("Invalid sales insights response")
+  }
+  const row = value as Record<string, unknown>
+  if (
+    !isDay(row.from) ||
+    !isDay(row.to) ||
+    !integer(row.days) ||
+    !row.summary ||
+    typeof row.summary !== "object" ||
+    !Array.isArray(row.daily) ||
+    !Array.isArray(row.cashiers) ||
+    !Array.isArray(row.paymentMix) ||
+    !Array.isArray(row.topProducts)
+  ) {
+    throw new Error("Invalid sales insights response")
+  }
+  const summary = row.summary as Record<string, unknown>
+  const summaryFields = [
+    "saleCount",
+    "grossSalesMinor",
+    "refundCount",
+    "refundMinor",
+    "averageBasketMinor",
+    "activeCashierCount",
+  ]
+  if (
+    summaryFields.some((field) => !integer(summary[field])) ||
+    !integer(summary.netSalesMinor, true)
+  ) {
+    throw new Error("Invalid sales insights summary")
+  }
+
+  const daily = row.daily.map((value) => {
+    if (!value || typeof value !== "object") {
+      throw new Error("Invalid daily sales insight")
+    }
+    const day = value as Record<string, unknown>
+    if (
+      !isDay(day.day) ||
+      !integer(day.saleCount) ||
+      !integer(day.grossSalesMinor) ||
+      !integer(day.refundMinor) ||
+      !integer(day.netSalesMinor, true)
+    ) {
+      throw new Error("Invalid daily sales insight")
+    }
+    return {
+      day: day.day,
+      saleCount: day.saleCount,
+      grossSalesMinor: day.grossSalesMinor,
+      refundMinor: day.refundMinor,
+      netSalesMinor: day.netSalesMinor,
+    }
+  })
+
+  const cashiers = row.cashiers.map((value) => {
+    if (!value || typeof value !== "object") {
+      throw new Error("Invalid cashier sales insight")
+    }
+    const cashier = value as Record<string, unknown>
+    const positiveFields = [
+      "saleCount",
+      "grossSalesMinor",
+      "refundMinor",
+      "averageBasketMinor",
+    ]
+    if (
+      typeof cashier.cashierId !== "string" ||
+      typeof cashier.cashierName !== "string" ||
+      positiveFields.some((field) => !integer(cashier[field])) ||
+      !integer(cashier.netSalesMinor, true)
+    ) {
+      throw new Error("Invalid cashier sales insight")
+    }
+    return {
+      cashierId: cashier.cashierId,
+      cashierName: cashier.cashierName,
+      saleCount: cashier.saleCount as number,
+      grossSalesMinor: cashier.grossSalesMinor as number,
+      refundMinor: cashier.refundMinor as number,
+      netSalesMinor: cashier.netSalesMinor as number,
+      averageBasketMinor: cashier.averageBasketMinor as number,
+    }
+  })
+
+  const paymentMix = row.paymentMix.map((value) => {
+    if (!value || typeof value !== "object") {
+      throw new Error("Invalid payment sales insight")
+    }
+    const payment = value as Record<string, unknown>
+    if (
+      !["cash", "card", "mpesa"].includes(String(payment.kind)) ||
+      !integer(payment.paymentCount) ||
+      !integer(payment.amountMinor)
+    ) {
+      throw new Error("Invalid payment sales insight")
+    }
+    return {
+      kind: payment.kind as "cash" | "card" | "mpesa",
+      paymentCount: payment.paymentCount,
+      amountMinor: payment.amountMinor,
+    }
+  })
+
+  const topProducts = row.topProducts.map((value) => {
+    if (!value || typeof value !== "object") {
+      throw new Error("Invalid product sales insight")
+    }
+    const product = value as Record<string, unknown>
+    if (
+      typeof product.productId !== "string" ||
+      typeof product.productName !== "string" ||
+      !["each", "pack", "kg", "l"].includes(String(product.unit)) ||
+      !integer(product.quantityMinor) ||
+      !integer(product.grossSalesMinor) ||
+      !integer(product.saleCount)
+    ) {
+      throw new Error("Invalid product sales insight")
+    }
+    return {
+      productId: product.productId,
+      productName: product.productName,
+      unit: product.unit as "each" | "pack" | "kg" | "l",
+      quantityMinor: product.quantityMinor,
+      grossSalesMinor: product.grossSalesMinor,
+      saleCount: product.saleCount,
+    }
+  })
+
+  return {
+    from: row.from,
+    to: row.to,
+    days: row.days,
+    summary: {
+      saleCount: summary.saleCount as number,
+      grossSalesMinor: summary.grossSalesMinor as number,
+      refundCount: summary.refundCount as number,
+      refundMinor: summary.refundMinor as number,
+      netSalesMinor: summary.netSalesMinor as number,
+      averageBasketMinor: summary.averageBasketMinor as number,
+      activeCashierCount: summary.activeCashierCount as number,
+    },
+    daily,
+    cashiers,
+    paymentMix,
+    topProducts,
+  }
+}
+
+export async function getSalesInsights(
+  from: string,
+  to: string,
+  signal?: AbortSignal
+): Promise<SalesInsights> {
+  const response = await fetch(
+    `/api/reports/sales?${new URLSearchParams({ from, to })}`,
+    { credentials: "same-origin", cache: "no-store", signal }
+  )
+  if (response.status === 401) {
+    window.dispatchEvent(new Event("paygo-session-expired"))
+    throw new Error("Your session expired. Sign in again to continue.")
+  }
+  const result: unknown = await response.json()
+  if (!response.ok) {
+    const message =
+      result &&
+      typeof result === "object" &&
+      "message" in result &&
+      typeof result.message === "string"
+        ? result.message
+        : "Sales insights could not be loaded. Please retry."
+    throw new Error(message)
+  }
+  return parseSalesInsights(result)
 }

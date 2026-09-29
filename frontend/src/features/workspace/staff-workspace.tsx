@@ -26,7 +26,7 @@ import { StaffAdminScreen } from "../identity/staff-admin-screen"
 import type { Staff } from "../identity/identity-api"
 import { StockControlScreen } from "../inventory/stock-control-screen"
 import { PurchaseIntakeScreen } from "../purchases/purchase-intake-screen"
-import { PurchaseReconciliationScreen } from "../reports/purchase-reconciliation-screen"
+import { ReportsScreen } from "../reports/reports-screen"
 import { ReturnsScreen } from "../returns/returns-screen"
 import { StocktakeScreen } from "../stocktake/stocktake-screen"
 import { DashboardScreen } from "./dashboard-screen"
@@ -123,8 +123,8 @@ const navigationSections: Array<{
     items: [
       {
         id: "reports",
-        label: "Purchase reports",
-        description: "Supplier ledger and purchase reconciliation",
+        label: "Reports",
+        description: "Sales insights and purchase reconciliation",
         icon: BarChart3,
         managerOnly: true,
       },
@@ -216,8 +216,9 @@ const pageDetails: Record<
   },
   reports: {
     section: "Insights",
-    title: "Purchase reports",
-    description: "Reconcile supplier receipts, returns and net purchase cost.",
+    title: "Reports",
+    description:
+      "Review sales trends, cashier performance and purchase reconciliation.",
   },
 }
 
@@ -423,7 +424,7 @@ export function StaffWorkspace({
           ) : tab === "stocktake" && manager ? (
             <StocktakeScreen />
           ) : tab === "reports" && manager ? (
-            <PurchaseReconciliationScreen />
+            <ReportsScreen />
           ) : tab === "staff" && manager ? (
             <StaffAdminScreen currentUserId={staff.id} />
           ) : tab === "audit" && manager ? (

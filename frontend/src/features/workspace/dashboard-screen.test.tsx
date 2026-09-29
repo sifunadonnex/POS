@@ -49,7 +49,7 @@ it("shows live manager operations and navigates to implemented inventory work", 
   expect(screen.getByText("Shift reconciliation")).toBeTruthy()
   expect(screen.getByText("Purchase intake")).toBeTruthy()
   expect(screen.getByText("Stocktake")).toBeTruthy()
-  expect(screen.getByText("Purchase reports")).toBeTruthy()
+  expect(screen.getByText("Reports")).toBeTruthy()
   expect(screen.getByText("3")).toBeTruthy()
 
   fireEvent.click(screen.getByRole("button", { name: "Review stock" }))

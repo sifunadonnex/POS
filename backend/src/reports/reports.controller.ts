@@ -24,4 +24,14 @@ export class ReportsController {
   ) {
     return this.reports.purchaseReconciliation(from, to);
   }
+
+  @Get('sales')
+  @StaffRoles('manager')
+  salesInsights(
+    @Req() _req: StaffRequest,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    return this.reports.salesInsights(from, to);
+  }
 }
