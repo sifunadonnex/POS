@@ -29,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { errorMessage } from "../catalogue/catalogue-format"
+import { DailySalesBars } from "./daily-sales-bars"
 import { getSalesInsights, type SalesInsights } from "./reports-api"
 
 function dateValue(date: Date) {
@@ -51,13 +52,6 @@ function money(minor: number) {
     currency: "KES",
     maximumFractionDigits: 2,
   }).format(minor / 100)
-}
-
-function shortDay(value: string) {
-  return new Intl.DateTimeFormat("en-KE", {
-    day: "numeric",
-    month: "short",
-  }).format(new Date(`${value}T00:00:00`))
 }
 
 function quantity(value: number, unit: "each" | "pack" | "kg" | "l") {
@@ -244,7 +238,7 @@ function SalesReport({ report }: { report: SalesInsights }) {
 }
 
 function DailySalesChart({ report }: { report: SalesInsights }) {
-  const maximum = Math.max(1, ...report.daily.map((day) => day.grossSalesMinor))
+  const peak = Math.max(0, ...report.daily.map((day) => day.grossSalesMinor))
   return (
     <Card>
       <CardHeader className="border-b">
@@ -255,79 +249,19 @@ function DailySalesChart({ report }: { report: SalesInsights }) {
               Gross completed sales by Nairobi trading day.
             </CardDescription>
           </div>
-          <Badge variant="secondary">
-            Peak {money(maximum === 1 ? 0 : maximum)}
-          </Badge>
+          <Badge variant="secondary">Peak {money(peak)}</Badge>
         </div>
       </CardHeader>
       <CardContent className="p-5">
         {report.daily.length === 0 ? (
           <StateMessage>No daily sales in this period.</StateMessage>
         ) : (
-          <figure aria-labelledby="daily-sales-chart-title">
-            <figcaption id="daily-sales-chart-title" className="sr-only">
+          <div aria-labelledby="daily-sales-chart-title">
+            <p id="daily-sales-chart-title" className="sr-only">
               Daily gross sales and refunds from {report.from} to {report.to}
-            </figcaption>
-            <div className="mb-4 flex flex-wrap gap-4 text-xs text-muted-foreground">
-              <span className="flex items-center gap-2">
-                <span className="size-2 rounded-full bg-primary" /> Gross sales
-              </span>
-              <span className="flex items-center gap-2">
-                <span className="size-2 rounded-full bg-amber-500" /> Refunds
-              </span>
-            </div>
-            <div className="overflow-x-auto pb-2">
-              <div
-                className="grid h-60 min-w-max items-end gap-2 border-b px-1"
-                style={{
-                  gridTemplateColumns: `repeat(${report.daily.length}, minmax(2.5rem, 1fr))`,
-                }}
-                aria-hidden="true"
-              >
-                {report.daily.map((day) => {
-                  const grossHeight = Math.round(
-                    (day.grossSalesMinor / maximum) * 100
-                  )
-                  const refundHeight = Math.round(
-                    (day.refundMinor / maximum) * 100
-                  )
-                  return (
-                    <div
-                      key={day.day}
-                      className="flex h-full min-w-10 flex-col justify-end"
-                      title={`${shortDay(day.day)}: ${money(day.grossSalesMinor)} gross, ${money(day.refundMinor)} refunded`}
-                    >
-                      <div className="flex h-48 items-end justify-center gap-1">
-                        <div
-                          className="w-4 rounded-t bg-primary"
-                          style={{
-                            height: `${day.grossSalesMinor ? Math.max(grossHeight, 2) : 0}%`,
-                          }}
-                        />
-                        <div
-                          className="w-2 rounded-t bg-amber-500"
-                          style={{
-                            height: `${day.refundMinor ? Math.max(refundHeight, 2) : 0}%`,
-                          }}
-                        />
-                      </div>
-                      <p className="mt-2 truncate text-center text-[10px] text-muted-foreground">
-                        {shortDay(day.day)}
-                      </p>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-            <ul className="sr-only">
-              {report.daily.map((day) => (
-                <li key={day.day}>
-                  {day.day}: {money(day.grossSalesMinor)} gross sales from{" "}
-                  {day.saleCount} sales, {money(day.refundMinor)} refunded
-                </li>
-              ))}
-            </ul>
-          </figure>
+            </p>
+            <DailySalesBars daily={report.daily} />
+          </div>
         )}
       </CardContent>
     </Card>

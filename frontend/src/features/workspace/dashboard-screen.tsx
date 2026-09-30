@@ -31,7 +31,13 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { getDailySummary, type DailySummary } from "../reports/reports-api"
+import { DailySalesBars } from "../reports/daily-sales-bars"
+import {
+  getDailySummary,
+  getSalesInsights,
+  type DailySummary,
+  type SalesInsights,
+} from "../reports/reports-api"
 
 type DashboardTarget =
   | "sales"
@@ -52,6 +58,14 @@ type DashboardScreenProps = {
 
 function today() {
   const date = new Date()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+function daysBefore(value: string, amount: number) {
+  const date = new Date(`${value}T00:00:00`)
+  date.setDate(date.getDate() - amount)
   const month = String(date.getMonth() + 1).padStart(2, "0")
   const day = String(date.getDate()).padStart(2, "0")
   return `${date.getFullYear()}-${month}-${day}`
@@ -167,10 +181,14 @@ export function DashboardScreen({
   onNavigate,
 }: DashboardScreenProps) {
   const [summary, setSummary] = useState<DailySummary | null>(null)
+  const [salesTrend, setSalesTrend] = useState<SalesInsights | null>(null)
   const [loading, setLoading] = useState(manager)
+  const [trendLoading, setTrendLoading] = useState(manager)
   const [error, setError] = useState("")
+  const [trendError, setTrendError] = useState("")
   const [reloadKey, setReloadKey] = useState(0)
   const reportDay = today()
+  const trendStart = daysBefore(reportDay, 6)
 
   useEffect(() => {
     if (!manager) return
@@ -195,6 +213,32 @@ export function DashboardScreen({
       })
     return () => controller.abort()
   }, [manager, reloadKey, reportDay])
+
+  useEffect(() => {
+    if (!manager) return
+    const controller = new AbortController()
+    void getSalesInsights(trendStart, reportDay, controller.signal)
+      .then((result) => {
+        if (!controller.signal.aborted) {
+          setSalesTrend(result)
+          setTrendError("")
+        }
+      })
+      .catch((failure: unknown) => {
+        if (!controller.signal.aborted) {
+          setSalesTrend(null)
+          setTrendError(
+            failure instanceof Error
+              ? failure.message
+              : "The seven-day sales trend could not be loaded."
+          )
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setTrendLoading(false)
+      })
+    return () => controller.abort()
+  }, [manager, reloadKey, reportDay, trendStart])
 
   const dateLabel = new Intl.DateTimeFormat("en-KE", {
     weekday: "long",
@@ -358,6 +402,56 @@ export function DashboardScreen({
             icon={RotateCcw}
           />
         </section>
+      )}
+
+      {manager && (
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>7-day sales pulse</CardTitle>
+                <CardDescription className="mt-1">
+                  Gross sales and refunds through today, at a glance.
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => onNavigate("reports")}
+              >
+                Full report
+                <ArrowRight className="size-3.5" aria-hidden="true" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-5">
+            {trendLoading ? (
+              <SummaryState>Loading the seven-day sales trend…</SummaryState>
+            ) : trendError ? (
+              <SummaryState
+                action={
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setTrendLoading(true)
+                      setTrendError("")
+                      setReloadKey((value) => value + 1)
+                    }}
+                    className="gap-2"
+                  >
+                    <RefreshCw className="size-4" aria-hidden="true" />
+                    Retry trend
+                  </Button>
+                }
+              >
+                {trendError}
+              </SummaryState>
+            ) : salesTrend ? (
+              <SalesPulse report={salesTrend} />
+            ) : null}
+          </CardContent>
+        </Card>
       )}
 
       <section className="grid gap-4 xl:grid-cols-[1.45fr_0.85fr]">
@@ -562,6 +656,34 @@ export function DashboardScreen({
           </div>
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+function SalesPulse({ report }: { report: SalesInsights }) {
+  return (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_15rem] lg:items-stretch">
+      <DailySalesBars daily={report.daily} compact />
+      <dl className="grid overflow-hidden rounded-xl border bg-muted/20 sm:grid-cols-3 lg:grid-cols-1">
+        <div className="p-4 sm:border-r lg:border-r-0 lg:border-b">
+          <dt className="text-xs text-muted-foreground">Net sales</dt>
+          <dd className="mt-1 text-lg font-semibold tabular-nums">
+            {money(report.summary.netSalesMinor)}
+          </dd>
+        </div>
+        <div className="border-t p-4 sm:border-t-0 sm:border-r lg:border-r-0 lg:border-b">
+          <dt className="text-xs text-muted-foreground">Completed sales</dt>
+          <dd className="mt-1 text-lg font-semibold tabular-nums">
+            {report.summary.saleCount}
+          </dd>
+        </div>
+        <div className="border-t p-4 sm:border-t-0">
+          <dt className="text-xs text-muted-foreground">Average basket</dt>
+          <dd className="mt-1 text-lg font-semibold tabular-nums">
+            {money(report.summary.averageBasketMinor)}
+          </dd>
+        </div>
+      </dl>
     </div>
   )
 }

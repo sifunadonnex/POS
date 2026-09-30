@@ -4,11 +4,13 @@ import { DashboardScreen } from "./dashboard-screen"
 
 const mocks = vi.hoisted(() => ({
   getDailySummary: vi.fn(),
+  getSalesInsights: vi.fn(),
 }))
 
 vi.mock("../reports/reports-api", async (original) => ({
   ...(await original<typeof import("../reports/reports-api")>()),
   getDailySummary: mocks.getDailySummary,
+  getSalesInsights: mocks.getSalesInsights,
 }))
 
 const summary = {
@@ -26,8 +28,43 @@ const summary = {
   lowStockCount: 3,
 }
 
+const salesTrend = {
+  from: "2026-09-16",
+  to: "2026-09-22",
+  days: 7,
+  summary: {
+    saleCount: 18,
+    grossSalesMinor: 5345000,
+    refundCount: 1,
+    refundMinor: 12500,
+    netSalesMinor: 5332500,
+    averageBasketMinor: 296944,
+    activeCashierCount: 2,
+  },
+  daily: [
+    {
+      day: "2026-09-16",
+      saleCount: 3,
+      grossSalesMinor: 900000,
+      refundMinor: 0,
+      netSalesMinor: 900000,
+    },
+    {
+      day: "2026-09-22",
+      saleCount: 8,
+      grossSalesMinor: 2345000,
+      refundMinor: 12500,
+      netSalesMinor: 2332500,
+    },
+  ],
+  cashiers: [],
+  paymentMix: [],
+  topProducts: [],
+}
+
 beforeEach(() => {
   mocks.getDailySummary.mockResolvedValue(summary)
+  mocks.getSalesInsights.mockResolvedValue(salesTrend)
 })
 
 afterEach(() => {
@@ -46,6 +83,8 @@ it("shows live manager operations and navigates to implemented inventory work", 
   )
 
   expect(await screen.findByText("Sales collected")).toBeTruthy()
+  expect(await screen.findByText("7-day sales pulse")).toBeTruthy()
+  expect(screen.getByText("Net sales")).toBeTruthy()
   expect(screen.getByText("Shift reconciliation")).toBeTruthy()
   expect(screen.getByText("Purchase intake")).toBeTruthy()
   expect(screen.getByText("Stocktake")).toBeTruthy()
@@ -70,6 +109,7 @@ it("keeps manager figures private while exposing cashier workflows", () => {
   )
 
   expect(mocks.getDailySummary).not.toHaveBeenCalled()
+  expect(mocks.getSalesInsights).not.toHaveBeenCalled()
   expect(screen.getByText("Next customer")).toBeTruthy()
   expect(screen.getByText("Customer service")).toBeTruthy()
   expect(screen.queryByText("Purchase intake")).toBeNull()
