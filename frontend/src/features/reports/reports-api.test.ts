@@ -1,9 +1,55 @@
 import { afterEach, expect, it, vi } from "vitest"
-import { getPurchaseReconciliation, getSalesInsights } from "./reports-api"
+import {
+  getDailySummary,
+  getPurchaseReconciliation,
+  getSalesInsights,
+} from "./reports-api"
 
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+})
+
+it("parses product-specific low-stock alerts in the daily summary", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          day: "2026-10-01",
+          saleCount: 0,
+          salesTotalMinor: 0,
+          paymentCount: 0,
+          cashMinor: 0,
+          cardMinor: 0,
+          mpesaMinor: 0,
+          refundCount: 0,
+          refundMinor: 0,
+          closedShiftCount: 0,
+          varianceMinor: 0,
+          lowStockCount: 1,
+          lowStockItems: [
+            {
+              productId: "product-1",
+              sku: "RICE",
+              name: "Loose rice",
+              unit: "kg",
+              quantityMinor: 1250,
+              thresholdMinor: 2000,
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+  )
+
+  await expect(getDailySummary("2026-10-01")).resolves.toMatchObject({
+    lowStockCount: 1,
+    lowStockItems: [
+      expect.objectContaining({ name: "Loose rice", thresholdMinor: 2000 }),
+    ],
+  })
 })
 
 it("parses the purchase reconciliation report with net totals", async () => {

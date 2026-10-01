@@ -7,6 +7,7 @@ export type ProductInput = {
   categoryId: string | null;
   unit: SaleUnit;
   priceMinor: string;
+  lowStockThresholdMinor: string | null;
   taxCode: string | null;
   barcodes: string[];
   active: boolean;
@@ -65,6 +66,27 @@ export function unitInput(value: unknown): SaleUnit {
     throw new BadRequestException('Unit must be each, pack, kg or l');
   return value;
 }
+export function stockThresholdInput(
+  value: unknown,
+  unit: SaleUnit,
+): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string') {
+    throw new BadRequestException('Provide a valid low-stock threshold');
+  }
+  const wholeUnits = unit === 'each' || unit === 'pack';
+  const pattern = wholeUnits
+    ? /^(0|[1-9]\d{0,8})$/
+    : /^(0|[1-9]\d{0,8})(\.\d{1,3})?$/;
+  if (!pattern.test(value)) {
+    throw new BadRequestException(
+      `Low-stock threshold must use ${wholeUnits ? 'whole units' : 'at most three decimal places'}`,
+    );
+  }
+  if (wholeUnits) return value;
+  const [whole, fraction = ''] = value.split('.');
+  return (BigInt(whole) * 1000n + BigInt(fraction.padEnd(3, '0'))).toString();
+}
 export function productInput(value: unknown): ProductInput {
   const body = objectInput(value);
   const sku = textInput(body.sku, 'SKU', 40).toUpperCase();
@@ -84,13 +106,15 @@ export function productInput(value: unknown): ProductInput {
     throw new BadRequestException('Duplicate barcode');
   if (typeof body.active !== 'boolean')
     throw new BadRequestException('Provide product status');
+  const unit = unitInput(body.unit);
   return {
     sku,
     name: textInput(body.name, 'product name', 160),
     categoryId:
       body.categoryId === null ? null : uuidInput(body.categoryId, 'category'),
-    unit: unitInput(body.unit),
+    unit,
     priceMinor: priceInput(body.price),
+    lowStockThresholdMinor: stockThresholdInput(body.lowStockThreshold, unit),
     taxCode:
       body.taxCode === null || body.taxCode === ''
         ? null

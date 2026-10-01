@@ -8,7 +8,12 @@ import {
   type Category,
   type Product,
 } from "./catalogue-api"
-import { displayPrice, errorMessage, formValue } from "./catalogue-format"
+import {
+  displayPrice,
+  errorMessage,
+  formValue,
+  stockQuantityText,
+} from "./catalogue-format"
 import { CategoryPicker } from "./category-picker"
 import { ProductEditor } from "./product-editor"
 import { CategoryEditor } from "./category-editor"
@@ -249,6 +254,8 @@ export function CatalogueScreen({ manager }: { manager: boolean }) {
                     {product.unit === "kg" || product.unit === "l"
                       ? `Quantity step: 0.001 ${product.unit}`
                       : "Whole quantities"}
+                    {manager &&
+                      ` · Low-stock alert: ${product.lowStockThresholdMinor === null ? "Not set" : `${stockQuantityText(product.lowStockThresholdMinor, product.unit)} ${product.unit}`}`}
                   </p>
                   {manager && (
                     <div className="mt-3 flex flex-wrap gap-2">

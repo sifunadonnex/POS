@@ -26,6 +26,12 @@ export function displayPrice(minor: string): string {
   const [whole, fraction] = priceText(minor).split(".")
   return `KES ${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${fraction}`
 }
+export function stockQuantityText(minor: string, unit: SaleUnit): string {
+  if (unit === "each" || unit === "pack") return minor
+  const quantity = BigInt(minor)
+  const fraction = (quantity % 1000n).toString().padStart(3, "0")
+  return `${quantity / 1000n}.${fraction}`.replace(/\.?0+$/, "")
+}
 export function errorMessage(error: unknown): string {
   return error instanceof Error
     ? error.message

@@ -26,6 +26,16 @@ const summary = {
   closedShiftCount: 2,
   varianceMinor: 0,
   lowStockCount: 3,
+  lowStockItems: [
+    {
+      productId: "product-1",
+      sku: "RICE",
+      name: "Loose rice",
+      unit: "kg" as const,
+      quantityMinor: 1250,
+      thresholdMinor: 2000,
+    },
+  ],
 }
 
 const salesTrend = {
@@ -90,8 +100,14 @@ it("shows live manager operations and navigates to implemented inventory work", 
   expect(screen.getByText("Stocktake")).toBeTruthy()
   expect(screen.getByText("Reports")).toBeTruthy()
   expect(screen.getByText("3")).toBeTruthy()
+  expect(screen.getByText("Stock alerts")).toBeTruthy()
+  expect(screen.getByText("Loose rice")).toBeTruthy()
+  expect(screen.getByText("1.25 kg")).toBeTruthy()
 
   fireEvent.click(screen.getByRole("button", { name: "Review stock" }))
+  expect(onNavigate).toHaveBeenCalledWith("stock")
+
+  fireEvent.click(screen.getByRole("button", { name: "Open stock control" }))
   expect(onNavigate).toHaveBeenCalledWith("stock")
 
   fireEvent.click(screen.getByRole("button", { name: "Receive goods" }))

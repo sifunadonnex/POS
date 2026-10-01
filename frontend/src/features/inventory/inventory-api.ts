@@ -6,6 +6,8 @@ export type StockRow = {
   name: string
   unit: InventoryUnit
   quantityMinor: number
+  lowStockThresholdMinor: number | null
+  lowStock: boolean
   active: boolean
 }
 
@@ -64,6 +66,12 @@ function parseStock(value: unknown): StockRow {
     typeof row.name !== "string" ||
     !isUnit(row.unit) ||
     !isSafeInteger(row.quantityMinor) ||
+    !(
+      row.lowStockThresholdMinor === null ||
+      (isSafeInteger(row.lowStockThresholdMinor) &&
+        row.lowStockThresholdMinor >= 0)
+    ) ||
+    typeof row.lowStock !== "boolean" ||
     typeof row.active !== "boolean"
   ) {
     throw new Error("Invalid stock row")
@@ -74,6 +82,8 @@ function parseStock(value: unknown): StockRow {
     name: row.name,
     unit: row.unit,
     quantityMinor: row.quantityMinor,
+    lowStockThresholdMinor: row.lowStockThresholdMinor,
+    lowStock: row.lowStock,
     active: row.active,
   }
 }

@@ -8,6 +8,7 @@ export type Product = {
   categoryName: string | null
   unit: SaleUnit
   priceMinor: string
+  lowStockThresholdMinor: string | null
   taxCode: string | null
   active: boolean
   revision: number
@@ -107,6 +108,12 @@ function isRevision(value: unknown): value is number {
 function isPrice(value: unknown): value is string {
   return typeof value === "string" && /^(0|[1-9]\d{0,8})$/.test(value)
 }
+function isStockQuantity(value: unknown): value is string | null {
+  return (
+    value === null ||
+    (typeof value === "string" && /^(0|[1-9]\d{0,11})$/.test(value))
+  )
+}
 export function parseCategory(value: unknown): Category {
   const v = object(value)
   if (
@@ -127,6 +134,7 @@ export function parseProduct(value: unknown): Product {
     !nullableText(v.categoryName) ||
     !isUnit(v.unit) ||
     !isPrice(v.priceMinor) ||
+    !isStockQuantity(v.lowStockThresholdMinor) ||
     !nullableText(v.taxCode) ||
     typeof v.active !== "boolean" ||
     !isRevision(v.revision) ||
@@ -141,6 +149,7 @@ export function parseProduct(value: unknown): Product {
     categoryName: v.categoryName,
     unit: v.unit,
     priceMinor: v.priceMinor,
+    lowStockThresholdMinor: v.lowStockThresholdMinor,
     taxCode: v.taxCode,
     active: v.active,
     revision: v.revision,

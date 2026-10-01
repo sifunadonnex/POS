@@ -23,11 +23,17 @@ export type StockRow = {
   name: string;
   unit: 'each' | 'pack' | 'kg' | 'l';
   quantityMinor: number;
+  lowStockThresholdMinor: number | null;
+  lowStock: boolean;
   active: boolean;
 };
 
-type DatabaseStockRow = Omit<StockRow, 'quantityMinor'> & {
+type DatabaseStockRow = Omit<
+  StockRow,
+  'quantityMinor' | 'lowStockThresholdMinor' | 'lowStock'
+> & {
   quantityMinor: string | number;
+  lowStockThresholdMinor: string | number | null;
 };
 
 type DatabaseMovementRow = {
@@ -46,6 +52,13 @@ function databaseInteger(value: string | number, name: string): number {
     throw new Error(`Invalid ${name} from inventory database`);
   }
   return parsed;
+}
+
+function nullableDatabaseInteger(
+  value: string | number | null,
+  name: string,
+): number | null {
+  return value === null ? null : databaseInteger(value, name);
 }
 
 @Injectable()
@@ -80,7 +93,8 @@ export class InventoryService {
     try {
       const result = await this.database.connectionPool.query<DatabaseStockRow>(
         `SELECT p.id AS "productId", p.sku, p.name, p.unit,
-        COALESCE(s.quantity_minor, 0) AS "quantityMinor", p.active
+        COALESCE(s.quantity_minor, 0) AS "quantityMinor",
+        p.low_stock_threshold_minor AS "lowStockThresholdMinor", p.active
         FROM catalogue_product p
         LEFT JOIN inventory_stock s ON s.product_id = p.id
         WHERE ($1 = '' OR strpos(lower(p.name || ' ' || p.sku), lower($1)) > 0)
@@ -88,10 +102,25 @@ export class InventoryService {
         [query, pageNumber * 50],
       );
       return {
-        stock: result.rows.slice(0, 50).map((row) => ({
-          ...row,
-          quantityMinor: databaseInteger(row.quantityMinor, 'stock quantity'),
-        })),
+        stock: result.rows.slice(0, 50).map((row) => {
+          const quantityMinor = databaseInteger(
+            row.quantityMinor,
+            'stock quantity',
+          );
+          const lowStockThresholdMinor = nullableDatabaseInteger(
+            row.lowStockThresholdMinor,
+            'low-stock threshold',
+          );
+          return {
+            ...row,
+            quantityMinor,
+            lowStockThresholdMinor,
+            lowStock:
+              row.active &&
+              lowStockThresholdMinor !== null &&
+              quantityMinor <= lowStockThresholdMinor,
+          };
+        }),
         hasMore: result.rows.length > 50,
       };
     } catch {

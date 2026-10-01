@@ -38,6 +38,7 @@ const product = {
   categoryName: null,
   unit: "kg" as const,
   priceMinor: "18000",
+  lowStockThresholdMinor: null,
   taxCode: null,
   active: true,
   revision: 1,

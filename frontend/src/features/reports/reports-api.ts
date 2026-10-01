@@ -11,6 +11,14 @@ export type DailySummary = {
   closedShiftCount: number
   varianceMinor: number
   lowStockCount: number
+  lowStockItems: Array<{
+    productId: string
+    sku: string
+    name: string
+    unit: "each" | "pack" | "kg" | "l"
+    quantityMinor: number
+    thresholdMinor: number
+  }>
 }
 
 export type PurchaseReconciliation = {
@@ -133,12 +141,42 @@ function parseSummary(value: unknown, day: string): DailySummary {
   ]
   if (
     row.day !== day ||
+    !Array.isArray(row.lowStockItems) ||
     fields.some((field) =>
       field === "varianceMinor"
         ? !integer(row[field], true)
         : !integer(row[field])
     )
   ) {
+    throw new Error("Invalid report response")
+  }
+  const lowStockItems = row.lowStockItems.map((value) => {
+    if (!value || typeof value !== "object") {
+      throw new Error("Invalid low-stock alert")
+    }
+    const item = value as Record<string, unknown>
+    if (
+      typeof item.productId !== "string" ||
+      typeof item.sku !== "string" ||
+      typeof item.name !== "string" ||
+      !["each", "pack", "kg", "l"].includes(String(item.unit)) ||
+      !integer(item.quantityMinor) ||
+      !integer(item.thresholdMinor) ||
+      item.quantityMinor > item.thresholdMinor
+    ) {
+      throw new Error("Invalid low-stock alert")
+    }
+    return {
+      productId: item.productId,
+      sku: item.sku,
+      name: item.name,
+      unit: item.unit as "each" | "pack" | "kg" | "l",
+      quantityMinor: item.quantityMinor,
+      thresholdMinor: item.thresholdMinor,
+    }
+  })
+  const lowStockCount = row.lowStockCount as number
+  if (lowStockItems.length > lowStockCount) {
     throw new Error("Invalid report response")
   }
   return {
@@ -153,7 +191,8 @@ function parseSummary(value: unknown, day: string): DailySummary {
     refundMinor: row.refundMinor as number,
     closedShiftCount: row.closedShiftCount as number,
     varianceMinor: row.varianceMinor as number,
-    lowStockCount: row.lowStockCount as number,
+    lowStockCount,
+    lowStockItems,
   }
 }
 

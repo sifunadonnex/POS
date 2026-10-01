@@ -2,9 +2,9 @@
 
 **Status:** Local development active; HostPinnacle deployment verification deferred
 
-**Version:** 0.9
+**Version:** 0.10
 
-**Last updated:** 28 September 2026
+**Last updated:** 1 October 2026
 
 **Budget objective:** Zero application licence fees and no additional hosting subscription for the first test shop, within the existing HostPinnacle package. Existing hosting/domain renewals still apply.
 
@@ -146,7 +146,7 @@ The manager opens the hosted URL from a phone, signs in with MFA, and views auth
 
 Poll the API every 30–60 seconds while the dashboard is visible. Show “Last updated at…” and a clear unavailable state after failed requests. Retained figures must be visibly stale. Do not cache sensitive reports indefinitely on shared phones.
 
-Show sales, payment totals, returns, discounts, cash variance, low stock and the last successful backup. Estimated gross profit requires trustworthy cost data and is not net profit. Begin with read-only remote monitoring; enable administrative changes only with defined permissions and approval rules.
+Show sales, payment totals, returns, discounts, cash variance, low stock and the last successful backup. Low-stock status is derived only from an active product's optional unit-aware threshold: whole units for `each`/`pack` and thousandths for `kg`/`l`; a missing threshold disables its alert. Estimated gross profit requires trustworthy cost data and is not net profit. Begin with read-only remote monitoring; enable administrative changes only with defined permissions and approval rules.
 
 ## 6. Core product modules
 
@@ -196,6 +196,7 @@ Include branch and till identifiers in transactions from the start, using one br
 - Print after the database commits. A print failure must not create another sale.
 - Treat product price edits as versioned changes; changing a product must not alter a historical receipt.
 - Derive stock from an append-only movement ledger. Cached balances must be rebuildable.
+- Treat an active product as low stock when its current balance is at or below its configured threshold. Include products with no stock row as a zero balance, exclude archived products and products without a threshold, and keep the threshold in the product's immutable catalogue history snapshots.
 - Define a cost method with the shop before presenting profit reports; initially propose weighted-average cost with sale-time cost snapshots.
 - Keep application-level audit records append-only. Privileged hosting/database access can still alter records; stronger independent tamper resistance is a later improvement.
 
@@ -496,5 +497,6 @@ These questions refine the pilot. Local PostgreSQL authentication, catalogue, in
 | ADR-020 | Round non-negative checkout lines to the nearest minor unit with exact halves up; allocate partial refunds from cumulative rounded value                                                                                 | Implemented locally with unit, UI and PostgreSQL regression coverage; supplier-cost extension remains open               | 2026-09-23 |
 | ADR-021 | Persist external payment attempts and append-only provider events before confirmation; accept payment only on an exact amount/reference match and reconcile unknown outcomes before retry                                | Provider-neutral backend and capability-aware register flow implemented and retained by the Daraja adapter               | 2026-09-23 |
 | ADR-022 | Use Safaricom Daraja M-Pesa Express for automated M-Pesa; enable only with complete server-side credentials, whole-KES amounts, a token-protected public HTTPS callback and exact callback amount/reference confirmation | Adapter, callback and register phone capture implemented; disabled pending credentials and sandbox/callback verification | 2026-09-28 |
+| ADR-023 | Use optional product-specific low-stock thresholds in the product's stock unit; alert at or below the threshold, include missing stock as zero, and exclude archived/unconfigured products                               | Implemented in catalogue history, stock reads and the manager dashboard                                                  | 2026-10-01 |
 
 Provider claims cited above were reviewed on 28 September 2026. Recheck plan terms when creating accounts or enabling live integrations.

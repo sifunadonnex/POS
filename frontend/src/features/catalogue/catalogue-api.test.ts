@@ -16,6 +16,7 @@ it("rejects malformed price and unit responses", () => {
     categoryName: null,
     unit: "kg",
     priceMinor: "100",
+    lowStockThresholdMinor: null,
     taxCode: null,
     active: true,
     revision: 1,
@@ -23,17 +24,18 @@ it("rejects malformed price and unit responses", () => {
   }
   expect(() => parseProduct({ ...product, priceMinor: 100 })).toThrow()
   expect(() => parseProduct({ ...product, unit: "tonne" })).toThrow()
+  expect(() =>
+    parseProduct({ ...product, lowStockThresholdMinor: -1 })
+  ).toThrow()
 })
 it("signals session expiry and preserves HTTP error status", async () => {
   vi.stubGlobal(
     "fetch",
-    vi
-      .fn()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ message: "Sign in again" }), {
-          status: 401,
-        })
-      )
+    vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ message: "Sign in again" }), {
+        status: 401,
+      })
+    )
   )
   const expired = vi.fn()
   window.addEventListener("paygo-session-expired", expired)

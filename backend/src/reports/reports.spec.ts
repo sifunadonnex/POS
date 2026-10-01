@@ -155,8 +155,20 @@ describe('ReportsService', () => {
       if (sql.includes('cash_shift') && sql.includes('variance_minor')) {
         return { rows: [{ closed_shift_count: 1, variance_minor: 100 }] };
       }
-      if (sql.includes('FROM inventory_stock')) {
-        return { rows: [{ low_stock_count: 2 }] };
+      if (sql.includes('p.low_stock_threshold_minor IS NOT NULL')) {
+        return {
+          rows: [
+            {
+              product_id: 'product-1',
+              sku: 'RICE',
+              product_name: 'Loose rice',
+              unit: 'kg',
+              quantity_minor: '1250',
+              threshold_minor: '2000',
+              low_stock_count: 2,
+            },
+          ],
+        };
       }
       return { rows: [] };
     });
@@ -177,6 +189,16 @@ describe('ReportsService', () => {
     const result = await service.summary('2026-09-18');
 
     expect(result.lowStockCount).toBe(2);
+    expect(result.lowStockItems).toEqual([
+      {
+        productId: 'product-1',
+        sku: 'RICE',
+        name: 'Loose rice',
+        unit: 'kg',
+        quantityMinor: 1250,
+        thresholdMinor: 2000,
+      },
+    ]);
   });
 
   it('returns daily, cashier, payment and product sales insights', async () => {

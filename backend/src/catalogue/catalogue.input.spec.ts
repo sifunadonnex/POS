@@ -3,6 +3,7 @@ import {
   pageInput,
   priceInput,
   productInput,
+  stockThresholdInput,
 } from './catalogue.input.js';
 import { parseCatalogueCsv } from './catalogue-csv.js';
 
@@ -50,6 +51,16 @@ it.each(['each', 'pack', 'kg', 'l'])(
     });
   },
 );
+it('converts unit-aware low-stock thresholds without floating point arithmetic', () => {
+  expect(stockThresholdInput('12', 'each')).toBe('12');
+  expect(stockThresholdInput('2.5', 'kg')).toBe('2500');
+  expect(stockThresholdInput('0.001', 'l')).toBe('1');
+  expect(stockThresholdInput('', 'pack')).toBeNull();
+  expect(() => stockThresholdInput('1.5', 'each')).toThrow('whole units');
+  expect(() => stockThresholdInput('1.0001', 'kg')).toThrow(
+    'three decimal places',
+  );
+});
 it('rejects invalid units, repeated barcodes and invalid quantities disguised as status', () => {
   expect(() => productInput({ ...product, unit: 'tonne' })).toThrow();
   expect(() => productInput({ ...product, barcodes: ['00', '00'] })).toThrow(

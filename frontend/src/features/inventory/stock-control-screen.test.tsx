@@ -26,6 +26,8 @@ const stock = {
   name: "Loose rice",
   unit: "kg" as const,
   quantityMinor: 1250,
+  lowStockThresholdMinor: 2000,
+  lowStock: true,
   active: true,
 }
 
@@ -48,6 +50,10 @@ afterEach(() => {
 it("posts an exact unit-aware stock change and refreshes the balance", async () => {
   render(<StockControlScreen />)
   expect((await screen.findAllByText("Loose rice")).length).toBeGreaterThan(0)
+  expect(screen.getAllByText("Low stock").length).toBeGreaterThan(0)
+  expect(
+    screen.getByText(/Alert at or below 2 kg.*Current balance is 1.25 kg/)
+  ).toBeTruthy()
 
   fireEvent.change(screen.getByLabelText("Quantity (kg)"), {
     target: { value: "1.000" },
@@ -68,6 +74,7 @@ it("posts an exact unit-aware stock change and refreshes the balance", async () 
   })
   expect((await screen.findByRole("status")).textContent).toContain("confirmed")
   expect(screen.getByText("2.25")).toBeTruthy()
+  expect(screen.queryByText("Low stock")).toBeNull()
 })
 
 it("retries an uncertain stock change with the same request ID and payload", async () => {

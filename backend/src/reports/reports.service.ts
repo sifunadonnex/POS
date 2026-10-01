@@ -73,6 +73,16 @@ type ProductSalesRow = {
   sale_count: string | number;
 };
 
+type LowStockRow = {
+  product_id: string;
+  sku: string;
+  product_name: string;
+  unit: 'each' | 'pack' | 'kg' | 'l';
+  quantity_minor: string | number;
+  threshold_minor: string | number;
+  low_stock_count: string | number;
+};
+
 function safeInteger(value: string | number): number {
   const result = typeof value === 'number' ? value : Number(value);
   if (!Number.isSafeInteger(result)) {
@@ -178,12 +188,19 @@ export class ReportsService {
         [iso],
       );
 
-      const stockResult = await this.database.connectionPool.query<{
-        low_stock_count: number;
-      }>(
-        `SELECT COUNT(*)::int AS low_stock_count
-        FROM inventory_stock
-        WHERE quantity_minor <= 1000`,
+      const stockResult = await this.database.connectionPool.query<LowStockRow>(
+        `SELECT p.id AS product_id, p.sku, p.name AS product_name, p.unit,
+          COALESCE(stock.quantity_minor, 0)::bigint AS quantity_minor,
+          p.low_stock_threshold_minor::bigint AS threshold_minor,
+          COUNT(*) OVER()::int AS low_stock_count
+          FROM catalogue_product p
+          LEFT JOIN inventory_stock stock ON stock.product_id = p.id
+          WHERE p.active AND p.low_stock_threshold_minor IS NOT NULL
+            AND COALESCE(stock.quantity_minor, 0) <= p.low_stock_threshold_minor
+          ORDER BY (COALESCE(stock.quantity_minor, 0) = 0) DESC,
+            (p.low_stock_threshold_minor - COALESCE(stock.quantity_minor, 0)) DESC,
+            lower(p.name), p.id
+          LIMIT 5`,
       );
 
       const sale = saleResult.rows[0] ?? {
@@ -204,7 +221,9 @@ export class ReportsService {
         closed_shift_count: 0,
         variance_minor: 0,
       };
-      const stock = stockResult.rows[0] ?? { low_stock_count: 0 };
+      const lowStockCount = stockResult.rows[0]
+        ? safeInteger(stockResult.rows[0].low_stock_count)
+        : 0;
 
       return {
         day: iso,
@@ -218,7 +237,15 @@ export class ReportsService {
         refundMinor: Number(refund.refund_minor ?? 0),
         closedShiftCount: Number(shift.closed_shift_count ?? 0),
         varianceMinor: Number(shift.variance_minor ?? 0),
-        lowStockCount: Number(stock.low_stock_count ?? 0),
+        lowStockCount,
+        lowStockItems: stockResult.rows.map((row) => ({
+          productId: row.product_id,
+          sku: row.sku,
+          name: row.product_name,
+          unit: row.unit,
+          quantityMinor: safeInteger(row.quantity_minor),
+          thresholdMinor: safeInteger(row.threshold_minor),
+        })),
       };
     } catch (error) {
       if (error instanceof BadRequestException) throw error;

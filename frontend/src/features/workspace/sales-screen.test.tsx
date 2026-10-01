@@ -53,6 +53,7 @@ const product: Product = {
   categoryName: null,
   unit: "each",
   priceMinor: "1250",
+  lowStockThresholdMinor: null,
   taxCode: null,
   active: true,
   revision: 1,

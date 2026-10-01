@@ -61,8 +61,9 @@ export async function insertProduct(
 ): Promise<Product> {
   const id = randomUUID();
   await client.query(
-    `INSERT INTO catalogue_product (id, sku, name, category_id, unit, price_minor, tax_code, active)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    `INSERT INTO catalogue_product (id, sku, name, category_id, unit, price_minor,
+      low_stock_threshold_minor, tax_code, active)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
     [
       id,
       input.sku,
@@ -70,6 +71,7 @@ export async function insertProduct(
       input.categoryId,
       input.unit,
       input.priceMinor,
+      input.lowStockThresholdMinor,
       input.taxCode,
       input.active,
     ],

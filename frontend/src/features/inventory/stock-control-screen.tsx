@@ -118,6 +118,7 @@ export function StockControlScreen() {
     [selectedId, stock]
   )
   const zeroCount = stock.filter((row) => row.quantityMinor === 0).length
+  const lowStockCount = stock.filter((row) => row.lowStock).length
 
   useEffect(() => {
     let current = true
@@ -220,7 +221,14 @@ export function StockControlScreen() {
       setStock((rows) =>
         rows.map((row) =>
           row.productId === result.productId
-            ? { ...row, quantityMinor: result.quantityMinor }
+            ? {
+                ...row,
+                quantityMinor: result.quantityMinor,
+                lowStock:
+                  row.active &&
+                  row.lowStockThresholdMinor !== null &&
+                  result.quantityMinor <= row.lowStockThresholdMinor,
+              }
             : row
         )
       )
@@ -266,9 +274,10 @@ export function StockControlScreen() {
         </Button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Items on page" value={String(stock.length)} />
         <SummaryCard label="At zero balance" value={String(zeroCount)} />
+        <SummaryCard label="Low stock on page" value={String(lowStockCount)} />
         <SummaryCard
           label="Page"
           value={`${query.page + 1}${hasMore ? "+" : ""}`}
@@ -354,6 +363,14 @@ export function StockControlScreen() {
                         <span className="mt-1 block text-xs text-muted-foreground">
                           {row.active ? "Available" : "Archived"}
                         </span>
+                        {row.lowStock && (
+                          <Badge
+                            variant="outline"
+                            className="mt-1 border-amber-500/40 text-amber-700 dark:text-amber-300"
+                          >
+                            Low stock
+                          </Badge>
+                        )}
                       </span>
                     </button>
                   ))}
@@ -403,6 +420,14 @@ export function StockControlScreen() {
               </CardHeader>
               {selected && (
                 <CardContent className="pt-5">
+                  <div className="mb-5 rounded-lg border bg-muted/30 p-3 text-sm">
+                    <p className="font-medium">Low-stock alert</p>
+                    <p className="mt-1 text-muted-foreground">
+                      {selected.lowStockThresholdMinor === null
+                        ? "Not configured. Edit this product in Catalogue to enable an alert."
+                        : `Alert at or below ${formatQuantity(selected.lowStockThresholdMinor, selected.unit)} ${selected.unit}. Current balance is ${formatQuantity(selected.quantityMinor, selected.unit)} ${selected.unit}.`}
+                    </p>
+                  </div>
                   {!selected.active ? (
                     <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
                       Archived products cannot receive stock movements.

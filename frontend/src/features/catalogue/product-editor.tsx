@@ -8,7 +8,12 @@ import {
   type Product,
   type SaleUnit,
 } from "./catalogue-api"
-import { formValue, priceText, units } from "./catalogue-format"
+import {
+  formValue,
+  priceText,
+  stockQuantityText,
+  units,
+} from "./catalogue-format"
 import { CategoryPicker } from "./category-picker"
 import { useCatalogueWrite } from "./use-catalogue-write"
 import { WriteFeedback } from "./write-feedback"
@@ -38,6 +43,7 @@ export function ProductEditor({
         categoryId: categoryId || null,
         unit,
         price: formValue(data, "price").trim(),
+        lowStockThreshold: formValue(data, "lowStockThreshold").trim() || null,
         taxCode: formValue(data, "taxCode").trim() || null,
         barcodes: formValue(data, "barcodes")
           .split(",")
@@ -144,6 +150,34 @@ export function ProductEditor({
                 maxLength={40}
               />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="product-low-stock-threshold">
+              Low-stock threshold ({unit}, optional)
+            </Label>
+            <Input
+              id="product-low-stock-threshold"
+              name="lowStockThreshold"
+              inputMode="decimal"
+              defaultValue={
+                product?.lowStockThresholdMinor === null || !product
+                  ? ""
+                  : stockQuantityText(product.lowStockThresholdMinor, unit)
+              }
+              placeholder={
+                unit === "each" || unit === "pack" ? "e.g. 10" : "e.g. 2.500"
+              }
+              maxLength={13}
+              pattern={
+                unit === "each" || unit === "pack"
+                  ? "(0|[1-9][0-9]{0,8})"
+                  : "(0|[1-9][0-9]{0,8})(\\.[0-9]{1,3})?"
+              }
+            />
+            <p className="text-xs text-muted-foreground">
+              The manager dashboard alerts when available stock is at or below
+              this balance. Leave blank to disable the alert for this product.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="product-barcodes">Barcodes (optional)</Label>

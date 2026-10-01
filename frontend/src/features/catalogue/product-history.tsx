@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { getHistory, type HistoryEntry, type Product } from "./catalogue-api"
-import { displayPrice, errorMessage } from "./catalogue-format"
+import {
+  displayPrice,
+  errorMessage,
+  stockQuantityText,
+} from "./catalogue-format"
 
 export function ProductHistory({ product }: { product: Product }) {
   const [entries, setEntries] = useState<HistoryEntry[]>([])
@@ -69,6 +73,12 @@ export function ProductHistory({ product }: { product: Product }) {
               <p className="text-sm text-muted-foreground">
                 {entry.snapshot.categoryName ?? "No category"} · Tax code:{" "}
                 {entry.snapshot.taxCode ?? "Not set"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Low-stock alert:{" "}
+                {entry.snapshot.lowStockThresholdMinor === null
+                  ? "Not set"
+                  : `${stockQuantityText(entry.snapshot.lowStockThresholdMinor, entry.snapshot.unit)} ${entry.snapshot.unit}`}
               </p>
               <p className="text-sm break-all">
                 Barcodes: {entry.snapshot.barcodes.join(", ") || "None"}

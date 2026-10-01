@@ -390,6 +390,7 @@ export class SuspendedOrdersService {
           categoryName: line.categoryName,
           unit: line.unit,
           priceMinor: line.priceMinor,
+          lowStockThresholdMinor: line.lowStockThresholdMinor,
           taxCode: line.taxCode,
           active: line.active,
           revision: line.revision,

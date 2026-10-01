@@ -15,6 +15,7 @@ import {
   RotateCcw,
   ShieldCheck,
   ShoppingCart,
+  TriangleAlert,
   Truck,
   UsersRound,
   WalletCards,
@@ -77,6 +78,14 @@ function money(minor: number) {
     currency: "KES",
     maximumFractionDigits: 2,
   }).format(minor / 100)
+}
+
+function stockQuantity(
+  quantityMinor: number,
+  unit: "each" | "pack" | "kg" | "l"
+) {
+  if (unit === "each" || unit === "pack") return String(quantityMinor)
+  return (quantityMinor / 1000).toFixed(3).replace(/\.?0+$/, "")
 }
 
 function StatCard({
@@ -402,6 +411,95 @@ export function DashboardScreen({
             icon={RotateCcw}
           />
         </section>
+      )}
+
+      {manager && summary && !loading && !error && (
+        <Card className="overflow-hidden" aria-label="Low-stock alerts">
+          <CardHeader className="border-b">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <TriangleAlert
+                    className={
+                      summary.lowStockCount
+                        ? "size-4 text-amber-600"
+                        : "size-4 text-muted-foreground"
+                    }
+                    aria-hidden="true"
+                  />
+                  Stock alerts
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  Active products at or below their configured threshold.
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => onNavigate("stock")}
+              >
+                Open stock control
+                <ArrowRight className="size-3.5" aria-hidden="true" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            {!summary.lowStockItems.length ? (
+              <div className="p-5">
+                <p className="font-medium">No replenishment alerts</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  No active product is at or below its configured threshold.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {summary.lowStockItems.map((item) => (
+                  <div
+                    key={item.productId}
+                    className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{item.name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {item.sku} · Alert at{" "}
+                        {stockQuantity(item.thresholdMinor, item.unit)}{" "}
+                        {item.unit}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <p className="text-right text-sm tabular-nums">
+                        <span className="block font-semibold">
+                          {stockQuantity(item.quantityMinor, item.unit)}{" "}
+                          {item.unit}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          available
+                        </span>
+                      </p>
+                      <Badge
+                        variant="outline"
+                        className="border-amber-500/40 text-amber-700 dark:text-amber-300"
+                      >
+                        {item.quantityMinor === 0 ? "Out of stock" : "Low"}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+                {summary.lowStockCount > summary.lowStockItems.length && (
+                  <div className="px-5 py-3 text-sm text-muted-foreground">
+                    +{summary.lowStockCount - summary.lowStockItems.length} more
+                    item
+                    {summary.lowStockCount - summary.lowStockItems.length === 1
+                      ? ""
+                      : "s"}{" "}
+                    need review in Stock control.
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {manager && (

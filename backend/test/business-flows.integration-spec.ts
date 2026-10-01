@@ -255,6 +255,44 @@ describe('PostgreSQL register and purchase business flows', () => {
     ).toBe(2);
   });
 
+  it('uses product-specific thresholds for stock reads and dashboard alerts', async () => {
+    await pool.query(
+      `UPDATE catalogue_product
+      SET low_stock_threshold_minor = 12
+      WHERE id = $1`,
+      [productId],
+    );
+
+    await expect(inventory.stock('', 0)).resolves.toMatchObject({
+      stock: [
+        {
+          productId,
+          quantityMinor: 0,
+          lowStockThresholdMinor: 12,
+          lowStock: true,
+        },
+      ],
+    });
+
+    const day = (
+      await pool.query<{ day: string }>(
+        "SELECT to_char(current_date, 'YYYY-MM-DD') AS day",
+      )
+    ).rows[0].day;
+    await expect(reports.summary(day)).resolves.toMatchObject({
+      lowStockCount: 1,
+      lowStockItems: [
+        {
+          productId,
+          name: 'Premium flour',
+          unit: 'each',
+          quantityMinor: 0,
+          thresholdMinor: 12,
+        },
+      ],
+    });
+  });
+
   afterAll(async () => {
     try {
       if (fixture) await fixture.close();

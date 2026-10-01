@@ -150,12 +150,14 @@ export class CatalogueService {
           );
         await client.query(
           `UPDATE catalogue_product SET sku = $1, name = $2, category_id = $3, price_minor = $4,
-        tax_code = $5, active = $6, revision = revision + 1, updated_at = now() WHERE id = $7`,
+        low_stock_threshold_minor = $5, tax_code = $6, active = $7,
+        revision = revision + 1, updated_at = now() WHERE id = $8`,
           [
             input.sku,
             input.name,
             input.categoryId,
             input.priceMinor,
+            input.lowStockThresholdMinor,
             input.taxCode,
             input.active,
             id,

@@ -17,6 +17,8 @@ it("parses stock balances and sends same-origin requests", async () => {
             name: "Loose rice",
             unit: "kg",
             quantityMinor: 1250,
+            lowStockThresholdMinor: 2000,
+            lowStock: true,
             active: true,
           },
         ],
@@ -29,7 +31,12 @@ it("parses stock balances and sends same-origin requests", async () => {
 
   await expect(getStock("rice", 0)).resolves.toEqual({
     stock: [
-      expect.objectContaining({ name: "Loose rice", quantityMinor: 1250 }),
+      expect.objectContaining({
+        name: "Loose rice",
+        quantityMinor: 1250,
+        lowStockThresholdMinor: 2000,
+        lowStock: true,
+      }),
     ],
     hasMore: false,
   })

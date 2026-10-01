@@ -259,6 +259,7 @@ it("loads and transitions server-held orders", async () => {
           categoryName: null,
           unit: "each",
           priceMinor: "1250",
+          lowStockThresholdMinor: null,
           taxCode: null,
           active: true,
           revision: 1,

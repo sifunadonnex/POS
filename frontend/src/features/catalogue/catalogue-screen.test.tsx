@@ -30,6 +30,7 @@ const product: Product = {
   categoryName: null,
   unit: "kg",
   priceMinor: "18005",
+  lowStockThresholdMinor: "2500",
   taxCode: null,
   active: true,
   revision: 1,
@@ -94,6 +95,10 @@ function fillNewProduct() {
   fireEvent.change(screen.getByLabelText("Selling price (KES / kg)"), {
     target: { value: "180.05" },
   })
+  fireEvent.change(
+    screen.getByLabelText("Low-stock threshold (kg, optional)"),
+    { target: { value: "2.5" } }
+  )
   fireEvent.change(screen.getByLabelText("Barcodes (optional)"), {
     target: { value: "0012345" },
   })
@@ -117,6 +122,7 @@ it("preserves exact price text and barcodes and waits for a confirmed create", a
     "products",
     expect.objectContaining({
       price: "180.05",
+      lowStockThreshold: "2.5",
       unit: "kg",
       barcodes: ["0012345"],
       requestId: expect.any(String),
@@ -177,6 +183,13 @@ it("keeps the sales unit fixed and reports a stale edit without success", async 
   )
   const saved = vi.fn()
   render(<ProductEditor product={product} categories={[]} onSaved={saved} />)
+  expect(
+    (
+      screen.getByLabelText(
+        "Low-stock threshold (kg, optional)"
+      ) as HTMLInputElement
+    ).value
+  ).toBe("2.5")
   expect(screen.getByRole("button", { name: "Item" })).toHaveProperty(
     "disabled",
     true
