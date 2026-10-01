@@ -28,6 +28,7 @@ import { StockControlScreen } from "../inventory/stock-control-screen"
 import { PurchaseIntakeScreen } from "../purchases/purchase-intake-screen"
 import { ReportsScreen } from "../reports/reports-screen"
 import { ReturnsScreen } from "../returns/returns-screen"
+import { SalesHistoryScreen } from "../sales/sales-history-screen"
 import { StocktakeScreen } from "../stocktake/stocktake-screen"
 import { DashboardScreen } from "./dashboard-screen"
 import { SalesScreen } from "./sales-screen"
@@ -35,6 +36,7 @@ import { SalesScreen } from "./sales-screen"
 type WorkspaceTab =
   | "dashboard"
   | "sales"
+  | "history"
   | "catalogue"
   | "account"
   | "staff"
@@ -77,6 +79,12 @@ const navigationSections: Array<{
         label: "Sales register",
         description: "Scan, basket and payment",
         icon: ShoppingCart,
+      },
+      {
+        id: "history",
+        label: "Sales history",
+        description: "Orders, payments and receipts",
+        icon: FileClock,
       },
       {
         id: "returns",
@@ -170,6 +178,11 @@ const pageDetails: Record<
     section: "Sell",
     title: "Sales register",
     description: "Build the next basket and complete the sale.",
+  },
+  history: {
+    section: "Sell",
+    title: "Sales history",
+    description: "Find completed sales and review payment details.",
   },
   catalogue: {
     section: "Inventory",
@@ -388,7 +401,7 @@ export function StaffWorkspace({
         </header>
 
         <div className="border-b bg-muted/20 px-4 py-2 lg:hidden">
-          <div className="flex gap-1 overflow-x-auto pb-0.5">
+          <div className="flex [scrollbar-width:none] gap-1 overflow-x-auto pb-0.5 [&::-webkit-scrollbar]:hidden">
             {visibleSections
               .flatMap((section) => section.items)
               .map((item) => (
@@ -413,6 +426,8 @@ export function StaffWorkspace({
             />
           ) : tab === "sales" ? (
             <SalesScreen />
+          ) : tab === "history" ? (
+            <SalesHistoryScreen />
           ) : tab === "returns" ? (
             <ReturnsScreen />
           ) : tab === "catalogue" ? (

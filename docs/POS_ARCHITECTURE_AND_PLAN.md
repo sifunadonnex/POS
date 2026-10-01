@@ -70,15 +70,15 @@ If the hosting account requires separate frontend/API origins, use owned subdoma
 
 ### 3.2 Failure behavior
 
-| Situation | Checkout | Manager on a separate working internet connection |
-| --- | --- | --- |
-| Hosting and internet working | Available | Available |
-| Store internet unavailable | Cannot finalize sales | Available |
-| Shop PC off or failed | That till unavailable | Available |
-| Hosting API or database unavailable | Cannot finalize sales | Live reports unavailable |
-| Manager phone loses connectivity | Other connected tills unaffected | Show unavailable/stale state |
-| Printer fails after sale commits | Sale remains saved; reprint same receipt | Sale remains visible |
-| Connection drops after submit | Outcome uncertain; query original request ID on reconnect | Committed sale remains visible |
+| Situation                           | Checkout                                                  | Manager on a separate working internet connection |
+| ----------------------------------- | --------------------------------------------------------- | ------------------------------------------------- |
+| Hosting and internet working        | Available                                                 | Available                                         |
+| Store internet unavailable          | Cannot finalize sales                                     | Available                                         |
+| Shop PC off or failed               | That till unavailable                                     | Available                                         |
+| Hosting API or database unavailable | Cannot finalize sales                                     | Live reports unavailable                          |
+| Manager phone loses connectivity    | Other connected tills unaffected                          | Show unavailable/stale state                      |
+| Printer fails after sale commits    | Sale remains saved; reprint same receipt                  | Sale remains visible                              |
+| Connection drops after submit       | Outcome uncertain; query original request ID on reconnect | Committed sale remains visible                    |
 
 A cached screen or unfinished basket is not an offline sales system. Never show a sale as completed without a confirmed server commit.
 
@@ -86,20 +86,20 @@ Before live use, decide whether internet-dependent checkout is acceptable. If it
 
 ## 4. Free starting stack
 
-| Purpose | Choice | Starting licence/hosting cost | Reason |
-| --- | --- | --- | --- |
-| Frontend | React + TypeScript + Vite | KES 0 software licence | One responsive app, built into static files |
-| Backend | NestJS + TypeScript on Node.js | KES 0 software licence | Structured modules and shared language |
-| Database | PostgreSQL in existing HostPinnacle account | KES 0 application licence; verify package limits | Transactions, constraints, concurrency, reporting |
-| UI components and styling | Strict shadcn/ui with the existing Base UI preset, Tailwind CSS and shared theme tokens | KES 0 software licence | Consistent accessible controls for till and phone screens |
-| Hosting | Existing HostPinnacle account | Target KES 0 additional subscription | Reuse paid capacity; renewal still applies |
-| Authentication | Better Auth with application users and server sessions in PostgreSQL | KES 0 external authentication subscription | User-selected authentication library; POS permissions enforced by the backend |
-| Jobs | PostgreSQL job records + bounded cron runner, if supported | KES 0 external queue subscription | Durable retries without assuming always-running workers |
-| Receipts | HTML/CSS receipt and installed printer driver | KES 0 extra printing subscription | Validate using actual printer |
-| Reports | SQL reports, charts, CSV, browser print-to-PDF | KES 0 reporting subscription | Covers initial management needs |
-| Backups | PostgreSQL tools + scheduler + encrypted separate copy | KES 0 software licence; storage may cost | Recovery under our control |
-| Development tools | Git, pnpm, local automated tests | KES 0 software licence | Reproducible development and validation |
-| Remote access | Application URL with HTTPS | Included if supported by existing domain/package | Phone browser accesses hosted application directly |
+| Purpose                   | Choice                                                                                  | Starting licence/hosting cost                    | Reason                                                                        |
+| ------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------- |
+| Frontend                  | React + TypeScript + Vite                                                               | KES 0 software licence                           | One responsive app, built into static files                                   |
+| Backend                   | NestJS + TypeScript on Node.js                                                          | KES 0 software licence                           | Structured modules and shared language                                        |
+| Database                  | PostgreSQL in existing HostPinnacle account                                             | KES 0 application licence; verify package limits | Transactions, constraints, concurrency, reporting                             |
+| UI components and styling | Strict shadcn/ui with the existing Base UI preset, Tailwind CSS and shared theme tokens | KES 0 software licence                           | Consistent accessible controls for till and phone screens                     |
+| Hosting                   | Existing HostPinnacle account                                                           | Target KES 0 additional subscription             | Reuse paid capacity; renewal still applies                                    |
+| Authentication            | Better Auth with application users and server sessions in PostgreSQL                    | KES 0 external authentication subscription       | User-selected authentication library; POS permissions enforced by the backend |
+| Jobs                      | PostgreSQL job records + bounded cron runner, if supported                              | KES 0 external queue subscription                | Durable retries without assuming always-running workers                       |
+| Receipts                  | HTML/CSS receipt and installed printer driver                                           | KES 0 extra printing subscription                | Validate using actual printer                                                 |
+| Reports                   | SQL reports, charts, CSV, browser print-to-PDF                                          | KES 0 reporting subscription                     | Covers initial management needs                                               |
+| Backups                   | PostgreSQL tools + scheduler + encrypted separate copy                                  | KES 0 software licence; storage may cost         | Recovery under our control                                                    |
+| Development tools         | Git, pnpm, local automated tests                                                        | KES 0 software licence                           | Reproducible development and validation                                       |
+| Remote access             | Application URL with HTTPS                                                              | Included if supported by existing domain/package | Phone browser accesses hosted application directly                            |
 
 NestJS is MIT-licensed and PostgreSQL permits use without a fee. Paying for enterprise support or managed hosting is optional and separate from using these technologies. [NestJS licence](https://github.com/nestjs/nest/blob/master/LICENSE), [PostgreSQL licence](https://www.postgresql.org/about/licence/)
 
@@ -152,18 +152,18 @@ Show sales, payment totals, returns, discounts, cash variance, low stock and the
 
 The following is the product roadmap. Section 12 identifies the first test release; not every feature below must ship together.
 
-| Module | First useful capability | Expansion |
-| --- | --- | --- |
-| Identity | Owner/manager, cashier, stock clerk; action permissions | Additional roles, multiple branches |
-| Catalogue | Products, categories, barcodes, units, prices, tax category, CSV import | Branch price lists and scheduled promotions |
-| Checkout | Scan/search, quantities, basket, hold/resume, cash, receipt/reprint | Split tender, integrated payments, advanced promotions |
-| Returns | Linked return, quantity limits, approval, refund record | Integrated provider refund and credit-note automation |
-| Inventory | Opening stock, append-only movements, receiving, adjustments, stocktake | Transfers, batches, expiry and reorder suggestions |
-| Purchasing | Suppliers and goods received | Purchase orders, partial receipts, supplier invoices/returns |
-| Cash control | Opening float, cash-in/out, close, expected/count/variance | X/Z exports and expanded sign-off workflows |
-| Reporting | Daily sales, cashier/payment totals, low stock, exceptions | Rich exports, trend reports, margin analysis |
-| Audit | User, time, action, reason and relevant before/after values | Separate tamper-resistant storage and alerting |
-| Integrations | Test adapters and clear simulated status | M-Pesa, eTIMS, accounting and messaging |
+| Module       | First useful capability                                                 | Expansion                                                    |
+| ------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Identity     | Owner/manager, cashier, stock clerk; action permissions                 | Additional roles, multiple branches                          |
+| Catalogue    | Products, categories, barcodes, units, prices, tax category, CSV import | Branch price lists and scheduled promotions                  |
+| Checkout     | Scan/search, quantities, basket, hold/resume, cash, receipt/reprint     | Split tender, integrated payments, advanced promotions       |
+| Returns      | Linked return, quantity limits, approval, refund record                 | Integrated provider refund and credit-note automation        |
+| Inventory    | Opening stock, append-only movements, receiving, adjustments, stocktake | Transfers, batches, expiry and reorder suggestions           |
+| Purchasing   | Suppliers and goods received                                            | Purchase orders, partial receipts, supplier invoices/returns |
+| Cash control | Opening float, cash-in/out, close, expected/count/variance              | X/Z exports and expanded sign-off workflows                  |
+| Reporting    | Daily sales, cashier/payment totals, low stock, exceptions              | Rich exports, trend reports, margin analysis                 |
+| Audit        | User, time, action, reason and relevant before/after values             | Separate tamper-resistant storage and alerting               |
+| Integrations | Test adapters and clear simulated status                                | M-Pesa, eTIMS, accounting and messaging                      |
 
 The user confirmed weight and volume sales on 15 September 2026. The implemented catalogue uses `each`, `pack`, `kg` and `l`; quantity steps are 1 for `each`/`pack` and 0.001 for `kg`/`l`. Checkout and customer-return rounding now follow the explicit worked examples below. Expiry tracking and split-payment requirements remain open.
 
@@ -206,26 +206,34 @@ Include branch and till identifiers in transactions from the start, using one br
 - Allocate repeated partial refunds from the rounded cumulative returned quantity: the current refund is the rounded cumulative value after this return minus the rounded cumulative value before it. This prevents return order from creating extra value and makes a full return equal the immutable original sale-line total.
 - This rule currently applies to checkout and customer returns. Supplier receipt and supplier-return lines still require exact minor-unit totals until their costing policy is explicitly extended.
 
-| Case | Exact calculation | Stored/paid result |
-| --- | --- | --- |
-| Whole items | 2 × KES 25.00 | KES 50.00 |
-| Fraction below half | 0.499 kg × KES 10.01 = KES 4.99499 | KES 4.99 |
-| Exact half | 0.500 l × KES 10.01 = KES 5.005 | KES 5.01 |
-| Fraction above half | 0.125 kg × KES 180.05 = KES 22.50625 | KES 22.51 |
+| Case                     | Exact calculation                                                            | Stored/paid result                                                 |
+| ------------------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Whole items              | 2 × KES 25.00                                                                | KES 50.00                                                          |
+| Fraction below half      | 0.499 kg × KES 10.01 = KES 4.99499                                           | KES 4.99                                                           |
+| Exact half               | 0.500 l × KES 10.01 = KES 5.005                                              | KES 5.01                                                           |
+| Fraction above half      | 0.125 kg × KES 180.05 = KES 22.50625                                         | KES 22.51                                                          |
 | Repeated partial returns | A 1.000 kg line at KES 10.01 is returned as 0.333 + 0.333 + 0.333 + 0.001 kg | Refunds KES 3.33, KES 3.34, KES 3.33 and KES 0.01; total KES 10.01 |
 
 ### 7.3 Separate sale, payment, and fiscal states
 
 Track these independently:
 
-| Record | Example states |
-| --- | --- |
-| Sale | Draft, held, finalized, cancelled before completion |
+| Record          | Example states                                              |
+| --------------- | ----------------------------------------------------------- |
+| Sale            | Draft, held, finalized, cancelled before completion         |
 | Payment attempt | Pending, confirmed, failed, unknown/reconciliation required |
-| Fiscal document | Not applicable to simulation, pending, accepted, rejected |
-| Return/refund | Requested, approved, completed, failed |
+| Fiscal document | Not applicable to simulation, pending, accepted, rejected   |
+| Return/refund   | Requested, approved, completed, failed                      |
 
 A simulated receipt must say “TEST — NOT A TAX INVOICE.” A pending fiscal submission must never look accepted. Fiscal timing for real sales follows the chosen valid eTIMS workflow.
+
+Suspended orders are durable server records, separate from finalized sales. They
+move once from `held` to either `resumed` or `cancelled`, retain immutable lines
+and ownership, and use request IDs plus optimistic revisions for safe retries
+and concurrent tills. Cashiers can access their own held orders; managers can
+access the shop's held orders. Holding does not reserve stock or freeze prices:
+active products, units, current prices and stock are revalidated before
+checkout after resume.
 
 ## 8. Internet dependency and future offline operation
 
@@ -235,7 +243,11 @@ Every login, stock update and sale finalization depends on the hosted API and da
 
 Use a unique request ID for each checkout. On timeout, preserve that ID and show the outcome as unknown. On reconnect, query the result or retry the same idempotent request; never create a new sale or payment merely because a response was lost.
 
-Retain draft baskets only as convenience data, with minimal personal information. On reconnect, revalidate prices, stock, permissions and payment status before finalization. Do not use a service worker to cache success responses to mutation requests.
+Server-held orders are authoritative for intentionally suspended baskets.
+Retain any browser draft only as crash-recovery convenience data, with minimal
+personal information. On reconnect, revalidate prices, stock, permissions and
+payment status before finalization. Do not use a service worker to cache
+success responses to mutation requests.
 
 ### 8.2 If offline checkout becomes necessary
 
@@ -352,19 +364,19 @@ There is no promise of zero lost transactions after hosting failure. Better data
 
 ### 11.3 Cost ledger
 
-| Item | Test-stage assumption | Potential cost |
-| --- | --- | --- |
-| Application and database licences | Open-source components | KES 0 licence fees |
-| Server hosting | Existing HostPinnacle account | Target KES 0 additional subscription; current renewal and limits remain |
-| Remote monitoring | Same hosted application | No separate VPN/remote-access subscription |
-| Domain and HTTPS | Use existing domain/subdomain and available certificate | Confirm domain ownership, certificate setup and renewal costs |
-| Database backup software | Built-in/free tools | Storage or replacement drive if none available |
-| Hardware | Reuse what exists | Printer/scanner/UPS/PC purchases when needed |
-| Connectivity | Existing shop internet and manager data | Provider bills and optional failover |
-| M-Pesa/card | Simulation initially | Real provider charges/onboarding as applicable |
-| eTIMS | Simulation; assess existing/KRA workflow for live pilot | Integrator/support/certification work if needed |
-| Notifications | Auth email through existing SMTP mailbox; in-app alerts later | Existing mailbox limits/costs; SMS/WhatsApp services later |
-| Development and support | Project work | Time, training, maintenance and incident response |
+| Item                              | Test-stage assumption                                         | Potential cost                                                          |
+| --------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Application and database licences | Open-source components                                        | KES 0 licence fees                                                      |
+| Server hosting                    | Existing HostPinnacle account                                 | Target KES 0 additional subscription; current renewal and limits remain |
+| Remote monitoring                 | Same hosted application                                       | No separate VPN/remote-access subscription                              |
+| Domain and HTTPS                  | Use existing domain/subdomain and available certificate       | Confirm domain ownership, certificate setup and renewal costs           |
+| Database backup software          | Built-in/free tools                                           | Storage or replacement drive if none available                          |
+| Hardware                          | Reuse what exists                                             | Printer/scanner/UPS/PC purchases when needed                            |
+| Connectivity                      | Existing shop internet and manager data                       | Provider bills and optional failover                                    |
+| M-Pesa/card                       | Simulation initially                                          | Real provider charges/onboarding as applicable                          |
+| eTIMS                             | Simulation; assess existing/KRA workflow for live pilot       | Integrator/support/certification work if needed                         |
+| Notifications                     | Auth email through existing SMTP mailbox; in-app alerts later | Existing mailbox limits/costs; SMS/WhatsApp services later              |
+| Development and support           | Project work                                                  | Time, training, maintenance and incident response                       |
 
 No additional Vercel, Supabase, VPN or VPS subscription is planned for this pilot. Stay within the existing package where the deployment and load tests support it; upgrade only when measured capacity, availability or recovery requirements demand it.
 
@@ -372,14 +384,14 @@ No additional Vercel, Supabase, VPN or VPS subscription is planned for this pilo
 
 Estimates below are planning ranges for one experienced developer working consistently. They are not a promise about integration approval or hardware procurement.
 
-| Stage | Indicative effort | Deliverable and exit condition |
-| --- | --- | --- |
-| 0. Confirm shop and prove local setup | 2–4 working days | Inventory hardware; verify local Node.js, separate PostgreSQL development/test databases, migrations and API health |
-| 1. Local foundation | 1–2 weeks | Better Auth login/sessions, server-side manager/cashier permissions, shadcn login UI, reviewed migrations and product import using local test data |
-| 2. Complete cash-sale workflow | 1–2 weeks | Scan, basket, exact totals, payment, atomic stock deduction, receipt/reprint, duplicate-request test |
-| 3. Shop operations | 1–2 weeks | Receiving, returns, adjustments, stocktake, shift closing, audit and reconciliation |
-| 4. Hosting proof, phone dashboard and test pilot | 1–2 weeks | Resolve deployment blockers; verify isolated hosted database, HTTPS, restart, backup/restore, authorized mobile-data reports, outage states and cashier usability |
-| 5. Live-operation readiness | Separately estimated after discovery | Actual fiscal process, required payment workflow, hardware reliability, training and signed-off reconciliation |
+| Stage                                            | Indicative effort                    | Deliverable and exit condition                                                                                                                                    |
+| ------------------------------------------------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0. Confirm shop and prove local setup            | 2–4 working days                     | Inventory hardware; verify local Node.js, separate PostgreSQL development/test databases, migrations and API health                                               |
+| 1. Local foundation                              | 1–2 weeks                            | Better Auth login/sessions, server-side manager/cashier permissions, shadcn login UI, reviewed migrations and product import using local test data                |
+| 2. Complete cash-sale workflow                   | 1–2 weeks                            | Scan, basket, exact totals, payment, atomic stock deduction, receipt/reprint, duplicate-request test                                                              |
+| 3. Shop operations                               | 1–2 weeks                            | Receiving, returns, adjustments, stocktake, shift closing, audit and reconciliation                                                                               |
+| 4. Hosting proof, phone dashboard and test pilot | 1–2 weeks                            | Resolve deployment blockers; verify isolated hosted database, HTTPS, restart, backup/restore, authorized mobile-data reports, outage states and cashier usability |
+| 5. Live-operation readiness                      | Separately estimated after discovery | Actual fiscal process, required payment workflow, hardware reliability, training and signed-off reconciliation                                                    |
 
 Allow approximately 4–8 development weeks plus setup for a credible simulated single-shop pilot. Part-time work, unfamiliar hardware, weighted goods, migrations, or expanded scope can extend this. Estimate production launch after confirming the actual integrations.
 
@@ -430,15 +442,15 @@ Use unit tests for calculations, integration tests for database transactions and
 
 ## 14. Growth triggers
 
-| Evidence | Next investment |
-| --- | --- |
-| Hosted latency, concurrency or connection limits exceed pilot targets | Tune queries/pooling, then assess a larger package or VPS |
-| Browser printing too slow/unreliable | Local printer bridge or desktop wrapper |
-| Checkout must continue during store internet outages | Local store service/database, UPS and tested synchronization |
-| More than one branch | Branch-scoped operations, transfer design and per-branch continuity requirements |
-| Backup/recovery targets not achieved | Database hosting/backup arrangement that supports required recovery |
-| Manual payment/fiscal processing slows checkout | Production integration and stable callback endpoint |
-| Usage exceeds existing HostPinnacle package limits | Budgeted upgrade or another supported deployment |
+| Evidence                                                              | Next investment                                                                  |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Hosted latency, concurrency or connection limits exceed pilot targets | Tune queries/pooling, then assess a larger package or VPS                        |
+| Browser printing too slow/unreliable                                  | Local printer bridge or desktop wrapper                                          |
+| Checkout must continue during store internet outages                  | Local store service/database, UPS and tested synchronization                     |
+| More than one branch                                                  | Branch-scoped operations, transfer design and per-branch continuity requirements |
+| Backup/recovery targets not achieved                                  | Database hosting/backup arrangement that supports required recovery              |
+| Manual payment/fiscal processing slows checkout                       | Production integration and stable callback endpoint                              |
+| Usage exceeds existing HostPinnacle package limits                    | Budgeted upgrade or another supported deployment                                 |
 
 Retain SQL migrations, modular APIs, stable IDs, and explicit provider adapters so each upgrade is incremental.
 
@@ -460,29 +472,29 @@ These questions refine the pilot. Local PostgreSQL authentication, catalogue, in
 
 ## 16. Decision log
 
-| ID | Decision | Status | Date |
-| --- | --- | --- | --- |
-| ADR-001 | Original cloud + store-edge deployment | Deferred until growth triggers apply | 2026-09-14 |
-| ADR-002 | Modular monolith | Retained recommendation | 2026-09-14 |
-| ADR-003 | Append-only stock movement ledger | Retained recommendation | 2026-09-14 |
-| ADR-004 | Desktop wrapper on every till | Deferred pending printer/hardware tests | 2026-09-14 |
-| ADR-005 | Paid certified eTIMS integration at first release | Replaced with simulation first and explicit live fiscal decision | 2026-09-14 |
-| ADR-006 | React/Vite + NestJS + one authoritative PostgreSQL database on HostPinnacle | Revised deployment proposal; runtime test pending | 2026-09-14 |
-| ADR-007 | Existing PC hosts web app and database | Superseded by existing HostPinnacle account | 2026-09-14 |
-| ADR-008 | Private phone VPN access | Superseded by browser access over HTTPS | 2026-09-14 |
-| ADR-009 | Reuse existing HostPinnacle Node.js and PostgreSQL facilities | Features reported available by user; deployment unverified | 2026-09-14 |
-| ADR-010 | Host frontend and API together; no Vercel subscription initially | Recommended to minimize additional cost | 2026-09-14 |
-| ADR-011 | Online-only initial hosted test | Explicit scope limitation; live offline requirement still open | 2026-09-14 |
-| ADR-012 | `pg` driver and `node-pg-migrate` with explicit SQL migrations | Local PostgreSQL 18.6 migration/API checks passed; hosted verification pending | 2026-09-14 |
-| ADR-013 | Better Auth for authentication; relevant skills and version-matched official documentation required | User-selected; hardening and local PostgreSQL login/integration verified, SMTP/browser/hosted checks pending | 2026-09-15 |
-| ADR-014 | Prioritize local feature development; defer deployment troubleshooting without changing the hosting target | User-directed; hosted verification remains required before the hosted pilot/live use | 2026-09-15 |
-| ADR-015 | Email/password, controlled staff accounts, no public signup, centered shadcn UI; verification/recovery/MFA follow before live use | User-confirmed; local password login verified, full browser/SMTP security flows pending | 2026-09-15 |
-| ADR-016 | PostgreSQL was reported absent, so database work was temporarily deferred | Superseded: PostgreSQL 18 is now running and local migrations/integration pass | 2026-09-15 |
-| ADR-017 | Finish remaining login/security work before the full POS backlog | User-confirmed priority | 2026-09-15 |
-| ADR-018 | Existing SMTP mailbox for verification/recovery; encrypted PostgreSQL email jobs with bounded retries | Mailbox selected by user; implementation added, delivery and hosted scheduling unverified | 2026-09-15 |
-| ADR-019 | Include weight and volume sales in the first catalogue/checkout | Implemented with `kg`/`l` 0.001 steps and explicit sale/refund rounding | 2026-09-15 |
-| ADR-020 | Round non-negative checkout lines to the nearest minor unit with exact halves up; allocate partial refunds from cumulative rounded value | Implemented locally with unit, UI and PostgreSQL regression coverage; supplier-cost extension remains open | 2026-09-23 |
-| ADR-021 | Persist external payment attempts and append-only provider events before confirmation; accept payment only on an exact amount/reference match and reconcile unknown outcomes before retry | Provider-neutral backend and capability-aware register flow implemented and retained by the Daraja adapter | 2026-09-23 |
+| ID      | Decision                                                                                                                                                                                                                 | Status                                                                                                                   | Date       |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| ADR-001 | Original cloud + store-edge deployment                                                                                                                                                                                   | Deferred until growth triggers apply                                                                                     | 2026-09-14 |
+| ADR-002 | Modular monolith                                                                                                                                                                                                         | Retained recommendation                                                                                                  | 2026-09-14 |
+| ADR-003 | Append-only stock movement ledger                                                                                                                                                                                        | Retained recommendation                                                                                                  | 2026-09-14 |
+| ADR-004 | Desktop wrapper on every till                                                                                                                                                                                            | Deferred pending printer/hardware tests                                                                                  | 2026-09-14 |
+| ADR-005 | Paid certified eTIMS integration at first release                                                                                                                                                                        | Replaced with simulation first and explicit live fiscal decision                                                         | 2026-09-14 |
+| ADR-006 | React/Vite + NestJS + one authoritative PostgreSQL database on HostPinnacle                                                                                                                                              | Revised deployment proposal; runtime test pending                                                                        | 2026-09-14 |
+| ADR-007 | Existing PC hosts web app and database                                                                                                                                                                                   | Superseded by existing HostPinnacle account                                                                              | 2026-09-14 |
+| ADR-008 | Private phone VPN access                                                                                                                                                                                                 | Superseded by browser access over HTTPS                                                                                  | 2026-09-14 |
+| ADR-009 | Reuse existing HostPinnacle Node.js and PostgreSQL facilities                                                                                                                                                            | Features reported available by user; deployment unverified                                                               | 2026-09-14 |
+| ADR-010 | Host frontend and API together; no Vercel subscription initially                                                                                                                                                         | Recommended to minimize additional cost                                                                                  | 2026-09-14 |
+| ADR-011 | Online-only initial hosted test                                                                                                                                                                                          | Explicit scope limitation; live offline requirement still open                                                           | 2026-09-14 |
+| ADR-012 | `pg` driver and `node-pg-migrate` with explicit SQL migrations                                                                                                                                                           | Local PostgreSQL 18.6 migration/API checks passed; hosted verification pending                                           | 2026-09-14 |
+| ADR-013 | Better Auth for authentication; relevant skills and version-matched official documentation required                                                                                                                      | User-selected; hardening and local PostgreSQL login/integration verified, SMTP/browser/hosted checks pending             | 2026-09-15 |
+| ADR-014 | Prioritize local feature development; defer deployment troubleshooting without changing the hosting target                                                                                                               | User-directed; hosted verification remains required before the hosted pilot/live use                                     | 2026-09-15 |
+| ADR-015 | Email/password, controlled staff accounts, no public signup, centered shadcn UI; verification/recovery/MFA follow before live use                                                                                        | User-confirmed; local password login verified, full browser/SMTP security flows pending                                  | 2026-09-15 |
+| ADR-016 | PostgreSQL was reported absent, so database work was temporarily deferred                                                                                                                                                | Superseded: PostgreSQL 18 is now running and local migrations/integration pass                                           | 2026-09-15 |
+| ADR-017 | Finish remaining login/security work before the full POS backlog                                                                                                                                                         | User-confirmed priority                                                                                                  | 2026-09-15 |
+| ADR-018 | Existing SMTP mailbox for verification/recovery; encrypted PostgreSQL email jobs with bounded retries                                                                                                                    | Mailbox selected by user; implementation added, delivery and hosted scheduling unverified                                | 2026-09-15 |
+| ADR-019 | Include weight and volume sales in the first catalogue/checkout                                                                                                                                                          | Implemented with `kg`/`l` 0.001 steps and explicit sale/refund rounding                                                  | 2026-09-15 |
+| ADR-020 | Round non-negative checkout lines to the nearest minor unit with exact halves up; allocate partial refunds from cumulative rounded value                                                                                 | Implemented locally with unit, UI and PostgreSQL regression coverage; supplier-cost extension remains open               | 2026-09-23 |
+| ADR-021 | Persist external payment attempts and append-only provider events before confirmation; accept payment only on an exact amount/reference match and reconcile unknown outcomes before retry                                | Provider-neutral backend and capability-aware register flow implemented and retained by the Daraja adapter               | 2026-09-23 |
 | ADR-022 | Use Safaricom Daraja M-Pesa Express for automated M-Pesa; enable only with complete server-side credentials, whole-KES amounts, a token-protected public HTTPS callback and exact callback amount/reference confirmation | Adapter, callback and register phone capture implemented; disabled pending credentials and sandbox/callback verification | 2026-09-28 |
 
 Provider claims cited above were reviewed on 28 September 2026. Recheck plan terms when creating accounts or enabling live integrations.

@@ -12,7 +12,8 @@ import type { PoolClient } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
 
 export type SaleActor = { userId: string; sessionId: string };
-type RequestTable = 'sale_request' | 'sale_payment_request';
+type RequestTable =
+  'sale_request' | 'sale_payment_request' | 'suspended_order_request';
 
 @Injectable()
 export class SalesWrites {
@@ -52,6 +53,21 @@ export class SalesWrites {
     );
   }
 
+  async executeSuspendedOrder<T>(
+    actor: SaleActor,
+    requestId: string,
+    payload: unknown,
+    work: (client: PoolClient) => Promise<T>,
+  ): Promise<T> {
+    return this.executeForRequestTable(
+      'suspended_order_request',
+      actor,
+      requestId,
+      payload,
+      work,
+    );
+  }
+
   private async executeForRequestTable<T>(
     requestTable: RequestTable,
     actor: SaleActor,
@@ -60,7 +76,11 @@ export class SalesWrites {
     work: (client: PoolClient) => Promise<T>,
   ): Promise<T> {
     const operation =
-      requestTable === 'sale_payment_request' ? 'payment' : 'sale';
+      requestTable === 'sale_payment_request'
+        ? 'payment'
+        : requestTable === 'suspended_order_request'
+          ? 'suspended order'
+          : 'sale';
     const fingerprint = createHash('sha256')
       .update(JSON.stringify(payload))
       .digest('hex');
@@ -139,7 +159,9 @@ export class SalesWrites {
           : 'Sale transaction failed with an unknown error',
       );
       throw new ServiceUnavailableException(
-        'The checkout could not be confirmed. Retry the same request to check its outcome.',
+        requestTable === 'suspended_order_request'
+          ? 'The suspended-order change could not be confirmed. Retry the same request to check its outcome.'
+          : 'The checkout could not be confirmed. Retry the same request to check its outcome.',
       );
     } finally {
       client?.release();

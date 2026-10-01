@@ -30,11 +30,16 @@ import type { Product, SaleUnit } from "../catalogue/catalogue-api"
 import { getProductByBarcode, getProducts } from "../catalogue/catalogue-api"
 import { displayPrice, errorMessage } from "../catalogue/catalogue-format"
 import {
+  cancelHeldOrder,
   checkoutCashSale,
+  createHeldOrder,
   finalizeSale,
+  getHeldOrders,
   getReceipt,
   quoteBasket,
+  resumeHeldOrder,
   type BasketQuote,
+  type HeldOrder,
   type PaymentKind,
   type SaleReceipt,
 } from "../sales/sales-api"
@@ -59,12 +64,6 @@ type BasketItem = {
   quantity: number
 }
 
-type HeldBasket = {
-  id: string
-  createdAt: string
-  items: BasketItem[]
-}
-
 const paymentOptions: Array<{
   kind: PaymentKind
   label: string
@@ -82,7 +81,6 @@ type ExternalPaymentFlow = {
   attempt: Pick<PaymentAttempt, "attemptId" | "status"> | null
 }
 
-const HELD_BASKETS_KEY = "paygo-held-baskets"
 const EXTERNAL_PAYMENT_KEY = "paygo-external-payment"
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -91,32 +89,8 @@ function record(value: unknown): Record<string, unknown> | null {
     : null
 }
 
-function isSaleUnit(value: unknown): value is SaleUnit {
-  return value === "each" || value === "pack" || value === "kg" || value === "l"
-}
-
 function isPaymentAttemptStatus(value: unknown): value is PaymentAttemptStatus {
   return value === "pending" || value === "unknown" || value === "failed"
-}
-
-function isProduct(value: unknown): value is Product {
-  const product = record(value)
-  return Boolean(
-    product &&
-    typeof product.id === "string" &&
-    typeof product.sku === "string" &&
-    typeof product.name === "string" &&
-    (typeof product.categoryId === "string" || product.categoryId === null) &&
-    (typeof product.categoryName === "string" ||
-      product.categoryName === null) &&
-    isSaleUnit(product.unit) &&
-    typeof product.priceMinor === "string" &&
-    (typeof product.taxCode === "string" || product.taxCode === null) &&
-    typeof product.active === "boolean" &&
-    typeof product.revision === "number" &&
-    Array.isArray(product.barcodes) &&
-    product.barcodes.every((barcode) => typeof barcode === "string")
-  )
 }
 
 function readExternalPayment(): ExternalPaymentFlow | null {
@@ -150,49 +124,6 @@ function readExternalPayment(): ExternalPaymentFlow | null {
   } catch {
     return null
   }
-}
-
-function readHeldBaskets(): HeldBasket[] {
-  if (typeof window === "undefined") return []
-  try {
-    const raw = window.localStorage.getItem(HELD_BASKETS_KEY)
-    if (!raw) return []
-    const value: unknown = JSON.parse(raw)
-    if (!Array.isArray(value)) return []
-    return value.flatMap((candidate): HeldBasket[] => {
-      const held = record(candidate)
-      if (
-        !held ||
-        typeof held.id !== "string" ||
-        typeof held.createdAt !== "string"
-      ) {
-        return []
-      }
-      if (!Array.isArray(held.items)) return []
-      const items = held.items.flatMap((item): BasketItem[] => {
-        const entry = record(item)
-        if (
-          !entry ||
-          !isProduct(entry.product) ||
-          typeof entry.quantity !== "number" ||
-          !Number.isFinite(entry.quantity) ||
-          entry.quantity <= 0
-        ) {
-          return []
-        }
-        return [{ product: entry.product, quantity: entry.quantity }]
-      })
-      return items.length
-        ? [{ id: held.id, createdAt: held.createdAt, items }]
-        : []
-    })
-  } catch {
-    return []
-  }
-}
-
-function saveHeldBaskets(value: HeldBasket[]) {
-  window.localStorage.setItem(HELD_BASKETS_KEY, JSON.stringify(value))
 }
 
 function requestId() {
@@ -251,7 +182,11 @@ export function SalesScreen() {
   const [catalogueError, setCatalogueError] = useState("")
   const [search, setSearch] = useState("")
   const [basket, setBasket] = useState<BasketItem[]>([])
-  const [heldBaskets, setHeldBaskets] = useState<HeldBasket[]>(readHeldBaskets)
+  const [heldOrders, setHeldOrders] = useState<HeldOrder[]>([])
+  const [heldOrdersLoading, setHeldOrdersLoading] = useState(true)
+  const [heldOrdersError, setHeldOrdersError] = useState("")
+  const [heldAction, setHeldAction] = useState<string | null>(null)
+  const [holdNote, setHoldNote] = useState("")
   const [quote, setQuote] = useState<BasketQuote | null>(null)
   const [quoteLoading, setQuoteLoading] = useState(false)
   const [quoteError, setQuoteError] = useState("")
@@ -274,6 +209,8 @@ export function SalesScreen() {
   const [receiptError, setReceiptError] = useState("")
   const quoteSequence = useRef(0)
   const checkoutRequest = useRef<string | null>(null)
+  const holdRequest = useRef<string | null>(null)
+  const heldTransitionRequests = useRef(new Map<string, string>())
 
   useEffect(() => {
     let current = true
@@ -286,30 +223,40 @@ export function SalesScreen() {
         page: 0,
       }),
       getPaymentCapabilities(),
-    ]).then(([shiftResult, productsResult, capabilitiesResult]) => {
-      if (!current) return
-      if (shiftResult.status === "fulfilled") {
-        setShift(shiftResult.value)
-        setShiftError("")
-      } else {
-        setShiftError(errorMessage(shiftResult.reason))
+      getHeldOrders(),
+    ]).then(
+      ([shiftResult, productsResult, capabilitiesResult, heldOrdersResult]) => {
+        if (!current) return
+        if (shiftResult.status === "fulfilled") {
+          setShift(shiftResult.value)
+          setShiftError("")
+        } else {
+          setShiftError(errorMessage(shiftResult.reason))
+        }
+        if (productsResult.status === "fulfilled") {
+          setProducts(productsResult.value.products)
+          setCatalogueError("")
+        } else {
+          setCatalogueError(errorMessage(productsResult.reason))
+        }
+        if (capabilitiesResult.status === "fulfilled") {
+          setPaymentCapabilities(capabilitiesResult.value)
+          setPaymentCapabilitiesError("")
+        } else {
+          setPaymentCapabilities({ card: false, mpesa: false })
+          setPaymentCapabilitiesError(errorMessage(capabilitiesResult.reason))
+        }
+        if (heldOrdersResult.status === "fulfilled") {
+          setHeldOrders(heldOrdersResult.value)
+          setHeldOrdersError("")
+        } else {
+          setHeldOrdersError(errorMessage(heldOrdersResult.reason))
+        }
+        setShiftLoading(false)
+        setCatalogueLoading(false)
+        setHeldOrdersLoading(false)
       }
-      if (productsResult.status === "fulfilled") {
-        setProducts(productsResult.value.products)
-        setCatalogueError("")
-      } else {
-        setCatalogueError(errorMessage(productsResult.reason))
-      }
-      if (capabilitiesResult.status === "fulfilled") {
-        setPaymentCapabilities(capabilitiesResult.value)
-        setPaymentCapabilitiesError("")
-      } else {
-        setPaymentCapabilities({ card: false, mpesa: false })
-        setPaymentCapabilitiesError(errorMessage(capabilitiesResult.reason))
-      }
-      setShiftLoading(false)
-      setCatalogueLoading(false)
-    })
+    )
     return () => {
       current = false
     }
@@ -369,6 +316,7 @@ export function SalesScreen() {
     setExternalPayment(null)
     setMpesaPhone("")
     checkoutRequest.current = null
+    holdRequest.current = null
     const sequence = ++quoteSequence.current
     if (!next.length) {
       setQuote(null)
@@ -435,46 +383,85 @@ export function SalesScreen() {
     }
   }
 
-  function holdBasket() {
-    if (!basket.length || basketLocked) return
-    const held: HeldBasket = {
-      id: requestId(),
-      createdAt: new Date().toISOString(),
-      items: basket,
-    }
+  async function holdBasket() {
+    if (!basket.length || basketLocked || heldAction) return
+    const operationId = holdRequest.current ?? requestId()
+    holdRequest.current = operationId
+    setHeldAction("create")
+    setCheckoutError("")
     try {
-      const next = [...heldBaskets, held].slice(-10)
-      saveHeldBaskets(next)
-      setHeldBaskets(next)
+      const held = await createHeldOrder(basketLines, holdNote, operationId)
+      setHeldOrders((current) => [held, ...current])
       updateBasket([])
-      setSuccessMessage("Basket held. Resume it when the customer is ready.")
-    } catch {
-      setCheckoutError("The basket could not be held on this device.")
+      setHoldNote("")
+      setSuccessMessage(
+        "Order held on the server. Resume it from any authorized register."
+      )
+    } catch (failure: unknown) {
+      setCheckoutError(errorMessage(failure))
+    } finally {
+      setHeldAction(null)
     }
   }
 
-  function resumeBasket(id: string) {
-    if (basket.length || basketLocked) return
-    const held = heldBaskets.find((candidate) => candidate.id === id)
-    if (!held) return
-    const next = heldBaskets.filter((candidate) => candidate.id !== id)
+  async function resumeBasket(order: HeldOrder) {
+    if (basket.length || basketLocked || heldAction) return
+    const transitionKey = `resume:${order.id}`
+    const operationId =
+      heldTransitionRequests.current.get(transitionKey) ?? requestId()
+    heldTransitionRequests.current.set(transitionKey, operationId)
+    setHeldAction(order.id)
+    setHeldOrdersError("")
     try {
-      saveHeldBaskets(next)
-      setHeldBaskets(next)
-      updateBasket(held.items)
-      setSuccessMessage("Held basket resumed and re-quoted by the server.")
-    } catch {
-      setCheckoutError("The held basket could not be resumed.")
+      const resumed = await resumeHeldOrder(
+        order.id,
+        order.revision,
+        operationId
+      )
+      heldTransitionRequests.current.delete(transitionKey)
+      setHeldOrders((current) =>
+        current.filter((candidate) => candidate.id !== order.id)
+      )
+      updateBasket(resumed.lines)
+      setSuccessMessage("Held order resumed and re-quoted by the server.")
+    } catch (failure: unknown) {
+      setHeldOrdersError(errorMessage(failure))
+    } finally {
+      setHeldAction(null)
     }
   }
 
-  function removeHeldBasket(id: string) {
-    const next = heldBaskets.filter((candidate) => candidate.id !== id)
+  async function cancelBasket(order: HeldOrder) {
+    if (basketLocked || heldAction) return
+    const transitionKey = `cancel:${order.id}`
+    const operationId =
+      heldTransitionRequests.current.get(transitionKey) ?? requestId()
+    heldTransitionRequests.current.set(transitionKey, operationId)
+    setHeldAction(order.id)
+    setHeldOrdersError("")
     try {
-      saveHeldBaskets(next)
-      setHeldBaskets(next)
-    } catch {
-      setCheckoutError("The held basket could not be removed.")
+      await cancelHeldOrder(order.id, order.revision, operationId)
+      heldTransitionRequests.current.delete(transitionKey)
+      setHeldOrders((current) =>
+        current.filter((candidate) => candidate.id !== order.id)
+      )
+      setSuccessMessage("Held order cancelled. Its history remains recorded.")
+    } catch (failure: unknown) {
+      setHeldOrdersError(errorMessage(failure))
+    } finally {
+      setHeldAction(null)
+    }
+  }
+
+  async function reloadHeldOrders() {
+    setHeldOrdersLoading(true)
+    setHeldOrdersError("")
+    try {
+      setHeldOrders(await getHeldOrders())
+    } catch (failure: unknown) {
+      setHeldOrdersError(errorMessage(failure))
+    } finally {
+      setHeldOrdersLoading(false)
     }
   }
 
@@ -957,64 +944,101 @@ export function SalesScreen() {
             </CardContent>
           </Card>
 
-          {heldBaskets.length > 0 && (
-            <Card>
-              <CardHeader className="border-b pb-3">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <PauseCircle className="size-4" aria-hidden="true" />
-                  Held baskets
-                  <Badge variant="secondary" className="ml-auto rounded-full">
-                    {heldBaskets.length}
-                  </Badge>
-                </CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Drafts stay on this device until resumed or removed.
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-2 p-4">
-                {heldBaskets.map((held) => (
-                  <div
-                    key={held.id}
-                    className="flex items-center justify-between gap-3 rounded-lg border p-3"
+          <Card>
+            <CardHeader className="border-b pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <PauseCircle className="size-4" aria-hidden="true" />
+                Held orders
+                <Badge variant="secondary" className="ml-auto rounded-full">
+                  {heldOrders.length}
+                </Badge>
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Saved on the server. Cashiers see their own; managers can review
+                the whole shop.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-2 p-4">
+              {heldOrdersLoading ? (
+                <LoadingNotice label="Loading held orders…" />
+              ) : heldOrdersError ? (
+                <div className="space-y-3">
+                  <ErrorNotice message={heldOrdersError} />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void reloadHeldOrders()}
                   >
-                    <div className="min-w-0">
-                      <p className="font-medium">
-                        Basket {held.id.slice(0, 8)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {held.items.length}{" "}
-                        {held.items.length === 1 ? "line" : "lines"} ·{" "}
-                        {new Date(held.createdAt).toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5"
-                        onClick={() => resumeBasket(held.id)}
-                        disabled={Boolean(basket.length) || basketLocked}
-                      >
-                        <Play className="size-3.5" aria-hidden="true" />
-                        Resume
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        aria-label={`Remove held basket ${held.id.slice(0, 8)}`}
-                        onClick={() => removeHeldBasket(held.id)}
-                        disabled={basketLocked}
-                      >
-                        <X className="size-4" aria-hidden="true" />
-                      </Button>
+                    <RefreshCw className="size-3.5" aria-hidden="true" />
+                    Retry
+                  </Button>
+                </div>
+              ) : heldOrders.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-5 text-center">
+                  <p className="font-medium">No held orders</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Hold the current basket when a customer needs more time.
+                  </p>
+                </div>
+              ) : (
+                heldOrders.map((held) => (
+                  <div key={held.id} className="rounded-lg border p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium">
+                          Order {held.id.slice(0, 8)}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {held.lines.length}{" "}
+                          {held.lines.length === 1 ? "line" : "lines"} ·{" "}
+                          {held.ownerName} ·{" "}
+                          {new Date(held.createdAt).toLocaleString()}
+                        </p>
+                        {held.note && (
+                          <p className="mt-2 text-sm">{held.note}</p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5"
+                          onClick={() => void resumeBasket(held)}
+                          disabled={
+                            Boolean(basket.length) ||
+                            basketLocked ||
+                            Boolean(heldAction)
+                          }
+                        >
+                          {heldAction === held.id ? (
+                            <LoaderCircle
+                              className="size-3.5 animate-spin"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <Play className="size-3.5" aria-hidden="true" />
+                          )}
+                          Resume
+                        </Button>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          aria-label={`Cancel held order ${held.id.slice(0, 8)}`}
+                          onClick={() => void cancelBasket(held)}
+                          disabled={basketLocked || Boolean(heldAction)}
+                        >
+                          <X className="size-4" aria-hidden="true" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
+                ))
+              )}
+            </CardContent>
+          </Card>
 
           <Card className="print:border-0 print:shadow-none">
             <CardHeader className="border-b pb-3 print:hidden">
@@ -1146,11 +1170,20 @@ export function SalesScreen() {
                   variant="ghost"
                   size="sm"
                   className="gap-1.5"
-                  onClick={holdBasket}
-                  disabled={!basket.length || basketLocked}
+                  onClick={() => void holdBasket()}
+                  disabled={
+                    !basket.length || basketLocked || Boolean(heldAction)
+                  }
                 >
-                  <PauseCircle className="size-3.5" aria-hidden="true" />
-                  Hold
+                  {heldAction === "create" ? (
+                    <LoaderCircle
+                      className="size-3.5 animate-spin"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <PauseCircle className="size-3.5" aria-hidden="true" />
+                  )}
+                  {heldAction === "create" ? "Holding…" : "Hold"}
                 </Button>
               </div>
             </div>
@@ -1240,6 +1273,23 @@ export function SalesScreen() {
                     </div>
                   )
                 })}
+              </div>
+            )}
+
+            {basket.length > 0 && (
+              <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                <Label htmlFor="hold-note">Hold note (optional)</Label>
+                <Input
+                  id="hold-note"
+                  value={holdNote}
+                  onChange={(event) => setHoldNote(event.target.value)}
+                  maxLength={160}
+                  placeholder="Customer name or pickup detail"
+                  disabled={basketLocked || Boolean(heldAction)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Keep notes brief and avoid unnecessary personal information.
+                </p>
               </div>
             )}
 

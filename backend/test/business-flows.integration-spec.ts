@@ -28,6 +28,7 @@ import { ReturnsWrites } from '../src/returns/returns-writes.js';
 import { SalesService } from '../src/sales/sales.service.js';
 import { SalesLookupService } from '../src/sales/sales-lookup.service.js';
 import { SalesWrites } from '../src/sales/sales-writes.js';
+import { SuspendedOrdersService } from '../src/sales/suspended-orders.service.js';
 import { ShiftsService } from '../src/shifts/shifts.service.js';
 import { ShiftsWrites } from '../src/shifts/shifts-writes.js';
 
@@ -49,6 +50,7 @@ describe('PostgreSQL register and purchase business flows', () => {
   let returns: ReturnsService;
   let sales: SalesService;
   let saleLookup: SalesLookupService;
+  let suspendedOrders: SuspendedOrdersService;
   let shifts: ShiftsService;
   const schema = `business_${randomUUID().replaceAll('-', '')}`;
   const manager: StaffActor = {
@@ -178,6 +180,7 @@ describe('PostgreSQL register and purchase business flows', () => {
         SalesService,
         SalesLookupService,
         SalesWrites,
+        SuspendedOrdersService,
         ShiftsService,
         ShiftsWrites,
         { provide: DatabaseService, useValue: { connectionPool: pool } },
@@ -191,7 +194,65 @@ describe('PostgreSQL register and purchase business flows', () => {
     returns = fixture.get(ReturnsService);
     sales = fixture.get(SalesService);
     saleLookup = fixture.get(SalesLookupService);
+    suspendedOrders = fixture.get(SuspendedOrdersService);
     shifts = fixture.get(ShiftsService);
+  });
+
+  it('persists, scopes and safely transitions held orders', async () => {
+    const createInput = {
+      requestId: randomUUID(),
+      note: 'Customer collecting after lunch',
+      lines: [{ productId, unit: 'each', quantity: 2 }],
+    };
+    const [held, replayed] = await Promise.all([
+      suspendedOrders.create(cashier, createInput),
+      suspendedOrders.create(cashier, createInput),
+    ]);
+    expect(replayed).toEqual(held);
+    expect(held).toMatchObject({
+      ownerId: cashier.userId,
+      status: 'held',
+      revision: 1,
+      note: createInput.note,
+      lines: [{ quantity: 2, product: { id: productId } }],
+    });
+    await expect(suspendedOrders.list(cashier)).resolves.toMatchObject({
+      orders: [{ id: held.id }],
+    });
+    await expect(suspendedOrders.list(manager)).resolves.toMatchObject({
+      orders: [{ id: held.id, ownerId: cashier.userId }],
+    });
+
+    const resumed = await suspendedOrders.resume(manager, held.id, {
+      requestId: randomUUID(),
+      revision: held.revision,
+    });
+    expect(resumed).toMatchObject({ status: 'resumed', revision: 2 });
+    await expect(
+      suspendedOrders.cancel(cashier, held.id, {
+        requestId: randomUUID(),
+        revision: held.revision,
+      }),
+    ).rejects.toThrow('no longer available');
+
+    const second = await suspendedOrders.create(cashier, {
+      ...createInput,
+      requestId: randomUUID(),
+      note: '',
+    });
+    await expect(
+      suspendedOrders.cancel(cashier, second.id, {
+        requestId: randomUUID(),
+        revision: second.revision,
+      }),
+    ).resolves.toMatchObject({ status: 'cancelled', revision: 2 });
+    expect(
+      (
+        await pool.query<{ count: number }>(
+          'SELECT COUNT(*)::int AS count FROM suspended_order',
+        )
+      ).rows[0].count,
+    ).toBe(2);
   });
 
   afterAll(async () => {
@@ -387,6 +448,46 @@ describe('PostgreSQL register and purchase business flows', () => {
           changeMinor: 500,
         },
       ],
+    });
+    const ledgerDay = (
+      await pool.query<{ day: string }>(
+        `SELECT to_char(created_at AT TIME ZONE 'Africa/Nairobi', 'YYYY-MM-DD') AS day
+        FROM sale WHERE id = $1`,
+        [sale.saleId],
+      )
+    ).rows[0].day;
+    await expect(
+      saleLookup.listSales(
+        manager,
+        sale.saleId.slice(0, 8),
+        ledgerDay,
+        ledgerDay,
+        0,
+      ),
+    ).resolves.toMatchObject({
+      sales: [
+        {
+          saleId: sale.saleId,
+          cashierId: cashier.userId,
+          totalMinor: 500,
+          paidMinor: 500,
+          refundedMinor: 0,
+          balanceMinor: 0,
+          lineCount: 1,
+          paymentKinds: ['cash'],
+          paymentStatus: 'paid',
+        },
+      ],
+      hasMore: false,
+    });
+    await expect(
+      saleLookup.detail(cashier, sale.saleId),
+    ).resolves.toMatchObject({
+      saleId: sale.saleId,
+      cashierId: cashier.userId,
+      paymentStatus: 'paid',
+      lines: [{ name: 'Premium flour', quantity: 2 }],
+      payments: [{ amountMinor: 500, changeMinor: 500 }],
     });
 
     const closed = await shifts.closeShift(cashier, {

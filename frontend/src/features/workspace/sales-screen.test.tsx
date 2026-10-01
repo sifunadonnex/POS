@@ -19,6 +19,10 @@ const mocks = vi.hoisted(() => ({
   checkoutCashSale: vi.fn(),
   finalizeSale: vi.fn(),
   getReceipt: vi.fn(),
+  getHeldOrders: vi.fn(),
+  createHeldOrder: vi.fn(),
+  resumeHeldOrder: vi.fn(),
+  cancelHeldOrder: vi.fn(),
   getPaymentCapabilities: vi.fn(),
   startPaymentAttempt: vi.fn(),
   reconcilePaymentAttempt: vi.fn(),
@@ -55,6 +59,18 @@ const product: Product = {
   barcodes: ["0012345"],
 }
 
+const heldOrder = {
+  id: "77777777-7777-4777-8777-777777777777",
+  ownerId: "cashier-1",
+  ownerName: "Local Cashier",
+  note: "Customer collecting shortly",
+  status: "held" as const,
+  revision: 1,
+  createdAt: "2026-10-01T08:00:00.000Z",
+  updatedAt: "2026-10-01T08:00:00.000Z",
+  lines: [{ product, quantity: 1 }],
+}
+
 beforeEach(() => {
   mocks.getCurrentShift.mockResolvedValue({
     shiftId: "shift-1",
@@ -78,6 +94,18 @@ beforeEach(() => {
     ],
   })
   mocks.getPaymentCapabilities.mockResolvedValue({ card: false, mpesa: false })
+  mocks.getHeldOrders.mockResolvedValue([])
+  mocks.createHeldOrder.mockResolvedValue(heldOrder)
+  mocks.resumeHeldOrder.mockResolvedValue({
+    ...heldOrder,
+    status: "resumed",
+    revision: 2,
+  })
+  mocks.cancelHeldOrder.mockResolvedValue({
+    ...heldOrder,
+    status: "cancelled",
+    revision: 2,
+  })
   mocks.finalizeSale.mockResolvedValue({
     saleId: "sale-1",
     totalMinor: 1250,
@@ -155,18 +183,54 @@ it("checks out cash atomically and prints tender and change on the receipt", asy
   expect(screen.getByText("Change given")).toBeTruthy()
 })
 
-it("holds a basket locally and resumes it for a fresh server quote", async () => {
+it("holds a basket on the server and resumes it for a fresh quote", async () => {
   render(<SalesScreen />)
   fireEvent.click(await screen.findByRole("button", { name: /Rice 10kg/ }))
+  fireEvent.change(screen.getByLabelText("Hold note (optional)"), {
+    target: { value: "Customer collecting shortly" },
+  })
   fireEvent.click(screen.getByRole("button", { name: "Hold" }))
 
   expect(await screen.findByText("Basket is empty")).toBeTruthy()
+  expect(mocks.createHeldOrder).toHaveBeenCalledWith(
+    [{ productId: product.id, unit: "each", quantity: 1 }],
+    "Customer collecting shortly",
+    expect.any(String)
+  )
   fireEvent.click(screen.getByRole("button", { name: "Resume" }))
 
   expect(
-    await screen.findByText("Held basket resumed and re-quoted by the server.")
+    await screen.findByText("Held order resumed and re-quoted by the server.")
   ).toBeTruthy()
+  expect(mocks.resumeHeldOrder).toHaveBeenCalledWith(
+    heldOrder.id,
+    heldOrder.revision,
+    expect.any(String)
+  )
   await waitFor(() => expect(mocks.quoteBasket).toHaveBeenCalledTimes(2))
+})
+
+it("cancels a held order through its server transition", async () => {
+  mocks.getHeldOrders.mockResolvedValue([heldOrder])
+  render(<SalesScreen />)
+
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Cancel held order 77777777" })
+  )
+
+  await waitFor(() =>
+    expect(mocks.cancelHeldOrder).toHaveBeenCalledWith(
+      heldOrder.id,
+      heldOrder.revision,
+      expect.any(String)
+    )
+  )
+  expect(
+    await screen.findByText(
+      "Held order cancelled. Its history remains recorded."
+    )
+  ).toBeTruthy()
+  expect(screen.getByText("No held orders")).toBeTruthy()
 })
 
 it("does not invent a sale when the server quote fails", async () => {
