@@ -159,9 +159,11 @@ afterEach(() => {
   cleanup()
   window.localStorage.clear()
   vi.resetAllMocks()
+  vi.restoreAllMocks()
 })
 
 it("checks out cash atomically and prints tender and change on the receipt", async () => {
+  const print = vi.spyOn(window, "print").mockImplementation(() => undefined)
   render(<SalesScreen />)
   const productButton = await screen.findByRole("button", { name: /Rice 10kg/ })
   fireEvent.click(productButton)
@@ -180,8 +182,11 @@ it("checks out cash atomically and prints tender and change on the receipt", asy
   expect((await screen.findByRole("status")).textContent).toContain(
     "Change due KES 7.50"
   )
-  expect(await screen.findByLabelText("Receipt")).toBeTruthy()
-  expect(screen.getByText("Change given")).toBeTruthy()
+  expect(await screen.findByLabelText("Printable receipt")).toBeTruthy()
+  expect(screen.getByText("TEST — NOT A TAX INVOICE")).toBeTruthy()
+  expect(screen.getByText("Change")).toBeTruthy()
+  fireEvent.click(screen.getByRole("button", { name: "Print" }))
+  expect(print).toHaveBeenCalledOnce()
 })
 
 it("holds a basket on the server and resumes it for a fresh quote", async () => {

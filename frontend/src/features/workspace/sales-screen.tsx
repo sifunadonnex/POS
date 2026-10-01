@@ -43,6 +43,7 @@ import {
   type PaymentKind,
   type SaleReceipt,
 } from "../sales/sales-api"
+import { SaleReceiptView } from "../sales/sale-receipt"
 import {
   getPaymentCapabilities,
   reconcilePaymentAttempt,
@@ -1076,13 +1077,12 @@ export function SalesScreen() {
               {receiptError && <ErrorNotice message={receiptError} />}
               {receiptLoading && <LoadingNotice label="Loading receipt…" />}
               {receipt && !receiptLoading && (
-                <div aria-label="Receipt" className="space-y-3">
-                  <div className="flex items-start justify-between gap-3">
+                <div aria-label="Receipt" className="space-y-4">
+                  <div className="flex items-center justify-between gap-3 print:hidden">
                     <div>
-                      <p className="font-semibold">Pay &amp; Go receipt</p>
+                      <p className="font-semibold">Receipt ready</p>
                       <p className="text-xs text-muted-foreground">
-                        {receipt.saleId} ·{" "}
-                        {new Date(receipt.createdAt).toLocaleString()}
+                        Formatted for 80 mm paper
                       </p>
                     </div>
                     <Button
@@ -1096,52 +1096,8 @@ export function SalesScreen() {
                       Print
                     </Button>
                   </div>
-                  <div className="divide-y rounded-lg border">
-                    {receipt.lines.map((line) => (
-                      <div
-                        key={`${receipt.saleId}-${line.productId}`}
-                        className="flex items-start justify-between gap-3 p-3 text-sm"
-                      >
-                        <div>
-                          <p className="font-medium">{line.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {line.quantity} {line.unit} ·{" "}
-                            {money(line.unitPriceMinor)} each
-                          </p>
-                        </div>
-                        <p className="font-semibold tabular-nums">
-                          {money(line.lineTotalMinor)}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between border-t pt-3 font-semibold">
-                    <span>Sale total</span>
-                    <span className="tabular-nums">
-                      {money(receipt.totalMinor)}
-                    </span>
-                  </div>
-                  <div className="space-y-1 text-sm">
-                    {receipt.payments.map((payment) => (
-                      <div key={payment.paymentId} className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="capitalize">
-                            {payment.kind} received
-                          </span>
-                          <span className="font-medium tabular-nums">
-                            {money(payment.tenderedMinor)}
-                          </span>
-                        </div>
-                        {payment.changeMinor > 0 && (
-                          <div className="flex items-center justify-between text-muted-foreground">
-                            <span>Change given</span>
-                            <span className="tabular-nums">
-                              {money(payment.changeMinor)}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                  <div className="overflow-hidden rounded-xl bg-muted/40 p-3 sm:p-5 print:contents">
+                    <SaleReceiptView receipt={receipt} />
                   </div>
                 </div>
               )}
