@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { formatKes } from "@/lib/format"
 import {
   Table,
   TableBody,
@@ -44,11 +45,7 @@ function dateValue(date: Date) {
 }
 
 function money(minor: number) {
-  return new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: "KES",
-    maximumFractionDigits: 2,
-  }).format(minor / 100)
+  return formatKes(minor)
 }
 
 function shortDate(value: string) {

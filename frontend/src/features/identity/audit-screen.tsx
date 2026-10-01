@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { formatNairobiDateTime } from "@/lib/format"
 import { listAudit, type AuditEntry } from "./staff-admin-api"
 import { errorText } from "./security-form"
 
@@ -73,10 +74,8 @@ export function AuditScreen() {
                 <span className="text-sm">{event.outcome}</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                {new Date(event.createdAt).toLocaleString("en-KE", {
-                  timeZone: "Africa/Nairobi",
-                })}{" "}
-                · Nairobi time · Event {event.id}
+                {formatNairobiDateTime(event.createdAt)} · Nairobi time · Event{" "}
+                {event.id}
               </p>
               <p className="text-xs break-all text-muted-foreground">
                 Actor: {event.actorId ?? "Unauthenticated or system"}

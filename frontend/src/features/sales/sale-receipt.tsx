@@ -1,5 +1,6 @@
 import type { SaleUnit } from "../catalogue/catalogue-api"
 import { displayPrice } from "../catalogue/catalogue-format"
+import { formatNairobiDateTime } from "@/lib/format"
 import type { SaleReceipt } from "./sales-api"
 
 const paymentNames: Record<SaleReceipt["payments"][number]["kind"], string> = {
@@ -18,14 +19,6 @@ function quantity(value: number, unit: SaleUnit) {
       ? String(value)
       : value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")
   return `${formatted} ${unit}`
-}
-
-function receiptDate(value: string) {
-  return new Intl.DateTimeFormat("en-KE", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Africa/Nairobi",
-  }).format(new Date(value))
 }
 
 function lineLabel(count: number) {
@@ -56,7 +49,7 @@ export function SaleReceiptView({ receipt }: SaleReceiptViewProps) {
       <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px] leading-4">
         <dt className="font-medium">Date</dt>
         <dd className="text-right tabular-nums">
-          {receiptDate(receipt.createdAt)}
+          {formatNairobiDateTime(receipt.createdAt)}
         </dd>
         <dt className="font-medium">Receipt</dt>
         <dd className="text-right font-mono text-[10px] leading-4 break-all">

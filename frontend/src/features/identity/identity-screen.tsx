@@ -40,33 +40,16 @@ export function IdentityScreen() {
 
   if (ready && !access.staff.mfaRequired) {
     return (
-      <main className="min-h-svh bg-muted/30 p-4 sm:p-6">
-        <section className="w-full" aria-label="Staff access">
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3 pb-2">
-              <div>
-                <p className="text-sm text-muted-foreground">Signed in</p>
-                <h1 className="text-2xl font-semibold tracking-tight">
-                  Welcome, {access.staff.name}
-                </h1>
-              </div>
-              <Button
-                variant="outline"
-                disabled={session.signingOut}
-                onClick={() => {
-                  void session.signOut()
-                }}
-              >
-                {session.signingOut ? "Signing out…" : "Sign out"}
-              </Button>
-            </div>
-            <StaffWorkspace
-              key={access.staff.id}
-              staff={access.staff}
-              onSecurityChanged={session.refresh}
-            />
-          </div>
-        </section>
+      <main className="min-h-svh bg-background" aria-label="Staff access">
+        <StaffWorkspace
+          key={access.staff.id}
+          staff={access.staff}
+          signingOut={session.signingOut}
+          onSignOut={() => {
+            void session.signOut()
+          }}
+          onSecurityChanged={session.refresh}
+        />
       </main>
     )
   }

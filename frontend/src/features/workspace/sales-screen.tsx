@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { formatNairobiDateTime } from "@/lib/format"
 import type { Product, SaleUnit } from "../catalogue/catalogue-api"
 import { getProductByBarcode, getProducts } from "../catalogue/catalogue-api"
 import { displayPrice, errorMessage } from "../catalogue/catalogue-format"
@@ -994,7 +995,7 @@ export function SalesScreen() {
                           {held.lines.length}{" "}
                           {held.lines.length === 1 ? "line" : "lines"} ·{" "}
                           {held.ownerName} ·{" "}
-                          {new Date(held.createdAt).toLocaleString()}
+                          {formatNairobiDateTime(held.createdAt)}
                         </p>
                         {held.note && (
                           <p className="mt-2 text-sm">{held.note}</p>

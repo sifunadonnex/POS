@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { formatNairobiDateTime } from "@/lib/format"
 import {
   changeStock,
   getHistory,
@@ -595,7 +596,7 @@ export function StockControlScreen() {
                             {movement.reason}
                           </p>
                           <p className="mt-1 text-xs text-muted-foreground">
-                            {new Date(movement.createdAt).toLocaleString()}
+                            {formatNairobiDateTime(movement.createdAt)}
                           </p>
                         </div>
                         <div className="shrink-0 text-right">

@@ -1,13 +1,10 @@
 import type { SalesInsights } from "./reports-api"
+import { formatKes } from "@/lib/format"
 
 type SalesDay = SalesInsights["daily"][number]
 
 function money(minor: number) {
-  return new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: "KES",
-    maximumFractionDigits: 2,
-  }).format(minor / 100)
+  return formatKes(minor)
 }
 
 function shortDay(value: string) {

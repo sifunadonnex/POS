@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { formatNairobiDateTime } from "@/lib/format"
 import {
   displayPrice,
   errorMessage,
@@ -268,7 +269,7 @@ export function SalesHistoryScreen() {
                           Sale {sale.saleId.slice(0, 8)}
                         </span>
                         <span className="mt-1 block text-xs text-muted-foreground">
-                          {new Date(sale.createdAt).toLocaleString()} ·{" "}
+                          {formatNairobiDateTime(sale.createdAt)} ·{" "}
                           {sale.cashierName}
                         </span>
                         <span className="mt-1 block text-xs text-muted-foreground">
@@ -334,7 +335,7 @@ export function SalesHistoryScreen() {
             </CardTitle>
             <CardDescription>
               {detail
-                ? `${new Date(detail.createdAt).toLocaleString()} · ${detail.cashierName}`
+                ? `${formatNairobiDateTime(detail.createdAt)} · ${detail.cashierName}`
                 : "Select a sale to review its items, payments and refunds."}
             </CardDescription>
           </CardHeader>
@@ -426,7 +427,7 @@ export function SalesHistoryScreen() {
                                 : payment.kind}
                             </p>
                             <p className="mt-1 text-xs text-muted-foreground">
-                              {new Date(payment.paidAt).toLocaleString()}
+                              {formatNairobiDateTime(payment.paidAt)}
                               {payment.changeMinor > 0
                                 ? ` · change ${displayPrice(String(payment.changeMinor))}`
                                 : ""}

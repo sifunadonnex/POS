@@ -192,11 +192,11 @@ it("locks idle content even when logout cannot reach the server", async () => {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1)
   })
-  expect(screen.getByText("Welcome, Cashier")).toBeTruthy()
+  expect(screen.getByText("Cashier", { exact: true })).toBeTruthy()
   await act(async () => {
     await vi.advanceTimersByTimeAsync(60_000)
   })
-  expect(screen.queryByText("Welcome, Cashier")).toBeNull()
+  expect(screen.queryByText("Cashier", { exact: true })).toBeNull()
   expect(screen.getByText("Your screen is locked")).toBeTruthy()
   expect(screen.getByRole("alert").textContent).toContain(
     "could not be confirmed"

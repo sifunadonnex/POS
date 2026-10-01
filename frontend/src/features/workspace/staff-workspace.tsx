@@ -1,4 +1,4 @@
-import { useMemo, useState, type ComponentProps } from "react"
+import { useEffect, useMemo, useState, type ComponentProps } from "react"
 import {
   Archive,
   BarChart3,
@@ -8,6 +8,7 @@ import {
   ClipboardCheck,
   FileClock,
   LayoutDashboard,
+  LogOut,
   PackageCheck,
   ReceiptText,
   RotateCcw,
@@ -246,9 +247,13 @@ function initials(name: string) {
 
 export function StaffWorkspace({
   staff,
+  signingOut,
+  onSignOut,
   onSecurityChanged,
 }: {
   staff: Staff
+  signingOut: boolean
+  onSignOut: () => void
   onSecurityChanged: () => void
 }) {
   const [tab, setTab] = useState<WorkspaceTab>("dashboard")
@@ -267,12 +272,19 @@ export function StaffWorkspace({
   )
   const currentPage = pageDetails[tab]
 
+  useEffect(() => {
+    document.title = `${currentPage.title} — Pay & Go`
+    return () => {
+      document.title = "Pay & Go — Staff access"
+    }
+  }, [currentPage.title])
+
   function navigate(next: WorkspaceTab) {
     setTab(next)
   }
 
   return (
-    <div className="flex min-h-[calc(100svh-7rem)] w-full overflow-hidden rounded-2xl border bg-background shadow-sm">
+    <div className="flex h-svh w-full overflow-hidden bg-background">
       <aside
         className={`hidden border-r bg-sidebar text-sidebar-foreground lg:flex lg:flex-col ${sidebarCollapsed ? "w-[4.5rem]" : "w-64"} transition-[width] duration-200`}
         aria-label="Primary navigation"
@@ -350,24 +362,50 @@ export function StaffWorkspace({
           ))}
         </nav>
 
-        {!sidebarCollapsed && (
-          <div className="border-t p-3">
+        <div className="border-t p-3">
+          {!sidebarCollapsed ? (
             <div className="flex items-center gap-3 rounded-lg bg-sidebar-accent/70 p-2.5">
               <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-sidebar-primary text-xs font-semibold text-sidebar-primary-foreground">
                 {initials(staff.name)}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{staff.name}</p>
-                <p className="truncate text-xs text-sidebar-foreground/60 capitalize">
-                  {staff.role}
+                <p className="flex items-center gap-1.5 truncate text-xs text-sidebar-foreground/60">
+                  <span
+                    className="size-1.5 shrink-0 rounded-full bg-emerald-500"
+                    aria-hidden="true"
+                  />
+                  <span className="capitalize">{staff.role}</span> · Signed in
                 </p>
               </div>
-              <Badge variant="secondary" className="rounded-full text-[10px]">
-                Active
-              </Badge>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0"
+                aria-label="Sign out"
+                title="Sign out"
+                disabled={signingOut}
+                onClick={onSignOut}
+              >
+                <LogOut className="size-4" aria-hidden="true" />
+              </Button>
             </div>
-          </div>
-        )}
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="mx-auto"
+              aria-label="Sign out"
+              title="Sign out"
+              disabled={signingOut}
+              onClick={onSignOut}
+            >
+              <LogOut className="size-4" aria-hidden="true" />
+            </Button>
+          )}
+        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -391,11 +429,17 @@ export function StaffWorkspace({
               >
                 {staff.role}
               </Badge>
-              <Button className="gap-2" onClick={() => navigate("sales")}>
-                <ShoppingCart className="size-4" aria-hidden="true" />
-                <span className="hidden sm:inline">Open register</span>
-                <span className="sm:hidden">Register</span>
-              </Button>
+              {tab !== "sales" && (
+                <Button
+                  aria-label="Open register"
+                  className="gap-2"
+                  onClick={() => navigate("sales")}
+                >
+                  <ShoppingCart className="size-4" aria-hidden="true" />
+                  <span className="hidden sm:inline">Open register</span>
+                  <span className="sm:hidden">Register</span>
+                </Button>
+              )}
             </div>
           </div>
         </header>

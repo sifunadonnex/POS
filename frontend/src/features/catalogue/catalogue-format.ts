@@ -1,4 +1,5 @@
 import type { SaleUnit } from "./catalogue-api"
+import { formatKes } from "@/lib/format"
 
 export const units: { value: SaleUnit; label: string; help: string }[] = [
   { value: "each", label: "Item", help: "Sold in whole items" },
@@ -23,8 +24,7 @@ export function priceText(minor: string): string {
   return `${amount / 100n}.${(amount % 100n).toString().padStart(2, "0")}`
 }
 export function displayPrice(minor: string): string {
-  const [whole, fraction] = priceText(minor).split(".")
-  return `KES ${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${fraction}`
+  return formatKes(minor)
 }
 export function stockQuantityText(minor: string, unit: SaleUnit): string {
   if (unit === "each" || unit === "pack") return minor

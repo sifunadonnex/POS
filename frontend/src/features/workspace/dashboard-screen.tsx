@@ -32,6 +32,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { formatKes } from "@/lib/format"
 import { DailySalesBars } from "../reports/daily-sales-bars"
 import {
   getDailySummary,
@@ -73,11 +74,7 @@ function daysBefore(value: string, amount: number) {
 }
 
 function money(minor: number) {
-  return new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: "KES",
-    maximumFractionDigits: 2,
-  }).format(minor / 100)
+  return formatKes(minor)
 }
 
 function stockQuantity(

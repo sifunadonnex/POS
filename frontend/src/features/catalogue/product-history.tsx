@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { formatNairobiDateTime } from "@/lib/format"
 import { getHistory, type HistoryEntry, type Product } from "./catalogue-api"
 import {
   displayPrice,
@@ -85,10 +86,7 @@ export function ProductHistory({ product }: { product: Product }) {
               </p>
               <p className="text-sm">{entry.reason}</p>
               <p className="text-xs text-muted-foreground">
-                {entry.actorName} ·{" "}
-                {new Date(entry.createdAt).toLocaleString("en-KE", {
-                  timeZone: "Africa/Nairobi",
-                })}
+                {entry.actorName} · {formatNairobiDateTime(entry.createdAt)}
               </p>
             </li>
           ))}

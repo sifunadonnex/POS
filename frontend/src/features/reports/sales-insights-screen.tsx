@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { formatKes } from "@/lib/format"
 import {
   Table,
   TableBody,
@@ -47,11 +48,7 @@ function initialRange() {
 }
 
 function money(minor: number) {
-  return new Intl.NumberFormat("en-KE", {
-    style: "currency",
-    currency: "KES",
-    maximumFractionDigits: 2,
-  }).format(minor / 100)
+  return formatKes(minor)
 }
 
 function quantity(value: number, unit: "each" | "pack" | "kg" | "l") {

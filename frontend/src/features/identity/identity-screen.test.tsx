@@ -61,18 +61,19 @@ it("shows an outage with retry instead of protected content", async () => {
   expect((await screen.findByRole("alert")).textContent).toContain(
     "cannot verify"
   )
-  expect(screen.queryByText("Welcome, Test Manager")).toBeNull()
+  expect(screen.queryByText("Test Manager", { exact: true })).toBeNull()
   fireEvent.click(screen.getByRole("button", { name: "Retry" }))
-  expect(await screen.findByText("Welcome, Test Manager")).toBeTruthy()
+  expect(await screen.findByText("Test Manager", { exact: true })).toBeTruthy()
+  expect(document.title).toBe("Dashboard — Pay & Go")
 })
 
 it("removes protected content when the session expires", async () => {
   getStaff.mockResolvedValueOnce(staff).mockResolvedValue(null)
   render(<IdentityScreen />)
-  expect(await screen.findByText("Welcome, Test Manager")).toBeTruthy()
+  expect(await screen.findByText("Test Manager", { exact: true })).toBeTruthy()
   fireEvent(window, new Event("focus"))
   expect(await screen.findByLabelText("Email")).toBeTruthy()
-  expect(screen.queryByText("Welcome, Test Manager")).toBeNull()
+  expect(screen.queryByText("Test Manager", { exact: true })).toBeNull()
 })
 
 it("does not claim a failed logout succeeded and permits retry", async () => {
@@ -81,7 +82,7 @@ it("does not claim a failed logout succeeded and permits retry", async () => {
     .mockResolvedValueOnce({ error: { status: 503 } })
     .mockResolvedValueOnce({ error: null })
   render(<IdentityScreen />)
-  await screen.findByText("Welcome, Test Manager")
+  await screen.findByText("Test Manager", { exact: true })
   fireEvent.click(screen.getByRole("button", { name: "Sign out" }))
   expect((await screen.findByRole("alert")).textContent).toContain(
     "could not be confirmed"

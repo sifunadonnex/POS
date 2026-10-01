@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { formatNairobiDateTime } from "@/lib/format"
 import {
   displayPrice,
   errorMessage,
@@ -341,7 +342,7 @@ export function ReturnsScreen() {
                         Sale {item.saleId.slice(0, 8)}
                       </span>
                       <span className="mt-1 block text-xs text-muted-foreground">
-                        {new Date(item.createdAt).toLocaleString()}
+                        {formatNairobiDateTime(item.createdAt)}
                       </span>
                     </span>
                     <span className="shrink-0 text-right">
@@ -367,7 +368,7 @@ export function ReturnsScreen() {
             </CardTitle>
             <CardDescription>
               {sale
-                ? `${new Date(sale.createdAt).toLocaleString()} · ${displayPrice(String(sale.refundableMinor))} remaining to refund`
+                ? `${formatNairobiDateTime(sale.createdAt)} · ${displayPrice(String(sale.refundableMinor))} remaining to refund`
                 : "Select a completed sale to see its lines."}
             </CardDescription>
           </CardHeader>
