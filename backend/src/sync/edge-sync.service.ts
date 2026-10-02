@@ -30,9 +30,13 @@ export type EdgeSyncStatus = {
   mode: 'hosted' | 'edge';
   storeId: string | null;
   checkoutAuthority: 'hosted' | 'local';
-  syncConfigured: false;
+  syncConfigured: boolean;
   pendingEvents: number;
   oldestPendingAt: string | null;
+  deliveredEvents: number;
+  latestDeliveredAt: string | null;
+  receivedEvents: number;
+  latestReceivedAt: string | null;
 };
 
 @Injectable()
@@ -71,23 +75,54 @@ export class EdgeSyncService {
   async status(): Promise<EdgeSyncStatus> {
     const { runtime } = this.config;
     if (runtime.mode === 'hosted') {
+      if (this.config.sync) {
+        const result = await this.database.connectionPool.query<{
+          received_events: string;
+          latest_received_at: string | null;
+        }>(
+          `SELECT count(*)::text AS received_events,
+            max(received_at)::text AS latest_received_at
+          FROM sync_inbox WHERE store_id = $1`,
+          [this.config.sync.storeId],
+        );
+        return {
+          mode: 'hosted',
+          storeId: this.config.sync.storeId,
+          checkoutAuthority: 'hosted',
+          syncConfigured: true,
+          pendingEvents: 0,
+          oldestPendingAt: null,
+          deliveredEvents: 0,
+          latestDeliveredAt: null,
+          receivedEvents: Number(result.rows[0]?.received_events ?? 0),
+          latestReceivedAt: result.rows[0]?.latest_received_at ?? null,
+        };
+      }
       return {
         mode: 'hosted',
         storeId: null,
         checkoutAuthority: 'hosted',
-        syncConfigured: false,
+        syncConfigured: Boolean(this.config.sync),
         pendingEvents: 0,
         oldestPendingAt: null,
+        deliveredEvents: 0,
+        latestDeliveredAt: null,
+        receivedEvents: 0,
+        latestReceivedAt: null,
       };
     }
     const result = await this.database.connectionPool.query<{
       pending_events: string;
       oldest_pending_at: string | null;
+      delivered_events: string;
+      latest_delivered_at: string | null;
     }>(
-      `SELECT count(*)::text AS pending_events,
-        min(created_at)::text AS oldest_pending_at
+      `SELECT count(*) FILTER (WHERE delivered_at IS NULL)::text AS pending_events,
+        min(created_at) FILTER (WHERE delivered_at IS NULL)::text AS oldest_pending_at,
+        count(*) FILTER (WHERE delivered_at IS NOT NULL)::text AS delivered_events,
+        max(delivered_at)::text AS latest_delivered_at
       FROM sync_outbox
-      WHERE store_id = $1 AND delivered_at IS NULL`,
+      WHERE store_id = $1`,
       [runtime.storeId],
     );
     const row = result.rows[0];
@@ -95,9 +130,13 @@ export class EdgeSyncService {
       mode: 'edge',
       storeId: runtime.storeId,
       checkoutAuthority: 'local',
-      syncConfigured: false,
+      syncConfigured: Boolean(this.config.sync?.targetUrl),
       pendingEvents: Number(row?.pending_events ?? 0),
       oldestPendingAt: row?.oldest_pending_at ?? null,
+      deliveredEvents: Number(row?.delivered_events ?? 0),
+      latestDeliveredAt: row?.latest_delivered_at ?? null,
+      receivedEvents: 0,
+      latestReceivedAt: null,
     };
   }
 }

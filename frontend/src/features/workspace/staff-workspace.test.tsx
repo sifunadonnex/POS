@@ -18,6 +18,10 @@ vi.mock("../sync/use-runtime-status", () => ({
       syncConfigured: false,
       pendingEvents: 0,
       oldestPendingAt: null,
+      deliveredEvents: 0,
+      latestDeliveredAt: null,
+      receivedEvents: 0,
+      latestReceivedAt: null,
     },
   }),
 }))

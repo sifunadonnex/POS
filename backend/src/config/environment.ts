@@ -144,6 +144,67 @@ function runtimeConfiguration(env: NodeJS.ProcessEnv) {
   } as const;
 }
 
+function uuid(value: string | undefined, name: string): string {
+  const result = value?.trim() ?? '';
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      result,
+    )
+  ) {
+    throw new Error(`${name} must be a UUID when synchronization is enabled`);
+  }
+  return result;
+}
+
+function syncConfiguration(
+  env: NodeJS.ProcessEnv,
+  runtime: ReturnType<typeof runtimeConfiguration>,
+) {
+  if (!enabled(env.PAYGO_SYNC_ENABLED, 'PAYGO_SYNC_ENABLED')) return null;
+  const secret = env.PAYGO_SYNC_SECRET?.trim() ?? '';
+  if (secret.length < 32 || secret.length > 500) {
+    throw new Error(
+      'PAYGO_SYNC_SECRET must contain between 32 and 500 characters when synchronization is enabled',
+    );
+  }
+  const storeId =
+    runtime.mode === 'edge'
+      ? runtime.storeId
+      : uuid(env.PAYGO_SYNC_STORE_ID, 'PAYGO_SYNC_STORE_ID');
+  let targetUrl: string | null = null;
+  if (runtime.mode === 'edge') {
+    try {
+      const url = new URL(env.PAYGO_SYNC_URL ?? '');
+      if (
+        url.protocol !== 'https:' ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash ||
+        url.pathname !== '/api/sync/events'
+      ) {
+        throw new Error();
+      }
+      targetUrl = url.toString();
+    } catch {
+      throw new Error(
+        'PAYGO_SYNC_URL must be the HTTPS /api/sync/events endpoint without credentials, query parameters or fragments',
+      );
+    }
+  }
+  return {
+    storeId: storeId as string,
+    secret,
+    targetUrl,
+    pollSeconds: integer(
+      env.PAYGO_SYNC_POLL_SECONDS,
+      10,
+      300,
+      'PAYGO_SYNC_POLL_SECONDS',
+    ),
+  } as const;
+}
+
 export function parseEnvironment(env: NodeJS.ProcessEnv) {
   const nodeEnv = env.NODE_ENV ?? 'development';
   if (!['development', 'test', 'production'].includes(nodeEnv)) {
@@ -186,6 +247,7 @@ export function parseEnvironment(env: NodeJS.ProcessEnv) {
       'DARAJA_ENABLED must remain false in edge mode until online payment handoff is implemented',
     );
   }
+  const sync = syncConfiguration(env, runtime);
   return {
     nodeEnv,
     port: integer(env.PORT, 3000, 65535, 'PORT'),
@@ -194,6 +256,7 @@ export function parseEnvironment(env: NodeJS.ProcessEnv) {
     databasePoolMax: integer(env.DATABASE_POOL_MAX, 5, 20, 'DATABASE_POOL_MAX'),
     runtime,
     daraja,
+    sync,
   };
 }
 

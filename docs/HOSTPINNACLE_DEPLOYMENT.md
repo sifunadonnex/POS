@@ -52,8 +52,19 @@ Set these privately in the application's environment-variable controls:
 | `BETTER_AUTH_URL` | `https://dev.sifulabs.co.ke` (HTTPS origin only; no path, query, fragment or credentials) |
 | `AUTH_EMAIL_ENABLED` | `false` until SMTP delivery is configured and verified |
 | `DARAJA_ENABLED` | `false` until the complete sandbox callback/reconciliation checklist passes |
+| `PAYGO_RUNTIME_MODE` | `hosted` |
+| `PAYGO_SYNC_ENABLED` | `false` until both hosted and edge databases have the sync migrations and the controlled delivery checklist is ready |
+| `PAYGO_SYNC_STORE_ID` | Stable UUID for the one authorized edge store; required only when sync is enabled |
+| `PAYGO_SYNC_SECRET` | Separate random per-store secret of at least 32 characters; never reuse the auth or Daraja secret |
+| `PAYGO_SYNC_POLL_SECONDS` | `10` initially |
 
 `NODE_EXTRA_CA_CERTS` is read when Node starts. Save all environment values before running the migration, and restart the Passenger application after any CA-path change. The panel migration script must receive the same environment as the application. Do not add `sslmode` back to the URL, use `DATABASE_TLS=disable`, or disable certificate verification to work around a connection error.
+
+The hosted sync inbox has no target URL. The edge PC alone receives
+`PAYGO_SYNC_URL=https://dev.sifulabs.co.ke/api/sync/events`. Configure the same
+store UUID and sync secret at both ends, enable/restart the hosted inbox first,
+then enable the edge sender. Keep the secret out of screenshots and command
+history.
 
 Do not override a provider-supplied application `PORT`. Our default is 3000 if it is absent; Passenger's listen behavior must be verified on hosting. If the host supplies a non-numeric socket value, stop and report the format without secrets so the bootstrap can be adapted.
 

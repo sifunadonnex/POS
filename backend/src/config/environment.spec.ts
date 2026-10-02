@@ -10,6 +10,7 @@ describe('environment configuration', () => {
     const config = parseEnvironment(base);
     expect(config.port).toBe(3000);
     expect(config.runtime).toEqual({ mode: 'hosted', storeId: null });
+    expect(config.sync).toBeNull();
     expect(databaseOptions(config)).toMatchObject({
       max: 5,
       ssl: { rejectUnauthorized: true },
@@ -141,5 +142,61 @@ describe('environment configuration', () => {
         DARAJA_CALLBACK_TOKEN: 'a'.repeat(32),
       }),
     ).toThrow('edge mode');
+  });
+
+  it('validates hosted ingestion and edge delivery configuration', () => {
+    const hosted = parseEnvironment({
+      ...base,
+      PAYGO_SYNC_ENABLED: 'true',
+      PAYGO_SYNC_STORE_ID: '11111111-1111-4111-8111-111111111111',
+      PAYGO_SYNC_SECRET: 's'.repeat(32),
+    });
+    expect(hosted.sync).toMatchObject({
+      storeId: '11111111-1111-4111-8111-111111111111',
+      targetUrl: null,
+      pollSeconds: 10,
+    });
+
+    const edge = parseEnvironment({
+      ...base,
+      PAYGO_RUNTIME_MODE: 'edge',
+      PAYGO_STORE_ID: '11111111-1111-4111-8111-111111111111',
+      PAYGO_SYNC_ENABLED: 'true',
+      PAYGO_SYNC_SECRET: 's'.repeat(32),
+      PAYGO_SYNC_URL: 'https://pos.example.test/api/sync/events',
+      PAYGO_SYNC_POLL_SECONDS: '30',
+    });
+    expect(edge.sync).toMatchObject({
+      storeId: '11111111-1111-4111-8111-111111111111',
+      targetUrl: 'https://pos.example.test/api/sync/events',
+      pollSeconds: 30,
+    });
+  });
+
+  it('rejects incomplete or unsafe synchronization settings', () => {
+    expect(() =>
+      parseEnvironment({ ...base, PAYGO_SYNC_ENABLED: 'yes' }),
+    ).toThrow('PAYGO_SYNC_ENABLED');
+    expect(() =>
+      parseEnvironment({ ...base, PAYGO_SYNC_ENABLED: 'true' }),
+    ).toThrow('PAYGO_SYNC_SECRET');
+    expect(() =>
+      parseEnvironment({
+        ...base,
+        PAYGO_SYNC_ENABLED: 'true',
+        PAYGO_SYNC_SECRET: 's'.repeat(32),
+        PAYGO_SYNC_STORE_ID: 'not-a-store',
+      }),
+    ).toThrow('PAYGO_SYNC_STORE_ID');
+    expect(() =>
+      parseEnvironment({
+        ...base,
+        PAYGO_RUNTIME_MODE: 'edge',
+        PAYGO_STORE_ID: '11111111-1111-4111-8111-111111111111',
+        PAYGO_SYNC_ENABLED: 'true',
+        PAYGO_SYNC_SECRET: 's'.repeat(32),
+        PAYGO_SYNC_URL: 'http://pos.example.test/api/sync/events',
+      }),
+    ).toThrow('HTTPS');
   });
 });

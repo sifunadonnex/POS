@@ -262,10 +262,14 @@ the runtime mode and pending-event count. Edge mode requires a stable store ID,
 binds to loopback, and disables Daraja; hosted mode retains its existing HTTPS
 and cloud-database behavior.
 
-This is a persistence boundary, not completed cloud synchronization. The
-outbound worker, hosted ingestion/deduplication, acknowledgements,
-reconciliation, initial data/bootstrap process and event coverage beyond cash
-checkout remain required. See [the edge setup note](OFFLINE_EDGE_SETUP.md).
+The delivery boundary is implemented but not yet a hosted business projection.
+The edge worker signs events with a per-store HMAC, retries with bounded
+backoff, and marks delivery only after an exact acknowledgement. The hosted
+inbox verifies the signature and timestamp, validates the cash-sale event and
+deduplicates both event and sale identities transactionally. Accepted events
+remain in `sync_inbox`; applying them to hosted reporting, reconciling totals,
+initial data/bootstrap and event coverage beyond cash checkout remain required.
+See [the edge setup note](OFFLINE_EDGE_SETUP.md).
 
 Move to a store-LAN service only after the single-PC boundary is verified and
 additional tills are required.
@@ -521,6 +525,6 @@ These questions refine the pilot. Local PostgreSQL authentication, catalogue, in
 | ADR-022 | Use Safaricom Daraja M-Pesa Express for automated M-Pesa; enable only with complete server-side credentials, whole-KES amounts, a token-protected public HTTPS callback and exact callback amount/reference confirmation | Adapter, callback and register phone capture implemented; disabled pending credentials and sandbox/callback verification | 2026-09-28 |
 | ADR-023 | Use optional product-specific low-stock thresholds in the product's stock unit; alert at or below the threshold, include missing stock as zero, and exclude archived/unconfigured products                               | Implemented in catalogue history, stock reads and the manager dashboard                                                  | 2026-10-01 |
 | ADR-024 | Use Aiven Free as the temporary external PostgreSQL service for the isolated HostPinnacle deployment proof while HostPinnacle's PostgreSQL service remains end-of-life                                                       | Aiven migrations and public health checks pass; production SLA, authenticated flows and recovery gates remain            | 2026-10-02 |
-| ADR-025 | Start offline continuity with one loopback-only shop-PC edge service and local PostgreSQL; keep cash checkout locally authoritative and atomically append versioned outbox events | First cash-sale outbox/status slice implemented; delivery, ingestion, reconciliation, setup and operational verification remain | 2026-10-02 |
+| ADR-025 | Start offline continuity with one loopback-only shop-PC edge service and local PostgreSQL; keep cash checkout locally authoritative and atomically append versioned outbox events | Cash-sale outbox, signed retrying delivery, idempotent hosted inbox, acknowledgements and status counters implemented; projection/reconciliation, setup and operational verification remain | 2026-10-02 |
 
 Provider claims cited above were reviewed on 2 October 2026. Recheck plan terms when creating accounts or enabling live integrations.

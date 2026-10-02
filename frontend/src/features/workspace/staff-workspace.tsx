@@ -339,7 +339,9 @@ export function StaffWorkspace({
                     ? `${runtime.value.pendingEvents} sale${runtime.value.pendingEvents === 1 ? "" : "s"} awaiting sync`
                     : `Local cash · ${runtime.value.pendingEvents} queued`
                   : runtime.status === "ready"
-                    ? "Hosted operations"
+                    ? runtime.value.syncConfigured
+                      ? `${runtime.value.receivedEvents} edge sale${runtime.value.receivedEvents === 1 ? "" : "s"} received`
+                      : "Hosted operations"
                     : "Checking service mode…"}
               </p>
             </div>
@@ -543,7 +545,21 @@ function RuntimeBadge({
       </Badge>
     )
   }
-  return <Badge variant="secondary">Hosted</Badge>
+  return (
+    <Badge
+      variant="secondary"
+      title={
+        state.value.syncConfigured
+          ? `${state.value.receivedEvents} edge events received`
+          : "Hosted checkout authority"
+      }
+    >
+      Hosted
+      {state.value.syncConfigured
+        ? ` · ${state.value.receivedEvents} received`
+        : ""}
+    </Badge>
+  )
 }
 
 function NavButton({

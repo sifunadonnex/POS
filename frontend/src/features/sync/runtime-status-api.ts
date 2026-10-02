@@ -5,6 +5,10 @@ export type RuntimeStatus = {
   syncConfigured: boolean
   pendingEvents: number
   oldestPendingAt: string | null
+  deliveredEvents: number
+  latestDeliveredAt: string | null
+  receivedEvents: number
+  latestReceivedAt: string | null
 }
 
 function object(value: unknown): Record<string, unknown> {
@@ -35,11 +39,29 @@ export async function getRuntimeStatus(
     typeof row.pendingEvents !== "number" ||
     !Number.isSafeInteger(row.pendingEvents) ||
     row.pendingEvents < 0 ||
+    typeof row.deliveredEvents !== "number" ||
+    !Number.isSafeInteger(row.deliveredEvents) ||
+    row.deliveredEvents < 0 ||
+    typeof row.receivedEvents !== "number" ||
+    !Number.isSafeInteger(row.receivedEvents) ||
+    row.receivedEvents < 0 ||
     (row.oldestPendingAt !== null &&
       (typeof row.oldestPendingAt !== "string" ||
         !Number.isFinite(Date.parse(row.oldestPendingAt)))) ||
+    (row.latestDeliveredAt !== null &&
+      (typeof row.latestDeliveredAt !== "string" ||
+        !Number.isFinite(Date.parse(row.latestDeliveredAt)))) ||
+    (row.latestReceivedAt !== null &&
+      (typeof row.latestReceivedAt !== "string" ||
+        !Number.isFinite(Date.parse(row.latestReceivedAt)))) ||
     (row.mode === "hosted" &&
-      (row.storeId !== null || row.checkoutAuthority !== "hosted")) ||
+      (row.checkoutAuthority !== "hosted" ||
+        (row.syncConfigured
+          ? typeof row.storeId !== "string" ||
+            !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+              row.storeId
+            )
+          : row.storeId !== null))) ||
     (row.mode === "edge" &&
       (typeof row.storeId !== "string" ||
         !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -56,5 +78,9 @@ export async function getRuntimeStatus(
     syncConfigured: row.syncConfigured,
     pendingEvents: row.pendingEvents,
     oldestPendingAt: row.oldestPendingAt,
+    deliveredEvents: row.deliveredEvents,
+    latestDeliveredAt: row.latestDeliveredAt,
+    receivedEvents: row.receivedEvents,
+    latestReceivedAt: row.latestReceivedAt,
   }
 }
