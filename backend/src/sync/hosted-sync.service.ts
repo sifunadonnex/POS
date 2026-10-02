@@ -18,6 +18,7 @@ import {
   signaturesMatch,
 } from './sync-auth.js';
 import { parseSyncEnvelope, type SyncEnvelope } from './sync-envelope.js';
+import { projectCompletedCashSale } from './sync-projection.js';
 
 export type SyncHeaders = {
   storeId?: string;
@@ -74,13 +75,13 @@ export class HostedSyncService {
     if (envelope.storeId !== storeId || envelope.eventId !== eventId) {
       throw new UnauthorizedException('Invalid synchronization credentials');
     }
-    return this.persist(envelope);
+    const fingerprint = createHash('sha256')
+      .update(canonicalJson(value))
+      .digest('hex');
+    return this.persist(envelope, fingerprint);
   }
 
-  private async persist(envelope: SyncEnvelope) {
-    const fingerprint = createHash('sha256')
-      .update(canonicalJson(envelope))
-      .digest('hex');
+  private async persist(envelope: SyncEnvelope, fingerprint: string) {
     let client: PoolClient | undefined;
     try {
       client = await this.database.connectionPool.connect();
@@ -144,6 +145,7 @@ export class HostedSyncService {
           ],
         );
       }
+      await projectCompletedCashSale(client, envelope);
       const checkpoint = await client.query<{
         accepted_events: string;
         latest_received_at: string | null;

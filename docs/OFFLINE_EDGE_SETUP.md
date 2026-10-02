@@ -11,7 +11,9 @@ databases.
   binds it to `127.0.0.1` for the initial single-PC pilot.
 - Cash checkout still commits the sale, payment, stock reduction and cash
   movements atomically. The same transaction now appends a versioned
-  `cash_sale.completed` event to `sync_outbox`.
+  `cash_sale.completed` event to `sync_outbox`. New events use schema version 2
+  with immutable cashier and product display snapshots; the hosted parser can
+  still ingest already-queued version-1 events using explicit legacy labels.
 - The workspace identifies a local register and displays the pending outbox
   count. Browser internet-loss events recheck the local API instead of
   automatically ejecting the cashier.
@@ -25,17 +27,26 @@ databases.
   matching accepted/duplicate acknowledgement marks it delivered.
 - The hosted inbox verifies the store, timestamp, signature and cash-sale
   invariants, then commits each event idempotently by event and sale identity.
-  Its acknowledgement includes an accepted-event checkpoint. The authenticated
-  status API exposes edge queued/delivered totals and hosted received totals.
+  In the same transaction it creates append-only cash-sale and line reporting
+  projections without writing hosted operational sales, payments or stock. Its
+  acknowledgement includes an accepted-event checkpoint.
+- The authenticated status API exposes edge queued/delivered totals and hosted
+  received/projected counts. A manager-only reconciliation read compares exact
+  edge queue totals or hosted inbox/projection totals; the workspace raises a
+  visible warning when a received hosted event is missing its projection.
 
 ## Not implemented yet
 
-Accepted events are retained in the hosted `sync_inbox`; they are not projected
-into hosted `sale`, payment, stock or reporting tables yet. Staff, catalogue,
-stock setup, returns, purchases, stocktake and other configuration also do not
-replicate. Do not use edge mode as the live system until the projection and
-reconciliation policy, initial data/bootstrap procedure, broader event
-coverage, backup/restore and power-loss checks pass.
+Projected edge cash sales are intentionally separate from hosted operational
+`sale`, payment and stock tables, so hosting never becomes a second writer for
+the same checkout. Manager Sales insights can read hosted operations, the
+configured synchronized store or both, and identifies each cashier/product
+source plus any inbox-to-projection lag. Synchronized returns are explicitly
+marked unavailable and are not subtracted from edge net sales yet. Staff,
+catalogue, stock setup, returns, purchases, stocktake and other configuration
+also do not replicate. Do not use edge mode as the live system until the
+initial data/bootstrap procedure, broader event coverage, backup/restore and
+power-loss checks pass.
 
 ## Safe local test configuration
 
@@ -61,9 +72,10 @@ PAYGO_SYNC_URL=https://dev.sifulabs.co.ke/api/sync/events
 PAYGO_SYNC_POLL_SECONDS=10
 ```
 
-Keep synchronization disabled until migration `202610020002_sync_delivery` is
-applied to both databases. On the hosted application, configure the same store
-UUID and synchronization secret, but do not set a target URL:
+Keep synchronization disabled until migrations through
+`202610020003_sync_reporting_projection` are applied to both databases. On the
+hosted application, configure the same store UUID and synchronization secret,
+but do not set a target URL:
 
 ```dotenv
 PAYGO_RUNTIME_MODE=hosted
@@ -104,8 +116,10 @@ open a shift and complete a cash sale. `GET /api/sync/status` should report
 `pendingEvents` count. Disconnect the internet—not the PC or PostgreSQL—and
 repeat a cash checkout using the already loaded local page. Reconnect and
 verify that the edge count moves from pending to delivered and that the hosted
-status reports the same increase under `receivedEvents`. Test a dropped
-response and a repeated delivery; neither may create a second inbox record.
+status reports the same increase under `receivedEvents` and `projectedEvents`,
+with `unprojectedEvents: 0`. As a signed-in manager, compare exact counts and
+minor-unit totals at `GET /api/sync/reconciliation`. Test a dropped response
+and a repeated delivery; neither may create a second inbox or projection row.
 
 The foreground command is suitable for a controlled test only. A live edge
 register still needs an approved Windows service/startup mechanism, a UPS and

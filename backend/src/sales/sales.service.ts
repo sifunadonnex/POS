@@ -266,12 +266,11 @@ export class SalesService {
       requestId,
       { reason, lines: body.lines },
       async (client) => {
-        const { occurredAt: _occurredAt, ...sale } = await this.createSale(
-          client,
-          actor,
-          reason,
-          requested,
-        );
+        const {
+          occurredAt: _occurredAt,
+          syncLines: _syncLines,
+          ...sale
+        } = await this.createSale(client, actor, reason, requested);
         return sale;
       },
     );
@@ -310,10 +309,14 @@ export class SalesService {
       requestId,
       { reason, lines: body.lines, cashTenderedMinor },
       async (client) => {
-        const shift = await client.query<{ id: string }>(
-          `SELECT id FROM cash_shift
-          WHERE cashier_id = $1 AND status = 'open'
-          ORDER BY opened_at DESC LIMIT 1 FOR UPDATE`,
+        const shift = await client.query<{
+          id: string;
+          cashier_name: string;
+        }>(
+          `SELECT s.id, u.name AS cashier_name
+          FROM cash_shift s JOIN "user" u ON u.id = s.cashier_id
+          WHERE s.cashier_id = $1 AND s.status = 'open'
+          ORDER BY s.opened_at DESC LIMIT 1 FOR UPDATE OF s`,
           [actor.userId],
         );
         if (!shift.rowCount) {
@@ -377,10 +380,11 @@ export class SalesService {
           requestId,
           saleId: result.saleId,
           cashierId: actor.userId,
+          cashierName: shift.rows[0].cashier_name,
           shiftId,
           occurredAt: sale.occurredAt,
           totalMinor: result.totalMinor,
-          lines: result.lines,
+          lines: sale.syncLines,
           payment: {
             paymentId: result.payment.paymentId,
             amountMinor: result.payment.amountMinor,
@@ -407,6 +411,8 @@ export class SalesService {
         price_minor: string;
         active: boolean;
         quantity_minor: string;
+        name: string;
+        sku: string;
       }
     >();
     const quantities = new Map<string, number>();
@@ -432,8 +438,11 @@ export class SalesService {
         price_minor: string;
         active: boolean;
         quantity_minor: string;
+        name: string;
+        sku: string;
       }>(
-        `SELECT p.id, p.unit, p.price_minor::text, p.active, COALESCE(s.quantity_minor, 0)::text AS quantity_minor
+        `SELECT p.id, p.unit, p.price_minor::text, p.active, p.name, p.sku,
+          COALESCE(s.quantity_minor, 0)::text AS quantity_minor
             FROM catalogue_product p LEFT JOIN inventory_stock s ON s.product_id = p.id
             WHERE p.id = $1 FOR UPDATE OF p`,
         [line.productId],
@@ -545,6 +554,11 @@ export class SalesService {
       occurredAt: saleResult.rows[0].created_at,
       totalMinor,
       lines: quoteLines,
+      syncLines: quoteLines.map((line) => {
+        const product = products.get(line.productId);
+        if (!product) throw new NotFoundException('Product not found');
+        return { ...line, name: product.name, sku: product.sku };
+      }),
     };
   }
 

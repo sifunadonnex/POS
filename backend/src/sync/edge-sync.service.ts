@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { Inject, Injectable } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { APP_CONFIG, type AppConfig } from '../config/environment.js';
 import { DatabaseService } from '../database/database.service.js';
@@ -8,11 +12,14 @@ export type CompletedCashSaleEvent = {
   requestId: string;
   saleId: string;
   cashierId: string;
+  cashierName: string;
   shiftId: string;
   occurredAt: string;
   totalMinor: number;
   lines: Array<{
     productId: string;
+    name: string;
+    sku: string;
     unit: 'each' | 'pack' | 'kg' | 'l';
     quantity: number;
     priceMinor: number;
@@ -37,7 +44,31 @@ export type EdgeSyncStatus = {
   latestDeliveredAt: string | null;
   receivedEvents: number;
   latestReceivedAt: string | null;
+  projectedEvents: number;
+  unprojectedEvents: number;
 };
+
+export type SyncReconciliation =
+  | {
+      mode: 'hosted';
+      storeId: string;
+      receivedEvents: number;
+      receivedTotalMinor: string;
+      projectedEvents: number;
+      projectedTotalMinor: string;
+      unprojectedEvents: number;
+      amountVarianceMinor: string;
+    }
+  | {
+      mode: 'edge';
+      storeId: string;
+      enqueuedEvents: number;
+      enqueuedTotalMinor: string;
+      pendingEvents: number;
+      pendingTotalMinor: string;
+      deliveredEvents: number;
+      deliveredTotalMinor: string;
+    };
 
 @Injectable()
 export class EdgeSyncService {
@@ -56,7 +87,7 @@ export class EdgeSyncService {
     await client.query(
       `INSERT INTO sync_outbox
         (id, store_id, event_type, aggregate_id, schema_version, payload)
-      VALUES ($1, $2, 'cash_sale.completed', $3, 1, $4)`,
+      VALUES ($1, $2, 'cash_sale.completed', $3, 2, $4)`,
       [
         eventId,
         runtime.storeId,
@@ -64,7 +95,7 @@ export class EdgeSyncService {
         JSON.stringify({
           eventId,
           eventType: 'cash_sale.completed',
-          schemaVersion: 1,
+          schemaVersion: 2,
           storeId: runtime.storeId,
           ...event,
         }),
@@ -79,10 +110,16 @@ export class EdgeSyncService {
         const result = await this.database.connectionPool.query<{
           received_events: string;
           latest_received_at: string | null;
+          projected_events: string;
+          unprojected_events: string;
         }>(
-          `SELECT count(*)::text AS received_events,
-            max(received_at)::text AS latest_received_at
-          FROM sync_inbox WHERE store_id = $1`,
+          `SELECT count(i.id)::text AS received_events,
+            max(i.received_at)::text AS latest_received_at,
+            count(p.event_id)::text AS projected_events,
+            count(i.id) FILTER (WHERE p.event_id IS NULL)::text AS unprojected_events
+          FROM sync_inbox i
+          LEFT JOIN sync_cash_sale_projection p ON p.event_id = i.id
+          WHERE i.store_id = $1`,
           [this.config.sync.storeId],
         );
         return {
@@ -96,6 +133,8 @@ export class EdgeSyncService {
           latestDeliveredAt: null,
           receivedEvents: Number(result.rows[0]?.received_events ?? 0),
           latestReceivedAt: result.rows[0]?.latest_received_at ?? null,
+          projectedEvents: Number(result.rows[0]?.projected_events ?? 0),
+          unprojectedEvents: Number(result.rows[0]?.unprojected_events ?? 0),
         };
       }
       return {
@@ -109,6 +148,8 @@ export class EdgeSyncService {
         latestDeliveredAt: null,
         receivedEvents: 0,
         latestReceivedAt: null,
+        projectedEvents: 0,
+        unprojectedEvents: 0,
       };
     }
     const result = await this.database.connectionPool.query<{
@@ -137,6 +178,83 @@ export class EdgeSyncService {
       latestDeliveredAt: row?.latest_delivered_at ?? null,
       receivedEvents: 0,
       latestReceivedAt: null,
+      projectedEvents: 0,
+      unprojectedEvents: 0,
+    };
+  }
+
+  async reconciliation(): Promise<SyncReconciliation> {
+    const { runtime, sync } = this.config;
+    if (runtime.mode === 'hosted') {
+      if (!sync) {
+        throw new ServiceUnavailableException(
+          'Synchronization is not configured',
+        );
+      }
+      const result = await this.database.connectionPool.query<{
+        received_events: string;
+        received_total_minor: string;
+        projected_events: string;
+        projected_total_minor: string;
+        unprojected_events: string;
+        amount_variance_minor: string;
+      }>(
+        `SELECT count(i.id)::text AS received_events,
+          COALESCE(sum((i.payload->>'totalMinor')::bigint), 0)::text AS received_total_minor,
+          count(p.event_id)::text AS projected_events,
+          COALESCE(sum(p.total_minor), 0)::text AS projected_total_minor,
+          count(i.id) FILTER (WHERE p.event_id IS NULL)::text AS unprojected_events,
+          (COALESCE(sum((i.payload->>'totalMinor')::bigint), 0) -
+            COALESCE(sum(p.total_minor), 0))::text AS amount_variance_minor
+        FROM sync_inbox i
+        LEFT JOIN sync_cash_sale_projection p ON p.event_id = i.id
+        WHERE i.store_id = $1`,
+        [sync.storeId],
+      );
+      const row = result.rows[0];
+      return {
+        mode: 'hosted',
+        storeId: sync.storeId,
+        receivedEvents: Number(row?.received_events ?? 0),
+        receivedTotalMinor: row?.received_total_minor ?? '0',
+        projectedEvents: Number(row?.projected_events ?? 0),
+        projectedTotalMinor: row?.projected_total_minor ?? '0',
+        unprojectedEvents: Number(row?.unprojected_events ?? 0),
+        amountVarianceMinor: row?.amount_variance_minor ?? '0',
+      };
+    }
+    if (!runtime.storeId) {
+      throw new ServiceUnavailableException('The edge store ID is unavailable');
+    }
+    const result = await this.database.connectionPool.query<{
+      enqueued_events: string;
+      enqueued_total_minor: string;
+      pending_events: string;
+      pending_total_minor: string;
+      delivered_events: string;
+      delivered_total_minor: string;
+    }>(
+      `SELECT count(*)::text AS enqueued_events,
+        COALESCE(sum((payload->>'totalMinor')::bigint), 0)::text AS enqueued_total_minor,
+        count(*) FILTER (WHERE delivered_at IS NULL)::text AS pending_events,
+        COALESCE(sum((payload->>'totalMinor')::bigint)
+          FILTER (WHERE delivered_at IS NULL), 0)::text AS pending_total_minor,
+        count(*) FILTER (WHERE delivered_at IS NOT NULL)::text AS delivered_events,
+        COALESCE(sum((payload->>'totalMinor')::bigint)
+          FILTER (WHERE delivered_at IS NOT NULL), 0)::text AS delivered_total_minor
+      FROM sync_outbox WHERE store_id = $1`,
+      [runtime.storeId],
+    );
+    const row = result.rows[0];
+    return {
+      mode: 'edge',
+      storeId: runtime.storeId,
+      enqueuedEvents: Number(row?.enqueued_events ?? 0),
+      enqueuedTotalMinor: row?.enqueued_total_minor ?? '0',
+      pendingEvents: Number(row?.pending_events ?? 0),
+      pendingTotalMinor: row?.pending_total_minor ?? '0',
+      deliveredEvents: Number(row?.delivered_events ?? 0),
+      deliveredTotalMinor: row?.delivered_total_minor ?? '0',
     };
   }
 }

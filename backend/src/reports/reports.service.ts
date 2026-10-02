@@ -4,6 +4,7 @@ import {
   Injectable,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { APP_CONFIG, type AppConfig } from '../config/environment.js';
 import { DatabaseService } from '../database/database.service.js';
 
 type PurchaseReportRow = {
@@ -73,6 +74,59 @@ type ProductSalesRow = {
   sale_count: string | number;
 };
 
+type SalesSource = 'operational' | 'edge' | 'all';
+
+type SalesSourceOption = {
+  source: SalesSource;
+  storeId: string | null;
+  label: string;
+};
+
+type SalesInsightsData = {
+  summary: {
+    saleCount: number;
+    grossSalesMinor: number;
+    refundCount: number;
+    refundMinor: number;
+    netSalesMinor: number;
+    averageBasketMinor: number;
+    activeCashierCount: number;
+  };
+  daily: Array<{
+    day: string;
+    saleCount: number;
+    grossSalesMinor: number;
+    refundMinor: number;
+    netSalesMinor: number;
+  }>;
+  cashiers: Array<{
+    cashierId: string;
+    cashierName: string;
+    source: 'operational' | 'edge';
+    storeId: string | null;
+    saleCount: number;
+    grossSalesMinor: number;
+    refundMinor: number;
+    netSalesMinor: number;
+    averageBasketMinor: number;
+  }>;
+  paymentMix: Array<{
+    kind: 'cash' | 'card' | 'mpesa';
+    paymentCount: number;
+    amountMinor: number;
+  }>;
+  topProducts: Array<{
+    productId: string;
+    productName: string;
+    source: 'operational' | 'edge';
+    storeId: string | null;
+    unit: 'each' | 'pack' | 'kg' | 'l';
+    quantityMinor: number;
+    grossSalesMinor: number;
+    saleCount: number;
+  }>;
+};
+
 type LowStockRow = {
   product_id: string;
   sku: string;
@@ -94,6 +148,7 @@ function safeInteger(value: string | number): number {
 @Injectable()
 export class ReportsService {
   constructor(
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(DatabaseService) private readonly database: DatabaseService,
   ) {}
 
@@ -413,195 +468,524 @@ export class ReportsService {
     }
   }
 
-  async salesInsights(fromValue: string, toValue: string) {
-    const { from, to, days } = this.validateRange(fromValue, toValue, 93);
+  private resolveSalesSource(
+    sourceValue?: string,
+    storeId?: string,
+  ): { selected: SalesSourceOption; available: SalesSourceOption[] } {
+    const operational: SalesSourceOption = {
+      source: 'operational',
+      storeId: null,
+      label:
+        this.config.runtime.mode === 'edge'
+          ? 'This register'
+          : 'Hosted operations',
+    };
+    const edgeStore =
+      this.config.runtime.mode === 'hosted' && this.config.sync
+        ? ({
+            source: 'edge',
+            storeId: this.config.sync.storeId,
+            label: `Synchronized store · ${this.config.sync.storeId.slice(0, 8)}`,
+          } satisfies SalesSourceOption)
+        : null;
+    const available: SalesSourceOption[] = edgeStore
+      ? [
+          { source: 'all', storeId: null, label: 'All sales sources' },
+          operational,
+          edgeStore,
+        ]
+      : [operational];
+    const source = sourceValue ?? (edgeStore ? 'all' : 'operational');
+    if (source !== 'all' && source !== 'operational' && source !== 'edge') {
+      throw new BadRequestException('Invalid sales report source');
+    }
+    if (source === 'edge') {
+      if (!edgeStore || storeId !== edgeStore.storeId) {
+        throw new BadRequestException('Invalid synchronized store');
+      }
+      return { selected: edgeStore, available };
+    }
+    if (storeId) {
+      throw new BadRequestException(
+        'A store ID is only valid for a synchronized store report',
+      );
+    }
+    const selected = available.find((option) => option.source === source);
+    if (!selected) {
+      throw new BadRequestException('Invalid sales report source');
+    }
+    return { selected, available };
+  }
+
+  private async operationalSalesInsights(
+    from: string,
+    to: string,
+  ): Promise<SalesInsightsData> {
     const params = [from, to];
     const period = (alias?: string) => {
       const column = alias ? `${alias}.created_at` : 'created_at';
       return `${column} >= ($1::date::timestamp AT TIME ZONE 'Africa/Nairobi')
         AND ${column} < (($2::date + 1)::timestamp AT TIME ZONE 'Africa/Nairobi')`;
     };
-
-    try {
-      const [
-        summaryResult,
-        dailyResult,
-        cashierResult,
-        paymentResult,
-        productResult,
-      ] = await Promise.all([
-        this.database.connectionPool.query<SalesSummaryRow>(
-          `WITH sales AS (
-              SELECT COUNT(*)::int AS sale_count,
-                COALESCE(SUM(total_minor), 0)::bigint AS gross_sales_minor,
-                COUNT(DISTINCT actor_id)::int AS active_cashier_count
-              FROM sale
-              WHERE status = 'completed' AND ${period()}
-            ), refunds AS (
-              SELECT COUNT(*)::int AS refund_count,
-                COALESCE(SUM(amount_minor), 0)::bigint AS refund_minor
-              FROM sale_refund
-              WHERE status = 'paid' AND ${period()}
-            )
-            SELECT sale_count, gross_sales_minor, active_cashier_count,
-              refund_count, refund_minor
-            FROM sales CROSS JOIN refunds`,
-          params,
-        ),
-        this.database.connectionPool.query<DailySalesRow>(
-          `WITH calendar AS (
-              SELECT generate_series($1::date, $2::date, interval '1 day')::date AS day
-            ), sales AS (
-              SELECT (created_at AT TIME ZONE 'Africa/Nairobi')::date AS day,
-                COUNT(*)::int AS sale_count,
-                COALESCE(SUM(total_minor), 0)::bigint AS gross_sales_minor
-              FROM sale
-              WHERE status = 'completed' AND ${period()}
-              GROUP BY 1
-            ), refunds AS (
-              SELECT (created_at AT TIME ZONE 'Africa/Nairobi')::date AS day,
-                COALESCE(SUM(amount_minor), 0)::bigint AS refund_minor
-              FROM sale_refund
-              WHERE status = 'paid' AND ${period()}
-              GROUP BY 1
-            )
-            SELECT calendar.day::text AS day,
-              COALESCE(sales.sale_count, 0)::int AS sale_count,
-              COALESCE(sales.gross_sales_minor, 0)::bigint AS gross_sales_minor,
-              COALESCE(refunds.refund_minor, 0)::bigint AS refund_minor
-            FROM calendar
-            LEFT JOIN sales USING (day)
-            LEFT JOIN refunds USING (day)
-            ORDER BY calendar.day`,
-          params,
-        ),
-        this.database.connectionPool.query<CashierSalesRow>(
-          `WITH sales_by_actor AS (
-              SELECT actor_id, COUNT(*)::int AS sale_count,
-                COALESCE(SUM(total_minor), 0)::bigint AS gross_sales_minor
-              FROM sale
-              WHERE status = 'completed' AND ${period()}
-              GROUP BY actor_id
-            ), refunds_by_actor AS (
-              SELECT sale.actor_id,
-                COALESCE(SUM(refund.amount_minor), 0)::bigint AS refund_minor
-              FROM sale_refund refund
-              JOIN sale ON sale.id = refund.sale_id
-              WHERE refund.status = 'paid'
-                AND ${period('refund')}
-              GROUP BY sale.actor_id
-            ), activity AS (
-              SELECT actor_id FROM sales_by_actor
-              UNION
-              SELECT actor_id FROM refunds_by_actor
-            )
-            SELECT staff.id AS cashier_id, staff.name AS cashier_name,
-              COALESCE(sales.sale_count, 0)::int AS sale_count,
-              COALESCE(sales.gross_sales_minor, 0)::bigint AS gross_sales_minor,
-              COALESCE(refunds.refund_minor, 0)::bigint AS refund_minor
-            FROM activity
-            JOIN "user" staff ON staff.id = activity.actor_id
-            LEFT JOIN sales_by_actor sales ON sales.actor_id = activity.actor_id
-            LEFT JOIN refunds_by_actor refunds ON refunds.actor_id = activity.actor_id
-            ORDER BY (COALESCE(sales.gross_sales_minor, 0) -
-              COALESCE(refunds.refund_minor, 0)) DESC, lower(staff.name), staff.id`,
-          params,
-        ),
-        this.database.connectionPool.query<PaymentMixRow>(
-          `SELECT kind, COUNT(*)::int AS payment_count,
-              COALESCE(SUM(amount_minor), 0)::bigint AS amount_minor
-            FROM sale_payment
+    const [
+      summaryResult,
+      dailyResult,
+      cashierResult,
+      paymentResult,
+      productResult,
+    ] = await Promise.all([
+      this.database.connectionPool.query<SalesSummaryRow>(
+        `WITH sales AS (
+            SELECT COUNT(*)::int AS sale_count,
+              COALESCE(SUM(total_minor), 0)::bigint AS gross_sales_minor,
+              COUNT(DISTINCT actor_id)::int AS active_cashier_count
+            FROM sale
+            WHERE status = 'completed' AND ${period()}
+          ), refunds AS (
+            SELECT COUNT(*)::int AS refund_count,
+              COALESCE(SUM(amount_minor), 0)::bigint AS refund_minor
+            FROM sale_refund
             WHERE status = 'paid' AND ${period()}
-            GROUP BY kind
-            ORDER BY CASE kind WHEN 'cash' THEN 1 WHEN 'card' THEN 2 ELSE 3 END`,
-          params,
-        ),
-        this.database.connectionPool.query<ProductSalesRow>(
-          `SELECT product.id AS product_id, product.name AS product_name,
-              product.unit, SUM(line.quantity_minor)::bigint AS quantity_minor,
-              SUM(line.line_total_minor)::bigint AS gross_sales_minor,
-              COUNT(DISTINCT sale.id)::int AS sale_count
-            FROM sale_line line
-            JOIN sale ON sale.id = line.sale_id
-            JOIN catalogue_product product ON product.id = line.product_id
-            WHERE sale.status = 'completed' AND ${period('sale')}
-            GROUP BY product.id, product.name, product.unit
-            ORDER BY gross_sales_minor DESC, lower(product.name), product.id
-            LIMIT 8`,
-          params,
-        ),
-      ]);
+          )
+          SELECT sale_count, gross_sales_minor, active_cashier_count,
+            refund_count, refund_minor
+          FROM sales CROSS JOIN refunds`,
+        params,
+      ),
+      this.database.connectionPool.query<DailySalesRow>(
+        `WITH calendar AS (
+            SELECT generate_series($1::date, $2::date, interval '1 day')::date AS day
+          ), sales AS (
+            SELECT (created_at AT TIME ZONE 'Africa/Nairobi')::date AS day,
+              COUNT(*)::int AS sale_count,
+              COALESCE(SUM(total_minor), 0)::bigint AS gross_sales_minor
+            FROM sale
+            WHERE status = 'completed' AND ${period()}
+            GROUP BY 1
+          ), refunds AS (
+            SELECT (created_at AT TIME ZONE 'Africa/Nairobi')::date AS day,
+              COALESCE(SUM(amount_minor), 0)::bigint AS refund_minor
+            FROM sale_refund
+            WHERE status = 'paid' AND ${period()}
+            GROUP BY 1
+          )
+          SELECT calendar.day::text AS day,
+            COALESCE(sales.sale_count, 0)::int AS sale_count,
+            COALESCE(sales.gross_sales_minor, 0)::bigint AS gross_sales_minor,
+            COALESCE(refunds.refund_minor, 0)::bigint AS refund_minor
+          FROM calendar
+          LEFT JOIN sales USING (day)
+          LEFT JOIN refunds USING (day)
+          ORDER BY calendar.day`,
+        params,
+      ),
+      this.database.connectionPool.query<CashierSalesRow>(
+        `WITH sales_by_actor AS (
+            SELECT actor_id, COUNT(*)::int AS sale_count,
+              COALESCE(SUM(total_minor), 0)::bigint AS gross_sales_minor
+            FROM sale
+            WHERE status = 'completed' AND ${period()}
+            GROUP BY actor_id
+          ), refunds_by_actor AS (
+            SELECT sale.actor_id,
+              COALESCE(SUM(refund.amount_minor), 0)::bigint AS refund_minor
+            FROM sale_refund refund
+            JOIN sale ON sale.id = refund.sale_id
+            WHERE refund.status = 'paid' AND ${period('refund')}
+            GROUP BY sale.actor_id
+          ), activity AS (
+            SELECT actor_id FROM sales_by_actor
+            UNION
+            SELECT actor_id FROM refunds_by_actor
+          )
+          SELECT staff.id AS cashier_id, staff.name AS cashier_name,
+            COALESCE(sales.sale_count, 0)::int AS sale_count,
+            COALESCE(sales.gross_sales_minor, 0)::bigint AS gross_sales_minor,
+            COALESCE(refunds.refund_minor, 0)::bigint AS refund_minor
+          FROM activity
+          JOIN "user" staff ON staff.id = activity.actor_id
+          LEFT JOIN sales_by_actor sales ON sales.actor_id = activity.actor_id
+          LEFT JOIN refunds_by_actor refunds ON refunds.actor_id = activity.actor_id
+          ORDER BY (COALESCE(sales.gross_sales_minor, 0) -
+            COALESCE(refunds.refund_minor, 0)) DESC, lower(staff.name), staff.id`,
+        params,
+      ),
+      this.database.connectionPool.query<PaymentMixRow>(
+        `SELECT kind, COUNT(*)::int AS payment_count,
+            COALESCE(SUM(amount_minor), 0)::bigint AS amount_minor
+          FROM sale_payment
+          WHERE status = 'paid' AND ${period()}
+          GROUP BY kind
+          ORDER BY CASE kind WHEN 'cash' THEN 1 WHEN 'card' THEN 2 ELSE 3 END`,
+        params,
+      ),
+      this.database.connectionPool.query<ProductSalesRow>(
+        `SELECT product.id AS product_id, product.name AS product_name,
+            product.unit, SUM(line.quantity_minor)::bigint AS quantity_minor,
+            SUM(line.line_total_minor)::bigint AS gross_sales_minor,
+            COUNT(DISTINCT sale.id)::int AS sale_count
+          FROM sale_line line
+          JOIN sale ON sale.id = line.sale_id
+          JOIN catalogue_product product ON product.id = line.product_id
+          WHERE sale.status = 'completed' AND ${period('sale')}
+          GROUP BY product.id, product.name, product.unit
+          ORDER BY gross_sales_minor DESC, lower(product.name), product.id
+          LIMIT 8`,
+        params,
+      ),
+    ]);
+    return this.mapSalesData(
+      summaryResult.rows[0],
+      dailyResult.rows,
+      cashierResult.rows,
+      paymentResult.rows,
+      productResult.rows,
+      'operational',
+      null,
+    );
+  }
 
-      const summary = summaryResult.rows[0] ?? {
-        sale_count: 0,
-        gross_sales_minor: 0,
-        refund_count: 0,
-        refund_minor: 0,
-        active_cashier_count: 0,
-      };
-      const saleCount = safeInteger(summary.sale_count);
-      const grossSalesMinor = safeInteger(summary.gross_sales_minor);
-      const refundMinor = safeInteger(summary.refund_minor);
-      const cashiers = cashierResult.rows.map((row) => {
-        const cashierSaleCount = safeInteger(row.sale_count);
-        const cashierGross = safeInteger(row.gross_sales_minor);
-        const cashierRefund = safeInteger(row.refund_minor);
+  private async edgeSalesInsights(
+    from: string,
+    to: string,
+    storeId: string,
+  ): Promise<SalesInsightsData> {
+    const params = [from, to, storeId];
+    const period = (alias = 'sale') =>
+      `${alias}.occurred_at >= ($1::date::timestamp AT TIME ZONE 'Africa/Nairobi')
+      AND ${alias}.occurred_at < (($2::date + 1)::timestamp AT TIME ZONE 'Africa/Nairobi')`;
+    const [
+      summaryResult,
+      dailyResult,
+      cashierResult,
+      paymentResult,
+      productResult,
+    ] = await Promise.all([
+      this.database.connectionPool.query<SalesSummaryRow>(
+        `SELECT COUNT(*)::int AS sale_count,
+          COALESCE(SUM(total_minor), 0)::bigint AS gross_sales_minor,
+          0::int AS refund_count, 0::bigint AS refund_minor,
+          COUNT(DISTINCT cashier_id)::int AS active_cashier_count
+        FROM sync_cash_sale_projection sale
+        WHERE store_id = $3 AND ${period()}`,
+        params,
+      ),
+      this.database.connectionPool.query<DailySalesRow>(
+        `WITH calendar AS (
+            SELECT generate_series($1::date, $2::date, interval '1 day')::date AS day
+          ), sales AS (
+            SELECT (sale.occurred_at AT TIME ZONE 'Africa/Nairobi')::date AS day,
+              COUNT(*)::int AS sale_count,
+              COALESCE(SUM(sale.total_minor), 0)::bigint AS gross_sales_minor
+            FROM sync_cash_sale_projection sale
+            WHERE sale.store_id = $3 AND ${period()}
+            GROUP BY 1
+          )
+          SELECT calendar.day::text AS day,
+            COALESCE(sales.sale_count, 0)::int AS sale_count,
+            COALESCE(sales.gross_sales_minor, 0)::bigint AS gross_sales_minor,
+            0::bigint AS refund_minor
+          FROM calendar LEFT JOIN sales USING (day)
+          ORDER BY calendar.day`,
+        params,
+      ),
+      this.database.connectionPool.query<CashierSalesRow>(
+        `SELECT sale.cashier_id,
+          (array_agg(sale.cashier_name ORDER BY sale.occurred_at DESC))[1] AS cashier_name,
+          COUNT(*)::int AS sale_count,
+          COALESCE(SUM(sale.total_minor), 0)::bigint AS gross_sales_minor,
+          0::bigint AS refund_minor
+        FROM sync_cash_sale_projection sale
+        WHERE sale.store_id = $3 AND ${period()}
+        GROUP BY sale.cashier_id
+        ORDER BY gross_sales_minor DESC, lower((array_agg(sale.cashier_name
+          ORDER BY sale.occurred_at DESC))[1]), sale.cashier_id`,
+        params,
+      ),
+      this.database.connectionPool.query<PaymentMixRow>(
+        `SELECT 'cash'::text AS kind, COUNT(*)::int AS payment_count,
+          COALESCE(SUM(sale.total_minor), 0)::bigint AS amount_minor
+        FROM sync_cash_sale_projection sale
+        WHERE sale.store_id = $3 AND ${period()}
+        HAVING COUNT(*) > 0`,
+        params,
+      ),
+      this.database.connectionPool.query<ProductSalesRow>(
+        `SELECT line.product_id,
+          (array_agg(line.product_name ORDER BY sale.occurred_at DESC))[1] AS product_name,
+          line.unit, SUM(line.quantity_minor)::bigint AS quantity_minor,
+          SUM(line.line_total_minor)::bigint AS gross_sales_minor,
+          COUNT(DISTINCT sale.sale_id)::int AS sale_count
+        FROM sync_cash_sale_line_projection line
+        JOIN sync_cash_sale_projection sale ON sale.event_id = line.event_id
+        WHERE sale.store_id = $3 AND ${period()}
+        GROUP BY line.product_id, line.unit
+        ORDER BY gross_sales_minor DESC, lower((array_agg(line.product_name
+          ORDER BY sale.occurred_at DESC))[1]), line.product_id
+        LIMIT 8`,
+        params,
+      ),
+    ]);
+    return this.mapSalesData(
+      summaryResult.rows[0],
+      dailyResult.rows,
+      cashierResult.rows,
+      paymentResult.rows,
+      productResult.rows,
+      'edge',
+      storeId,
+    );
+  }
+
+  private mapSalesData(
+    summaryRow: SalesSummaryRow | undefined,
+    dailyRows: DailySalesRow[],
+    cashierRows: CashierSalesRow[],
+    paymentRows: PaymentMixRow[],
+    productRows: ProductSalesRow[],
+    source: 'operational' | 'edge',
+    storeId: string | null,
+  ): SalesInsightsData {
+    const summary = summaryRow ?? {
+      sale_count: 0,
+      gross_sales_minor: 0,
+      refund_count: 0,
+      refund_minor: 0,
+      active_cashier_count: 0,
+    };
+    const saleCount = safeInteger(summary.sale_count);
+    const grossSalesMinor = safeInteger(summary.gross_sales_minor);
+    const refundMinor = safeInteger(summary.refund_minor);
+    return {
+      summary: {
+        saleCount,
+        grossSalesMinor,
+        refundCount: safeInteger(summary.refund_count),
+        refundMinor,
+        netSalesMinor: grossSalesMinor - refundMinor,
+        averageBasketMinor: saleCount
+          ? Math.round(grossSalesMinor / saleCount)
+          : 0,
+        activeCashierCount: safeInteger(summary.active_cashier_count),
+      },
+      daily: dailyRows.map((row) => {
+        const gross = safeInteger(row.gross_sales_minor);
+        const refunded = safeInteger(row.refund_minor);
+        return {
+          day:
+            row.day instanceof Date
+              ? row.day.toISOString().slice(0, 10)
+              : row.day,
+          saleCount: safeInteger(row.sale_count),
+          grossSalesMinor: gross,
+          refundMinor: refunded,
+          netSalesMinor: gross - refunded,
+        };
+      }),
+      cashiers: cashierRows.map((row) => {
+        const count = safeInteger(row.sale_count);
+        const gross = safeInteger(row.gross_sales_minor);
+        const refunded = safeInteger(row.refund_minor);
         return {
           cashierId: row.cashier_id,
           cashierName: row.cashier_name,
-          saleCount: cashierSaleCount,
-          grossSalesMinor: cashierGross,
-          refundMinor: cashierRefund,
-          netSalesMinor: cashierGross - cashierRefund,
-          averageBasketMinor: cashierSaleCount
-            ? Math.round(cashierGross / cashierSaleCount)
-            : 0,
+          source,
+          storeId,
+          saleCount: count,
+          grossSalesMinor: gross,
+          refundMinor: refunded,
+          netSalesMinor: gross - refunded,
+          averageBasketMinor: count ? Math.round(gross / count) : 0,
         };
-      });
+      }),
+      paymentMix: paymentRows.map((row) => ({
+        kind: row.kind,
+        paymentCount: safeInteger(row.payment_count),
+        amountMinor: safeInteger(row.amount_minor),
+      })),
+      topProducts: productRows.map((row) => ({
+        productId: row.product_id,
+        productName: row.product_name,
+        source,
+        storeId,
+        unit: row.unit,
+        quantityMinor: safeInteger(row.quantity_minor),
+        grossSalesMinor: safeInteger(row.gross_sales_minor),
+        saleCount: safeInteger(row.sale_count),
+      })),
+    };
+  }
 
+  private mergeSalesData(
+    operational: SalesInsightsData,
+    edge: SalesInsightsData,
+  ): SalesInsightsData {
+    const saleCount = operational.summary.saleCount + edge.summary.saleCount;
+    const grossSalesMinor =
+      operational.summary.grossSalesMinor + edge.summary.grossSalesMinor;
+    const refundCount =
+      operational.summary.refundCount + edge.summary.refundCount;
+    const refundMinor =
+      operational.summary.refundMinor + edge.summary.refundMinor;
+    const edgeDays = new Map(edge.daily.map((row) => [row.day, row]));
+    const paymentMix = (['cash', 'card', 'mpesa'] as const)
+      .map((kind) => {
+        const rows = [...operational.paymentMix, ...edge.paymentMix].filter(
+          (row) => row.kind === kind,
+        );
+        return {
+          kind,
+          paymentCount: rows.reduce(
+            (total, row) => total + row.paymentCount,
+            0,
+          ),
+          amountMinor: rows.reduce((total, row) => total + row.amountMinor, 0),
+        };
+      })
+      .filter((row) => row.paymentCount > 0 || row.amountMinor > 0);
+    const cashiers = [...operational.cashiers, ...edge.cashiers].sort(
+      (left, right) =>
+        right.netSalesMinor - left.netSalesMinor ||
+        left.cashierName.localeCompare(right.cashierName),
+    );
+    return {
+      summary: {
+        saleCount,
+        grossSalesMinor,
+        refundCount,
+        refundMinor,
+        netSalesMinor: grossSalesMinor - refundMinor,
+        averageBasketMinor: saleCount
+          ? Math.round(grossSalesMinor / saleCount)
+          : 0,
+        activeCashierCount: cashiers.filter((cashier) => cashier.saleCount > 0)
+          .length,
+      },
+      daily: operational.daily.map((row) => {
+        const addition = edgeDays.get(row.day);
+        const gross = row.grossSalesMinor + (addition?.grossSalesMinor ?? 0);
+        const refunded = row.refundMinor + (addition?.refundMinor ?? 0);
+        return {
+          day: row.day,
+          saleCount: row.saleCount + (addition?.saleCount ?? 0),
+          grossSalesMinor: gross,
+          refundMinor: refunded,
+          netSalesMinor: gross - refunded,
+        };
+      }),
+      cashiers,
+      paymentMix,
+      topProducts: [...operational.topProducts, ...edge.topProducts]
+        .sort(
+          (left, right) =>
+            right.grossSalesMinor - left.grossSalesMinor ||
+            left.productName.localeCompare(right.productName),
+        )
+        .slice(0, 8),
+    };
+  }
+
+  private async reportingLag() {
+    const { runtime, sync } = this.config;
+    if (!sync) {
+      return {
+        status: 'not_configured' as const,
+        pendingEvents: 0,
+        receivedEvents: 0,
+        projectedEvents: 0,
+        latestReceivedAt: null,
+      };
+    }
+    if (runtime.mode === 'edge') {
+      const result = await this.database.connectionPool.query<{
+        pending_events: string | number;
+      }>(
+        `SELECT COUNT(*) FILTER (WHERE delivered_at IS NULL)::int AS pending_events
+        FROM sync_outbox WHERE store_id = $1`,
+        [runtime.storeId],
+      );
+      const pendingEvents = safeInteger(result.rows[0]?.pending_events ?? 0);
+      return {
+        status: pendingEvents ? ('lagging' as const) : ('current' as const),
+        pendingEvents,
+        receivedEvents: 0,
+        projectedEvents: 0,
+        latestReceivedAt: null,
+      };
+    }
+    const result = await this.database.connectionPool.query<{
+      received_events: string | number;
+      projected_events: string | number;
+      latest_received_at: string | null;
+    }>(
+      `SELECT COUNT(i.id)::int AS received_events,
+        COUNT(p.event_id)::int AS projected_events,
+        MAX(i.received_at)::text AS latest_received_at
+      FROM sync_inbox i
+      LEFT JOIN sync_cash_sale_projection p ON p.event_id = i.id
+      WHERE i.store_id = $1`,
+      [sync.storeId],
+    );
+    const receivedEvents = safeInteger(result.rows[0]?.received_events ?? 0);
+    const projectedEvents = safeInteger(result.rows[0]?.projected_events ?? 0);
+    return {
+      status:
+        receivedEvents === projectedEvents
+          ? ('current' as const)
+          : ('lagging' as const),
+      pendingEvents: 0,
+      receivedEvents,
+      projectedEvents,
+      latestReceivedAt: result.rows[0]?.latest_received_at ?? null,
+    };
+  }
+
+  async salesInsights(
+    fromValue: string,
+    toValue: string,
+    sourceValue?: string,
+    storeId?: string,
+  ) {
+    const { from, to, days } = this.validateRange(fromValue, toValue, 93);
+    const sources = this.resolveSalesSource(sourceValue, storeId);
+    try {
+      const operationalPromise =
+        sources.selected.source === 'edge'
+          ? null
+          : this.operationalSalesInsights(from, to);
+      const edgePromise =
+        sources.selected.source === 'operational'
+          ? null
+          : this.edgeSalesInsights(from, to, this.config.sync?.storeId ?? '');
+      const [operational, edge, lag] = await Promise.all([
+        operationalPromise,
+        edgePromise,
+        this.reportingLag(),
+      ]);
+      const data = operational
+        ? edge
+          ? this.mergeSalesData(operational, edge)
+          : operational
+        : edge;
+      if (!data) {
+        throw new ServiceUnavailableException(
+          'Sales insights are temporarily unavailable',
+        );
+      }
       return {
         from,
         to,
         days,
-        summary: {
-          saleCount,
-          grossSalesMinor,
-          refundCount: safeInteger(summary.refund_count),
-          refundMinor,
-          netSalesMinor: grossSalesMinor - refundMinor,
-          averageBasketMinor: saleCount
-            ? Math.round(grossSalesMinor / saleCount)
-            : 0,
-          activeCashierCount: safeInteger(summary.active_cashier_count),
+        scope: sources.selected,
+        availableSources: sources.available,
+        reportingLag: lag,
+        coverage: {
+          synchronizedReturns:
+            sources.selected.source === 'operational'
+              ? ('not_applicable' as const)
+              : ('not_available' as const),
         },
-        daily: dailyResult.rows.map((row) => {
-          const gross = safeInteger(row.gross_sales_minor);
-          const refunded = safeInteger(row.refund_minor);
-          return {
-            day:
-              row.day instanceof Date
-                ? row.day.toISOString().slice(0, 10)
-                : row.day,
-            saleCount: safeInteger(row.sale_count),
-            grossSalesMinor: gross,
-            refundMinor: refunded,
-            netSalesMinor: gross - refunded,
-          };
-        }),
-        cashiers,
-        paymentMix: paymentResult.rows.map((row) => ({
-          kind: row.kind,
-          paymentCount: safeInteger(row.payment_count),
-          amountMinor: safeInteger(row.amount_minor),
-        })),
-        topProducts: productResult.rows.map((row) => ({
-          productId: row.product_id,
-          productName: row.product_name,
-          unit: row.unit,
-          quantityMinor: safeInteger(row.quantity_minor),
-          grossSalesMinor: safeInteger(row.gross_sales_minor),
-          saleCount: safeInteger(row.sale_count),
-        })),
+        ...data,
       };
     } catch (error) {
       if (

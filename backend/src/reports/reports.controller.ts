@@ -31,7 +31,9 @@ export class ReportsController {
     @Req() _req: StaffRequest,
     @Query('from') from: string,
     @Query('to') to: string,
+    @Query('source') source?: string,
+    @Query('storeId') storeId?: string,
   ) {
-    return this.reports.salesInsights(from, to);
+    return this.reports.salesInsights(from, to, source, storeId);
   }
 }

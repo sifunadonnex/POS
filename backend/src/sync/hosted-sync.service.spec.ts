@@ -16,24 +16,28 @@ const envelope: SyncEnvelope = {
   storeId,
   eventType: 'cash_sale.completed',
   aggregateId: saleId,
-  schemaVersion: 1,
+  schemaVersion: 2,
   occurredAt: '2026-10-02T11:59:00.000Z',
   payload: {
     eventId,
     storeId,
     eventType: 'cash_sale.completed',
-    schemaVersion: 1,
+    schemaVersion: 2,
     requestId: '44444444-4444-4444-8444-444444444444',
     saleId,
     cashierId: 'cashier-1',
+    cashierName: 'Amina Cashier',
     shiftId: '55555555-5555-4555-8555-555555555555',
     occurredAt: '2026-10-02T11:59:00.000Z',
     totalMinor: 1250,
     lines: [
       {
         productId: '66666666-6666-4666-8666-666666666666',
+        name: 'Test Product',
+        sku: 'TEST-1',
         unit: 'each',
         quantity: 1,
+        quantityMinor: 1,
         priceMinor: 1250,
         lineTotalMinor: 1250,
       },
@@ -85,6 +89,11 @@ describe('HostedSyncService', () => {
           ],
         };
       }
+      if (sql.includes('projected_lines')) {
+        return {
+          rows: [{ projected_lines: '1', projected_total_minor: '1250' }],
+        };
+      }
       return { rows: [] };
     });
     const release = vi.fn();
@@ -105,6 +114,12 @@ describe('HostedSyncService', () => {
     expect(calls.some((sql) => sql.includes('INSERT INTO sync_inbox'))).toBe(
       true,
     );
+    expect(calls.some((sql) => sql.includes('sync_cash_sale_projection'))).toBe(
+      true,
+    );
+    expect(
+      calls.some((sql) => sql.includes('sync_cash_sale_line_projection')),
+    ).toBe(true);
     expect(calls.at(-1)).toBe('COMMIT');
     expect(release).toHaveBeenCalledOnce();
   });
@@ -134,6 +149,11 @@ describe('HostedSyncService', () => {
       }
       if (sql.includes('accepted_events')) {
         return { rows: [{ accepted_events: '1', latest_received_at: null }] };
+      }
+      if (sql.includes('projected_lines')) {
+        return {
+          rows: [{ projected_lines: '1', projected_total_minor: '1250' }],
+        };
       }
       return { rows: [] };
     });

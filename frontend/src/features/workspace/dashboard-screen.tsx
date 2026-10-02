@@ -223,7 +223,12 @@ export function DashboardScreen({
   useEffect(() => {
     if (!manager) return
     const controller = new AbortController()
-    void getSalesInsights(trendStart, reportDay, controller.signal)
+    void getSalesInsights(
+      trendStart,
+      reportDay,
+      { source: "operational", storeId: null, label: "Operational sales" },
+      controller.signal
+    )
       .then((result) => {
         if (!controller.signal.aborted) {
           setSalesTrend(result)

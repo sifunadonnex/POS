@@ -8,7 +8,6 @@ import {
 import { APP_CONFIG, type AppConfig } from '../config/environment.js';
 import { DatabaseService } from '../database/database.service.js';
 import { createSyncSignature } from './sync-auth.js';
-import type { SyncEnvelope } from './sync-envelope.js';
 
 export const SYNC_FETCH = Symbol('SYNC_FETCH');
 export type SyncFetch = typeof globalThis.fetch;
@@ -18,7 +17,7 @@ type OutboxJob = {
   store_id: string;
   event_type: 'cash_sale.completed';
   aggregate_id: string;
-  schema_version: 1;
+  schema_version: 1 | 2;
   payload: Record<string, unknown>;
   attempt_count: number;
 };
@@ -92,7 +91,7 @@ export class EdgeSyncWorker
     for (const job of claimed.rows) {
       let delivered = false;
       try {
-        const envelope: SyncEnvelope = {
+        const envelope = {
           eventId: job.id,
           storeId: job.store_id,
           eventType: job.event_type,

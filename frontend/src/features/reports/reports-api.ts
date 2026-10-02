@@ -59,6 +59,18 @@ export type SalesInsights = {
   from: string
   to: string
   days: number
+  scope: SalesSourceOption
+  availableSources: SalesSourceOption[]
+  reportingLag: {
+    status: "current" | "lagging" | "not_configured"
+    pendingEvents: number
+    receivedEvents: number
+    projectedEvents: number
+    latestReceivedAt: string | null
+  }
+  coverage: {
+    synchronizedReturns: "not_applicable" | "not_available"
+  }
   summary: {
     saleCount: number
     grossSalesMinor: number
@@ -78,6 +90,8 @@ export type SalesInsights = {
   cashiers: Array<{
     cashierId: string
     cashierName: string
+    source: "operational" | "edge"
+    storeId: string | null
     saleCount: number
     grossSalesMinor: number
     refundMinor: number
@@ -92,12 +106,23 @@ export type SalesInsights = {
   topProducts: Array<{
     productId: string
     productName: string
+    source: "operational" | "edge"
+    storeId: string | null
     unit: "each" | "pack" | "kg" | "l"
     quantityMinor: number
     grossSalesMinor: number
     saleCount: number
   }>
 }
+
+export type SalesSourceOption = {
+  source: "operational" | "edge" | "all"
+  storeId: string | null
+  label: string
+}
+
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function isDate(value: unknown): value is string {
   return typeof value === "string" && Number.isFinite(Date.parse(value))
@@ -385,6 +410,13 @@ function parseSalesInsights(value: unknown): SalesInsights {
     !isDay(row.from) ||
     !isDay(row.to) ||
     !integer(row.days) ||
+    !row.scope ||
+    typeof row.scope !== "object" ||
+    !Array.isArray(row.availableSources) ||
+    !row.reportingLag ||
+    typeof row.reportingLag !== "object" ||
+    !row.coverage ||
+    typeof row.coverage !== "object" ||
     !row.summary ||
     typeof row.summary !== "object" ||
     !Array.isArray(row.daily) ||
@@ -393,6 +425,56 @@ function parseSalesInsights(value: unknown): SalesInsights {
     !Array.isArray(row.topProducts)
   ) {
     throw new Error("Invalid sales insights response")
+  }
+  const parseSource = (value: unknown): SalesSourceOption => {
+    if (!value || typeof value !== "object") {
+      throw new Error("Invalid sales insights source")
+    }
+    const source = value as Record<string, unknown>
+    if (
+      !["operational", "edge", "all"].includes(String(source.source)) ||
+      typeof source.label !== "string" ||
+      !source.label.trim() ||
+      (source.storeId !== null && typeof source.storeId !== "string") ||
+      (source.source === "edge" && typeof source.storeId !== "string") ||
+      (source.source === "edge" && !UUID.test(String(source.storeId))) ||
+      (source.source !== "edge" && source.storeId !== null)
+    ) {
+      throw new Error("Invalid sales insights source")
+    }
+    return {
+      source: source.source as SalesSourceOption["source"],
+      storeId: source.storeId as string | null,
+      label: source.label,
+    }
+  }
+  const scope = parseSource(row.scope)
+  const availableSources = row.availableSources.map(parseSource)
+  if (
+    !availableSources.some(
+      (source) =>
+        source.source === scope.source && source.storeId === scope.storeId
+    )
+  ) {
+    throw new Error("Invalid sales insights source")
+  }
+  const lag = row.reportingLag as Record<string, unknown>
+  if (
+    !["current", "lagging", "not_configured"].includes(String(lag.status)) ||
+    !integer(lag.pendingEvents) ||
+    !integer(lag.receivedEvents) ||
+    !integer(lag.projectedEvents) ||
+    (lag.latestReceivedAt !== null && !isDate(lag.latestReceivedAt)) ||
+    lag.projectedEvents > lag.receivedEvents
+  ) {
+    throw new Error("Invalid sales reporting lag")
+  }
+  const coverage = row.coverage as Record<string, unknown>
+  if (
+    coverage.synchronizedReturns !== "not_applicable" &&
+    coverage.synchronizedReturns !== "not_available"
+  ) {
+    throw new Error("Invalid sales reporting coverage")
   }
   const summary = row.summary as Record<string, unknown>
   const summaryFields = [
@@ -447,6 +529,11 @@ function parseSalesInsights(value: unknown): SalesInsights {
     if (
       typeof cashier.cashierId !== "string" ||
       typeof cashier.cashierName !== "string" ||
+      (cashier.source !== "operational" && cashier.source !== "edge") ||
+      (cashier.storeId !== null && typeof cashier.storeId !== "string") ||
+      (cashier.source === "edge" && typeof cashier.storeId !== "string") ||
+      (cashier.source === "edge" && !UUID.test(String(cashier.storeId))) ||
+      (cashier.source === "operational" && cashier.storeId !== null) ||
       positiveFields.some((field) => !integer(cashier[field])) ||
       !integer(cashier.netSalesMinor, true)
     ) {
@@ -455,6 +542,8 @@ function parseSalesInsights(value: unknown): SalesInsights {
     return {
       cashierId: cashier.cashierId,
       cashierName: cashier.cashierName,
+      source: cashier.source as "operational" | "edge",
+      storeId: cashier.storeId as string | null,
       saleCount: cashier.saleCount as number,
       grossSalesMinor: cashier.grossSalesMinor as number,
       refundMinor: cashier.refundMinor as number,
@@ -490,6 +579,11 @@ function parseSalesInsights(value: unknown): SalesInsights {
     if (
       typeof product.productId !== "string" ||
       typeof product.productName !== "string" ||
+      (product.source !== "operational" && product.source !== "edge") ||
+      (product.storeId !== null && typeof product.storeId !== "string") ||
+      (product.source === "edge" && typeof product.storeId !== "string") ||
+      (product.source === "edge" && !UUID.test(String(product.storeId))) ||
+      (product.source === "operational" && product.storeId !== null) ||
       !["each", "pack", "kg", "l"].includes(String(product.unit)) ||
       !integer(product.quantityMinor) ||
       !integer(product.grossSalesMinor) ||
@@ -500,6 +594,8 @@ function parseSalesInsights(value: unknown): SalesInsights {
     return {
       productId: product.productId,
       productName: product.productName,
+      source: product.source as "operational" | "edge",
+      storeId: product.storeId as string | null,
       unit: product.unit as "each" | "pack" | "kg" | "l",
       quantityMinor: product.quantityMinor,
       grossSalesMinor: product.grossSalesMinor,
@@ -511,6 +607,19 @@ function parseSalesInsights(value: unknown): SalesInsights {
     from: row.from,
     to: row.to,
     days: row.days,
+    scope,
+    availableSources,
+    reportingLag: {
+      status: lag.status as SalesInsights["reportingLag"]["status"],
+      pendingEvents: lag.pendingEvents as number,
+      receivedEvents: lag.receivedEvents as number,
+      projectedEvents: lag.projectedEvents as number,
+      latestReceivedAt: lag.latestReceivedAt as string | null,
+    },
+    coverage: {
+      synchronizedReturns:
+        coverage.synchronizedReturns as SalesInsights["coverage"]["synchronizedReturns"],
+    },
     summary: {
       saleCount: summary.saleCount as number,
       grossSalesMinor: summary.grossSalesMinor as number,
@@ -530,12 +639,19 @@ function parseSalesInsights(value: unknown): SalesInsights {
 export async function getSalesInsights(
   from: string,
   to: string,
+  source?: SalesSourceOption,
   signal?: AbortSignal
 ): Promise<SalesInsights> {
-  const response = await fetch(
-    `/api/reports/sales?${new URLSearchParams({ from, to })}`,
-    { credentials: "same-origin", cache: "no-store", signal }
-  )
+  const parameters = new URLSearchParams({ from, to })
+  if (source) {
+    parameters.set("source", source.source)
+    if (source.storeId) parameters.set("storeId", source.storeId)
+  }
+  const response = await fetch(`/api/reports/sales?${parameters}`, {
+    credentials: "same-origin",
+    cache: "no-store",
+    signal,
+  })
   if (response.status === 401) {
     window.dispatchEvent(new Event("paygo-session-expired"))
     throw new Error("Your session expired. Sign in again to continue.")

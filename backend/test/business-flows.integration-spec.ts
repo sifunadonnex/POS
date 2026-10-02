@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { runner } from 'node-pg-migrate';
 import { Pool } from 'pg';
-import { parseEnvironment } from '../src/config/environment.js';
+import { APP_CONFIG, parseEnvironment } from '../src/config/environment.js';
 import { databaseOptions } from '../src/database/database.options.js';
 import { DatabaseService } from '../src/database/database.service.js';
 import { InventoryService } from '../src/inventory/inventory.service.js';
@@ -175,6 +175,7 @@ describe('PostgreSQL register and purchase business flows', () => {
         { provide: PAYMENT_GATEWAY, useValue: gateway },
         SuppliersService,
         ReportsService,
+        { provide: APP_CONFIG, useValue: config },
         ReturnsService,
         ReturnsWrites,
         SalesService,

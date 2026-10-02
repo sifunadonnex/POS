@@ -9,6 +9,8 @@ export type RuntimeStatus = {
   latestDeliveredAt: string | null
   receivedEvents: number
   latestReceivedAt: string | null
+  projectedEvents: number
+  unprojectedEvents: number
 }
 
 function object(value: unknown): Record<string, unknown> {
@@ -45,6 +47,12 @@ export async function getRuntimeStatus(
     typeof row.receivedEvents !== "number" ||
     !Number.isSafeInteger(row.receivedEvents) ||
     row.receivedEvents < 0 ||
+    typeof row.projectedEvents !== "number" ||
+    !Number.isSafeInteger(row.projectedEvents) ||
+    row.projectedEvents < 0 ||
+    typeof row.unprojectedEvents !== "number" ||
+    !Number.isSafeInteger(row.unprojectedEvents) ||
+    row.unprojectedEvents < 0 ||
     (row.oldestPendingAt !== null &&
       (typeof row.oldestPendingAt !== "string" ||
         !Number.isFinite(Date.parse(row.oldestPendingAt)))) ||
@@ -82,5 +90,7 @@ export async function getRuntimeStatus(
     latestDeliveredAt: row.latestDeliveredAt,
     receivedEvents: row.receivedEvents,
     latestReceivedAt: row.latestReceivedAt,
+    projectedEvents: row.projectedEvents,
+    unprojectedEvents: row.unprojectedEvents,
   }
 }

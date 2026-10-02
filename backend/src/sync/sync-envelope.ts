@@ -9,9 +9,39 @@ export type SyncEnvelope = {
   storeId: string;
   eventType: 'cash_sale.completed';
   aggregateId: string;
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   occurredAt: string;
-  payload: Record<string, unknown>;
+  payload: CompletedCashSalePayload;
+};
+
+export type CompletedCashSalePayload = {
+  eventId: string;
+  storeId: string;
+  eventType: 'cash_sale.completed';
+  schemaVersion: 1 | 2;
+  requestId: string;
+  saleId: string;
+  cashierId: string;
+  cashierName: string;
+  shiftId: string;
+  occurredAt: string;
+  totalMinor: number;
+  lines: Array<{
+    productId: string;
+    name: string;
+    sku: string;
+    unit: 'each' | 'pack' | 'kg' | 'l';
+    quantity: number;
+    quantityMinor: number;
+    priceMinor: number;
+    lineTotalMinor: number;
+  }>;
+  payment: {
+    paymentId: string;
+    amountMinor: number;
+    tenderedMinor: number;
+    changeMinor: number;
+  };
 };
 
 function record(value: unknown, message: string): Record<string, unknown> {
@@ -36,7 +66,7 @@ export function parseSyncEnvelope(value: unknown): SyncEnvelope {
     envelope.eventType !== 'cash_sale.completed' ||
     typeof envelope.aggregateId !== 'string' ||
     !UUID.test(envelope.aggregateId) ||
-    envelope.schemaVersion !== 1 ||
+    (envelope.schemaVersion !== 1 && envelope.schemaVersion !== 2) ||
     typeof envelope.occurredAt !== 'string' ||
     !Number.isFinite(Date.parse(envelope.occurredAt))
   ) {
@@ -46,13 +76,17 @@ export function parseSyncEnvelope(value: unknown): SyncEnvelope {
     payload.eventId !== envelope.eventId ||
     payload.storeId !== envelope.storeId ||
     payload.eventType !== envelope.eventType ||
-    payload.schemaVersion !== 1 ||
+    payload.schemaVersion !== envelope.schemaVersion ||
     payload.saleId !== envelope.aggregateId ||
     typeof payload.requestId !== 'string' ||
     !UUID.test(payload.requestId) ||
     typeof payload.cashierId !== 'string' ||
     payload.cashierId.length < 1 ||
     payload.cashierId.length > 255 ||
+    (envelope.schemaVersion === 2 &&
+      (typeof payload.cashierName !== 'string' ||
+        payload.cashierName.trim().length < 1 ||
+        payload.cashierName.length > 160)) ||
     typeof payload.shiftId !== 'string' ||
     !UUID.test(payload.shiftId) ||
     payload.occurredAt !== envelope.occurredAt ||
@@ -65,11 +99,18 @@ export function parseSyncEnvelope(value: unknown): SyncEnvelope {
     throw new BadRequestException('Invalid completed cash sale event');
   }
   let lineTotal = 0;
-  for (const item of payload.lines) {
+  const lines: CompletedCashSalePayload['lines'] = [];
+  for (const [index, item] of payload.lines.entries()) {
     const line = record(item, 'Invalid completed cash sale line');
     if (
       typeof line.productId !== 'string' ||
       !UUID.test(line.productId) ||
+      (envelope.schemaVersion === 2 &&
+        (typeof line.name !== 'string' ||
+          line.name.trim().length < 1 ||
+          line.name.length > 160 ||
+          typeof line.sku !== 'string' ||
+          !/^[A-Z0-9][A-Z0-9._-]{0,39}$/.test(line.sku))) ||
       (line.unit !== 'each' &&
         line.unit !== 'pack' &&
         line.unit !== 'kg' &&
@@ -104,6 +145,20 @@ export function parseSyncEnvelope(value: unknown): SyncEnvelope {
     if (!Number.isSafeInteger(lineTotal)) {
       throw new BadRequestException('Invalid completed cash sale total');
     }
+    lines.push({
+      productId: line.productId,
+      name:
+        envelope.schemaVersion === 2
+          ? String(line.name).trim()
+          : 'Legacy product',
+      sku:
+        envelope.schemaVersion === 2 ? String(line.sku) : `LEGACY-${index + 1}`,
+      unit: line.unit,
+      quantity: line.quantity,
+      quantityMinor,
+      priceMinor: Number(line.priceMinor),
+      lineTotalMinor: Number(line.lineTotalMinor),
+    });
   }
   const payment = record(
     payload.payment,
@@ -128,8 +183,30 @@ export function parseSyncEnvelope(value: unknown): SyncEnvelope {
     storeId: envelope.storeId,
     eventType: envelope.eventType,
     aggregateId: envelope.aggregateId,
-    schemaVersion: 1,
+    schemaVersion: envelope.schemaVersion,
     occurredAt: envelope.occurredAt,
-    payload,
+    payload: {
+      eventId: envelope.eventId,
+      storeId: envelope.storeId,
+      eventType: 'cash_sale.completed',
+      schemaVersion: envelope.schemaVersion,
+      requestId: payload.requestId,
+      saleId: envelope.aggregateId,
+      cashierId: payload.cashierId,
+      cashierName:
+        envelope.schemaVersion === 2
+          ? String(payload.cashierName).trim()
+          : 'Legacy cashier',
+      shiftId: payload.shiftId,
+      occurredAt: envelope.occurredAt,
+      totalMinor: Number(payload.totalMinor),
+      lines,
+      payment: {
+        paymentId: payment.paymentId,
+        amountMinor: Number(payment.amountMinor),
+        tenderedMinor: Number(payment.tenderedMinor),
+        changeMinor: Number(payment.changeMinor),
+      },
+    },
   };
 }

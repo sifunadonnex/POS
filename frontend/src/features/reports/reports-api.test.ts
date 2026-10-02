@@ -133,6 +133,27 @@ it("parses sales trends, cashier performance and product metrics", async () => {
         from: "2026-09-27",
         to: "2026-09-28",
         days: 2,
+        scope: {
+          source: "all",
+          storeId: null,
+          label: "All sales sources",
+        },
+        availableSources: [
+          { source: "all", storeId: null, label: "All sales sources" },
+          {
+            source: "operational",
+            storeId: null,
+            label: "Hosted operations",
+          },
+        ],
+        reportingLag: {
+          status: "current",
+          pendingEvents: 0,
+          receivedEvents: 2,
+          projectedEvents: 2,
+          latestReceivedAt: "2026-09-28T08:00:00.000Z",
+        },
+        coverage: { synchronizedReturns: "not_available" },
         summary: {
           saleCount: 4,
           grossSalesMinor: 26000,
@@ -162,6 +183,8 @@ it("parses sales trends, cashier performance and product metrics", async () => {
           {
             cashierId: "cashier-1",
             cashierName: "Amina Cashier",
+            source: "operational",
+            storeId: null,
             saleCount: 3,
             grossSalesMinor: 20000,
             refundMinor: 2000,
@@ -177,6 +200,8 @@ it("parses sales trends, cashier performance and product metrics", async () => {
           {
             productId: "product-1",
             productName: "Premium flour",
+            source: "operational",
+            storeId: null,
             unit: "each",
             quantityMinor: 4,
             grossSalesMinor: 12000,
@@ -198,6 +223,89 @@ it("parses sales trends, cashier performance and product metrics", async () => {
   })
   expect(fetch).toHaveBeenCalledWith(
     "/api/reports/sales?from=2026-09-27&to=2026-09-28",
+    expect.objectContaining({ credentials: "same-origin" })
+  )
+})
+
+it("requests one synchronized store explicitly", async () => {
+  const storeId = "11111111-1111-4111-8111-111111111111"
+  const source = {
+    source: "edge" as const,
+    storeId,
+    label: "Synchronized store · 11111111",
+  }
+  const response = {
+    from: "2026-10-02",
+    to: "2026-10-02",
+    days: 1,
+    scope: source,
+    availableSources: [source],
+    reportingLag: {
+      status: "lagging",
+      pendingEvents: 0,
+      receivedEvents: 2,
+      projectedEvents: 1,
+      latestReceivedAt: "2026-10-02T08:00:00.000Z",
+    },
+    coverage: { synchronizedReturns: "not_available" },
+    summary: {
+      saleCount: 1,
+      grossSalesMinor: 5000,
+      refundCount: 0,
+      refundMinor: 0,
+      netSalesMinor: 5000,
+      averageBasketMinor: 5000,
+      activeCashierCount: 1,
+    },
+    daily: [
+      {
+        day: "2026-10-02",
+        saleCount: 1,
+        grossSalesMinor: 5000,
+        refundMinor: 0,
+        netSalesMinor: 5000,
+      },
+    ],
+    cashiers: [
+      {
+        cashierId: "edge-cashier",
+        cashierName: "Edge Cashier",
+        source: "edge",
+        storeId,
+        saleCount: 1,
+        grossSalesMinor: 5000,
+        refundMinor: 0,
+        netSalesMinor: 5000,
+        averageBasketMinor: 5000,
+      },
+    ],
+    paymentMix: [{ kind: "cash", paymentCount: 1, amountMinor: 5000 }],
+    topProducts: [
+      {
+        productId: "edge-product",
+        productName: "Edge Product",
+        source: "edge",
+        storeId,
+        unit: "each",
+        quantityMinor: 1,
+        grossSalesMinor: 5000,
+        saleCount: 1,
+      },
+    ],
+  }
+  const fetch = vi.fn().mockResolvedValue(
+    new Response(JSON.stringify(response), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })
+  )
+  vi.stubGlobal("fetch", fetch)
+
+  await expect(
+    getSalesInsights("2026-10-02", "2026-10-02", source)
+  ).resolves.toMatchObject({ scope: source })
+  expect(fetch).toHaveBeenCalledWith(
+    `/api/reports/sales?from=2026-10-02&to=2026-10-02&source=edge&storeId=${storeId}`,
     expect.objectContaining({ credentials: "same-origin" })
   )
 })

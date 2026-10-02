@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { StaffWorkspace } from "./staff-workspace"
+
+const useRuntimeStatusMock = vi.hoisted(() => vi.fn())
 
 vi.mock("./dashboard-screen", () => ({
   DashboardScreen: () => <p>Dashboard workspace</p>,
@@ -9,7 +11,11 @@ vi.mock("./sales-screen", () => ({
   SalesScreen: () => <p>Register workspace</p>,
 }))
 vi.mock("../sync/use-runtime-status", () => ({
-  useRuntimeStatus: () => ({
+  useRuntimeStatus: useRuntimeStatusMock,
+}))
+
+beforeEach(() => {
+  useRuntimeStatusMock.mockReturnValue({
     status: "ready",
     value: {
       mode: "hosted",
@@ -22,9 +28,11 @@ vi.mock("../sync/use-runtime-status", () => ({
       latestDeliveredAt: null,
       receivedEvents: 0,
       latestReceivedAt: null,
+      projectedEvents: 0,
+      unprojectedEvents: 0,
     },
-  }),
-}))
+  })
+})
 
 const staff = {
   id: "manager-1",
@@ -64,4 +72,35 @@ it("uses a full application shell with contextual actions and session controls",
   expect(document.title).toBe("Sales register — Pay & Go")
   fireEvent.click(screen.getByRole("button", { name: "Sign out" }))
   expect(signOut).toHaveBeenCalledOnce()
+})
+
+it("makes a hosted reporting projection gap visible", () => {
+  useRuntimeStatusMock.mockReturnValue({
+    status: "ready",
+    value: {
+      mode: "hosted",
+      storeId: "11111111-1111-4111-8111-111111111111",
+      checkoutAuthority: "hosted",
+      syncConfigured: true,
+      pendingEvents: 0,
+      oldestPendingAt: null,
+      deliveredEvents: 0,
+      latestDeliveredAt: null,
+      receivedEvents: 3,
+      latestReceivedAt: "2026-10-02T12:00:00.000Z",
+      projectedEvents: 2,
+      unprojectedEvents: 1,
+    },
+  })
+
+  render(
+    <StaffWorkspace
+      staff={staff}
+      signingOut={false}
+      onSignOut={vi.fn()}
+      onSecurityChanged={vi.fn()}
+    />
+  )
+
+  expect(screen.getByText("Sync needs attention · 1")).toBeTruthy()
 })

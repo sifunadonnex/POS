@@ -188,13 +188,18 @@ describe('SalesService', () => {
       }
       if (sql.includes('FROM sale_request WHERE id = $1')) return { rows: [] };
       if (sql.includes('FROM cash_shift')) {
-        return { rowCount: 1, rows: [{ id: 'shift-1' }] };
+        return {
+          rowCount: 1,
+          rows: [{ id: 'shift-1', cashier_name: 'Amina Cashier' }],
+        };
       }
       if (sql.includes('SELECT p.id, p.unit, p.price_minor::text, p.active')) {
         return {
           rows: [
             {
               id: '11111111-1111-4111-8111-111111111111',
+              name: 'Test Product',
+              sku: 'TEST-1',
               unit: 'each',
               price_minor: '1250',
               active: true,
@@ -272,7 +277,14 @@ describe('SalesService', () => {
       expect.objectContaining({
         requestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         saleId: 'sale-1',
+        cashierName: 'Amina Cashier',
         totalMinor: 1250,
+        lines: [
+          expect.objectContaining({
+            name: 'Test Product',
+            sku: 'TEST-1',
+          }),
+        ],
       }),
     );
   });

@@ -4,8 +4,11 @@ import {
   BarChart3,
   CalendarDays,
   CircleDollarSign,
+  Cloud,
+  Clock3,
   RefreshCw,
   ShoppingCart,
+  TriangleAlert,
   UsersRound,
   type LucideIcon,
 } from "lucide-react"
@@ -31,7 +34,11 @@ import {
 } from "@/components/ui/table"
 import { errorMessage } from "../catalogue/catalogue-format"
 import { DailySalesBars } from "./daily-sales-bars"
-import { getSalesInsights, type SalesInsights } from "./reports-api"
+import {
+  getSalesInsights,
+  type SalesInsights,
+  type SalesSourceOption,
+} from "./reports-api"
 
 function dateValue(date: Date) {
   const year = date.getFullYear()
@@ -56,19 +63,43 @@ function quantity(value: number, unit: "each" | "pack" | "kg" | "l") {
   return `${new Intl.NumberFormat("en-KE", { maximumFractionDigits: 3 }).format(amount)} ${unit}`
 }
 
+function sourceKey(source: SalesSourceOption) {
+  return `${source.source}:${source.storeId ?? ""}`
+}
+
+function sourceLabel(
+  report: SalesInsights,
+  source: "operational" | "edge",
+  storeId: string | null
+) {
+  return (
+    report.availableSources.find(
+      (option) => option.source === source && option.storeId === storeId
+    )?.label ?? (source === "edge" ? "Synchronized store" : "Operational")
+  )
+}
+
 export function SalesInsightsScreen() {
   const initial = initialRange()
   const [from, setFrom] = useState(initial.from)
   const [to, setTo] = useState(initial.to)
   const [appliedRange, setAppliedRange] = useState(initial)
   const [report, setReport] = useState<SalesInsights | null>(null)
+  const [appliedSource, setAppliedSource] = useState<SalesSourceOption | null>(
+    null
+  )
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     const controller = new AbortController()
-    void getSalesInsights(appliedRange.from, appliedRange.to, controller.signal)
+    void getSalesInsights(
+      appliedRange.from,
+      appliedRange.to,
+      appliedSource ?? undefined,
+      controller.signal
+    )
       .then((result) => {
         if (!controller.signal.aborted) {
           setReport(result)
@@ -77,7 +108,6 @@ export function SalesInsightsScreen() {
       })
       .catch((failure: unknown) => {
         if (!controller.signal.aborted) {
-          setReport(null)
           setError(errorMessage(failure))
         }
       })
@@ -85,7 +115,7 @@ export function SalesInsightsScreen() {
         if (!controller.signal.aborted) setLoading(false)
       })
     return () => controller.abort()
-  }, [appliedRange, reloadKey])
+  }, [appliedRange, appliedSource, reloadKey])
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -113,6 +143,14 @@ export function SalesInsightsScreen() {
     setLoading(true)
     setError("")
     setReloadKey((value) => value + 1)
+  }
+
+  function selectSource(source: SalesSourceOption) {
+    const current = appliedSource ?? report?.scope
+    if (current && sourceKey(source) === sourceKey(current)) return
+    setLoading(true)
+    setError("")
+    setAppliedSource(source)
   }
 
   return (
@@ -175,6 +213,37 @@ export function SalesInsightsScreen() {
               Showing {appliedRange.from} to {appliedRange.to}
             </p>
           </form>
+          {report && report.availableSources.length > 1 ? (
+            <div className="mt-4 border-t pt-4">
+              <p className="text-sm font-medium">Sales source</p>
+              <div
+                className="mt-2 flex flex-wrap gap-2"
+                aria-label="Sales source"
+              >
+                {report.availableSources.map((source) => (
+                  <Button
+                    key={sourceKey(source)}
+                    type="button"
+                    size="sm"
+                    variant={
+                      sourceKey(source) ===
+                      sourceKey(appliedSource ?? report.scope)
+                        ? "secondary"
+                        : "outline"
+                    }
+                    aria-pressed={
+                      sourceKey(source) ===
+                      sourceKey(appliedSource ?? report.scope)
+                    }
+                    disabled={loading}
+                    onClick={() => selectSource(source)}
+                  >
+                    {source.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -194,6 +263,25 @@ export function SalesInsightsScreen() {
 function SalesReport({ report }: { report: SalesInsights }) {
   return (
     <>
+      <ReportingStatus report={report} />
+
+      {report.coverage.synchronizedReturns === "not_available" ? (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-500/35 bg-amber-500/5 p-4 text-sm">
+          <TriangleAlert
+            className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400"
+            aria-hidden="true"
+          />
+          <div>
+            <p className="font-medium">Edge returns are not included yet</p>
+            <p className="mt-1 text-muted-foreground">
+              Synchronized figures currently include completed cash sales.
+              Refund and net-sales figures are incomplete when an edge source is
+              selected.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           label="Net sales"
@@ -234,6 +322,47 @@ function SalesReport({ report }: { report: SalesInsights }) {
   )
 }
 
+function ReportingStatus({ report }: { report: SalesInsights }) {
+  const lag = report.reportingLag
+  const missing = Math.max(0, lag.receivedEvents - lag.projectedEvents)
+  const message =
+    lag.status === "not_configured"
+      ? "Cloud synchronization is not configured for this runtime."
+      : lag.pendingEvents > 0
+        ? `${lag.pendingEvents} completed sale${lag.pendingEvents === 1 ? " is" : "s are"} waiting to upload.`
+        : missing > 0
+          ? `${missing} received sale${missing === 1 ? " is" : "s are"} waiting for reporting projection.`
+          : lag.receivedEvents > 0
+            ? `${lag.projectedEvents} synchronized sale${lag.projectedEvents === 1 ? " is" : "s are"} available in reports.`
+            : "Synchronization reporting is current; no edge sales have been received yet."
+  return (
+    <Card size="sm">
+      <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="rounded-lg bg-primary/10 p-2 text-primary">
+            {lag.status === "lagging" ? (
+              <Clock3 className="size-4" aria-hidden="true" />
+            ) : (
+              <Cloud className="size-4" aria-hidden="true" />
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium">{report.scope.label}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{message}</p>
+          </div>
+        </div>
+        <Badge variant={lag.status === "lagging" ? "destructive" : "secondary"}>
+          {lag.status === "lagging"
+            ? "Reporting delayed"
+            : lag.status === "not_configured"
+              ? "Sync not configured"
+              : "Reporting current"}
+        </Badge>
+      </CardContent>
+    </Card>
+  )
+}
+
 function DailySalesChart({ report }: { report: SalesInsights }) {
   const peak = Math.max(0, ...report.daily.map((day) => day.grossSalesMinor))
   return (
@@ -243,7 +372,8 @@ function DailySalesChart({ report }: { report: SalesInsights }) {
           <div>
             <CardTitle>Daily sales</CardTitle>
             <CardDescription className="mt-1">
-              Gross completed sales by Nairobi trading day.
+              Gross completed sales by Nairobi trading day ·{" "}
+              {report.scope.label}.
             </CardDescription>
           </div>
           <Badge variant="secondary">Peak {money(peak)}</Badge>
@@ -343,7 +473,14 @@ function CashierPerformance({ report }: { report: SalesInsights }) {
               <div key={cashier.cashierId} className="space-y-2">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium">{cashier.cashierName}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-medium">
+                        {cashier.cashierName}
+                      </p>
+                      <Badge variant="outline">
+                        {sourceLabel(report, cashier.source, cashier.storeId)}
+                      </Badge>
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       {cashier.saleCount} sales · Avg{" "}
                       {money(cashier.averageBasketMinor)}
@@ -399,7 +536,12 @@ function TopProducts({ report }: { report: SalesInsights }) {
               {report.topProducts.map((product) => (
                 <TableRow key={product.productId}>
                   <TableCell className="font-medium">
-                    {product.productName}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span>{product.productName}</span>
+                      <Badge variant="outline">
+                        {sourceLabel(report, product.source, product.storeId)}
+                      </Badge>
+                    </div>
                   </TableCell>
                   <TableCell className="tabular-nums">
                     {quantity(product.quantityMinor, product.unit)}

@@ -19,6 +19,8 @@ it("parses a local edge runtime with queued events", async () => {
           latestDeliveredAt: "2026-10-02T10:30:00.000Z",
           receivedEvents: 0,
           latestReceivedAt: null,
+          projectedEvents: 0,
+          unprojectedEvents: 0,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       )
@@ -48,6 +50,8 @@ it("rejects malformed counters instead of showing misleading sync state", async 
           latestDeliveredAt: null,
           receivedEvents: 0,
           latestReceivedAt: null,
+          projectedEvents: 0,
+          unprojectedEvents: 0,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       )

@@ -69,4 +69,14 @@ describe('store synchronization HTTP boundary', () => {
     );
     expect(getSession).not.toHaveBeenCalled();
   });
+
+  it('keeps synchronization reconciliation behind staff authentication', async () => {
+    getSession.mockResolvedValueOnce(null);
+
+    await request(app.getHttpServer())
+      .get('/api/sync/reconciliation')
+      .expect(401);
+
+    expect(getSession).toHaveBeenCalledOnce();
+  });
 });

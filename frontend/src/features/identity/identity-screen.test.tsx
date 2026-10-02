@@ -30,6 +30,8 @@ vi.mock("../sync/use-runtime-status", () => ({
       latestDeliveredAt: null,
       receivedEvents: 0,
       latestReceivedAt: null,
+      projectedEvents: 0,
+      unprojectedEvents: 0,
     },
   }),
 }))

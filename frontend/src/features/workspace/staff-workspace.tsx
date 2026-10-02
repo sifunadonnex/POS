@@ -545,6 +545,16 @@ function RuntimeBadge({
       </Badge>
     )
   }
+  if (state.value.unprojectedEvents > 0) {
+    return (
+      <Badge
+        variant="destructive"
+        title={`${state.value.unprojectedEvents} received edge sale${state.value.unprojectedEvents === 1 ? " is" : "s are"} missing from hosted reporting.`}
+      >
+        Sync needs attention · {state.value.unprojectedEvents}
+      </Badge>
+    )
+  }
   return (
     <Badge
       variant="secondary"

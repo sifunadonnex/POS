@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { SalesInsightsScreen } from "./sales-insights-screen"
 
@@ -15,6 +21,32 @@ const report = {
   from: "2026-09-15",
   to: "2026-09-28",
   days: 14,
+  scope: {
+    source: "all" as const,
+    storeId: null,
+    label: "All sales sources",
+  },
+  availableSources: [
+    { source: "all" as const, storeId: null, label: "All sales sources" },
+    {
+      source: "operational" as const,
+      storeId: null,
+      label: "Hosted operations",
+    },
+    {
+      source: "edge" as const,
+      storeId: "11111111-1111-4111-8111-111111111111",
+      label: "Synchronized store · 11111111",
+    },
+  ],
+  reportingLag: {
+    status: "current" as const,
+    pendingEvents: 0,
+    receivedEvents: 2,
+    projectedEvents: 2,
+    latestReceivedAt: "2026-09-28T08:00:00.000Z",
+  },
+  coverage: { synchronizedReturns: "not_available" as const },
   summary: {
     saleCount: 4,
     grossSalesMinor: 26000,
@@ -44,6 +76,8 @@ const report = {
     {
       cashierId: "cashier-1",
       cashierName: "Amina Cashier",
+      source: "operational" as const,
+      storeId: null,
       saleCount: 3,
       grossSalesMinor: 20000,
       refundMinor: 2000,
@@ -59,6 +93,8 @@ const report = {
     {
       productId: "product-1",
       productName: "Premium flour",
+      source: "operational" as const,
+      storeId: null,
       unit: "each",
       quantityMinor: 4,
       grossSalesMinor: 12000,
@@ -86,6 +122,8 @@ it("shows daily sales, cashier, payment and product insights", async () => {
   expect(screen.getByText("Payment mix")).toBeTruthy()
   expect(screen.getByText("Premium flour")).toBeTruthy()
   expect(screen.getByText(/240\.00/)).toBeTruthy()
+  expect(screen.getByText("Reporting current")).toBeTruthy()
+  expect(screen.getByText("Edge returns are not included yet")).toBeTruthy()
 })
 
 it("rejects an inverted reporting range before another request", async () => {
@@ -102,4 +140,27 @@ it("rejects an inverted reporting range before another request", async () => {
 
   expect(screen.getByText("Choose a valid start and end date.")).toBeTruthy()
   expect(mocks.getSalesInsights).toHaveBeenCalledOnce()
+})
+
+it("switches to one explicit synchronized store source", async () => {
+  render(<SalesInsightsScreen />)
+  await screen.findByText("Net sales")
+
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Synchronized store · 11111111",
+    })
+  )
+
+  await waitFor(() => {
+    expect(mocks.getSalesInsights).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.objectContaining({
+        source: "edge",
+        storeId: "11111111-1111-4111-8111-111111111111",
+      }),
+      expect.any(AbortSignal)
+    )
+  })
 })

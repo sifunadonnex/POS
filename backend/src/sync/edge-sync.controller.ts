@@ -39,4 +39,10 @@ export class EdgeSyncController {
   status() {
     return this.edgeSync.status();
   }
+
+  @Get('reconciliation')
+  @StaffRoles('manager')
+  reconciliation() {
+    return this.edgeSync.reconciliation();
+  }
 }
