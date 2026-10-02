@@ -92,8 +92,7 @@ export function useStaffSession() {
       void check()
     }
     const offline = () => {
-      current?.abort()
-      if (!locked.current) setAccess({ status: "error" })
+      void check()
     }
     const expired = () => {
       current?.abort()

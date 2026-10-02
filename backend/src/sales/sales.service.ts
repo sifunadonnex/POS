@@ -5,9 +5,11 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { roundedLineTotalMinor } from '../common/minor-unit-rounding.js';
 import { DatabaseService } from '../database/database.service.js';
+import { EdgeSyncService } from '../sync/edge-sync.service.js';
 import { type SaleActor, SalesWrites } from './sales-writes.js';
 
 type RequestBody = {
@@ -64,6 +66,9 @@ export class SalesService {
   constructor(
     @Inject(SalesWrites) private readonly writes?: SalesWrites,
     @Inject(DatabaseService) private readonly database?: DatabaseService,
+    @Optional()
+    @Inject(EdgeSyncService)
+    private readonly edgeSync?: EdgeSyncService,
   ) {}
 
   private validateQuantity(unit: SaleUnit, quantity: number): void {
@@ -260,7 +265,15 @@ export class SalesService {
       actor,
       requestId,
       { reason, lines: body.lines },
-      (client) => this.createSale(client, actor, reason, requested),
+      async (client) => {
+        const { occurredAt: _occurredAt, ...sale } = await this.createSale(
+          client,
+          actor,
+          reason,
+          requested,
+        );
+        return sale;
+      },
     );
   }
 
@@ -347,8 +360,10 @@ export class SalesService {
             [randomUUID(), shiftId, changeMinor, `Change for ${sale.saleId}`],
           );
         }
-        return {
-          ...sale,
+        const result: CheckoutResult = {
+          saleId: sale.saleId,
+          totalMinor: sale.totalMinor,
+          lines: sale.lines,
           payment: {
             paymentId: payment.rows[0].id,
             shiftId,
@@ -358,6 +373,22 @@ export class SalesService {
             changeMinor,
           },
         };
+        await this.edgeSync?.enqueueCompletedCashSale(client, {
+          requestId,
+          saleId: result.saleId,
+          cashierId: actor.userId,
+          shiftId,
+          occurredAt: sale.occurredAt,
+          totalMinor: result.totalMinor,
+          lines: result.lines,
+          payment: {
+            paymentId: result.payment.paymentId,
+            amountMinor: result.payment.amountMinor,
+            tenderedMinor: result.payment.tenderedMinor,
+            changeMinor: result.payment.changeMinor,
+          },
+        });
+        return result;
       },
     );
   }
@@ -465,9 +496,13 @@ export class SalesService {
     }
 
     const saleId = randomUUID();
-    const saleResult = await client.query<{ id: string }>(
+    const saleResult = await client.query<{
+      id: string;
+      created_at: string;
+    }>(
       `INSERT INTO sale (id, actor_id, total_minor, status, reason, created_at)
-          VALUES ($1, $2, $3, 'completed', $4, now()) RETURNING id`,
+          VALUES ($1, $2, $3, 'completed', $4, now())
+          RETURNING id, created_at::text AS created_at`,
       [saleId, actor.userId, totalMinor, reason],
     );
 
@@ -507,6 +542,7 @@ export class SalesService {
 
     return {
       saleId: saleResult.rows[0].id,
+      occurredAt: saleResult.rows[0].created_at,
       totalMinor,
       lines: quoteLines,
     };

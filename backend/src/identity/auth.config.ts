@@ -17,6 +17,7 @@ export function parseAuthEnvironment(env: NodeJS.ProcessEnv) {
   try {
     url = new URL(env.BETTER_AUTH_URL ?? '');
     const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    const localEdge = env.PAYGO_RUNTIME_MODE === 'edge' && local;
     if (
       url.username ||
       url.password ||
@@ -24,12 +25,16 @@ export function parseAuthEnvironment(env: NodeJS.ProcessEnv) {
       url.hash ||
       url.pathname !== '/' ||
       (url.protocol !== 'https:' &&
-        !(url.protocol === 'http:' && local && env.NODE_ENV !== 'production'))
+        !(
+          url.protocol === 'http:' &&
+          local &&
+          (env.NODE_ENV !== 'production' || localEdge)
+        ))
     )
       throw new Error();
   } catch {
     throw new Error(
-      'BETTER_AUTH_URL must be an HTTPS origin (HTTP loopback allowed outside production)',
+      'BETTER_AUTH_URL must be an HTTPS origin (HTTP loopback allowed outside production or in edge mode)',
     );
   }
   return {

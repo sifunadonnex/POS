@@ -8,6 +8,19 @@ vi.mock("./dashboard-screen", () => ({
 vi.mock("./sales-screen", () => ({
   SalesScreen: () => <p>Register workspace</p>,
 }))
+vi.mock("../sync/use-runtime-status", () => ({
+  useRuntimeStatus: () => ({
+    status: "ready",
+    value: {
+      mode: "hosted",
+      storeId: null,
+      checkoutAuthority: "hosted",
+      syncConfigured: false,
+      pendingEvents: 0,
+      oldestPendingAt: null,
+    },
+  }),
+}))
 
 const staff = {
   id: "manager-1",
@@ -37,6 +50,7 @@ it("uses a full application shell with contextual actions and session controls",
   expect(screen.getByText("Amina Manager", { exact: true })).toBeTruthy()
   expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy()
   expect(screen.getByRole("button", { name: "Open register" })).toBeTruthy()
+  expect(screen.getByText("Hosted", { exact: true })).toBeTruthy()
   expect(document.title).toBe("Dashboard — Pay & Go")
 
   fireEvent.click(screen.getAllByRole("button", { name: "Sales register" })[0])

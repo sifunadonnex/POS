@@ -9,12 +9,31 @@ describe('environment configuration', () => {
   it('uses bounded defaults and verified TLS', () => {
     const config = parseEnvironment(base);
     expect(config.port).toBe(3000);
+    expect(config.runtime).toEqual({ mode: 'hosted', storeId: null });
     expect(databaseOptions(config)).toMatchObject({
       max: 5,
       ssl: { rejectUnauthorized: true },
       connectionTimeoutMillis: 5000,
       statement_timeout: 5000,
     });
+  });
+
+  it('requires a stable store UUID for the cash-only edge runtime', () => {
+    const edge = parseEnvironment({
+      ...base,
+      PAYGO_RUNTIME_MODE: 'edge',
+      PAYGO_STORE_ID: '11111111-1111-4111-8111-111111111111',
+    });
+    expect(edge.runtime).toEqual({
+      mode: 'edge',
+      storeId: '11111111-1111-4111-8111-111111111111',
+    });
+    expect(() =>
+      parseEnvironment({ ...base, PAYGO_RUNTIME_MODE: 'edge' }),
+    ).toThrow('PAYGO_STORE_ID');
+    expect(() =>
+      parseEnvironment({ ...base, PAYGO_RUNTIME_MODE: 'browser' }),
+    ).toThrow('PAYGO_RUNTIME_MODE');
   });
 
   it.each(['', 'abc', '0', '-1', '1.5', '65536'])(
@@ -103,5 +122,24 @@ describe('environment configuration', () => {
         DARAJA_CALLBACK_TOKEN: 'a'.repeat(32),
       }),
     ).toThrow('HTTPS URL');
+  });
+
+  it('keeps provider payments disabled in edge mode', () => {
+    expect(() =>
+      parseEnvironment({
+        ...base,
+        PAYGO_RUNTIME_MODE: 'edge',
+        PAYGO_STORE_ID: '11111111-1111-4111-8111-111111111111',
+        DARAJA_ENABLED: 'true',
+        DARAJA_ENVIRONMENT: 'sandbox',
+        DARAJA_CONSUMER_KEY: 'consumer-key',
+        DARAJA_CONSUMER_SECRET: 'consumer-secret',
+        DARAJA_SHORTCODE: '174379',
+        DARAJA_PASSKEY: 'a-secure-online-passkey',
+        DARAJA_CALLBACK_URL:
+          'https://payments.example.test/api/payment-attempts/mpesa/callback',
+        DARAJA_CALLBACK_TOKEN: 'a'.repeat(32),
+      }),
+    ).toThrow('edge mode');
   });
 });

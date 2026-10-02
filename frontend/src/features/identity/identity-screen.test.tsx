@@ -16,6 +16,19 @@ vi.mock("./identity-api", () => ({ getStaff, identityRequest: vi.fn() }))
 vi.mock("../catalogue/catalogue-screen", () => ({
   CatalogueScreen: () => <p>Product catalogue</p>,
 }))
+vi.mock("../sync/use-runtime-status", () => ({
+  useRuntimeStatus: () => ({
+    status: "ready",
+    value: {
+      mode: "hosted",
+      storeId: null,
+      checkoutAuthority: "hosted",
+      syncConfigured: false,
+      pendingEvents: 0,
+      oldestPendingAt: null,
+    },
+  }),
+}))
 vi.mock("./auth-client", () => ({
   authClient: { signOut, signIn: { email: vi.fn() } },
 }))
@@ -74,6 +87,17 @@ it("removes protected content when the session expires", async () => {
   fireEvent(window, new Event("focus"))
   expect(await screen.findByLabelText("Email")).toBeTruthy()
   expect(screen.queryByText("Test Manager", { exact: true })).toBeNull()
+})
+
+it("keeps the workspace open when the local API remains reachable offline", async () => {
+  getStaff.mockResolvedValue(staff)
+  render(<IdentityScreen />)
+  expect(await screen.findByText("Test Manager", { exact: true })).toBeTruthy()
+
+  fireEvent(window, new Event("offline"))
+
+  await waitFor(() => expect(getStaff).toHaveBeenCalledTimes(2))
+  expect(screen.getByText("Test Manager", { exact: true })).toBeTruthy()
 })
 
 it("does not claim a failed logout succeeded and permits retry", async () => {

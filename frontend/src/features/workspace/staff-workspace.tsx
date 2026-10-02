@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   ShoppingCart,
   Users,
+  WifiOff,
   type LucideIcon,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -31,6 +32,7 @@ import { ReportsScreen } from "../reports/reports-screen"
 import { ReturnsScreen } from "../returns/returns-screen"
 import { SalesHistoryScreen } from "../sales/sales-history-screen"
 import { StocktakeScreen } from "../stocktake/stocktake-screen"
+import { useRuntimeStatus } from "../sync/use-runtime-status"
 import { DashboardScreen } from "./dashboard-screen"
 import { SalesScreen } from "./sales-screen"
 
@@ -259,6 +261,7 @@ export function StaffWorkspace({
   const [tab, setTab] = useState<WorkspaceTab>("dashboard")
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const manager = staff.role === "manager"
+  const runtime = useRuntimeStatus()
 
   const visibleSections = useMemo(
     () =>
@@ -331,7 +334,13 @@ export function StaffWorkspace({
               </p>
               <p className="mt-1 text-sm font-medium">Main shop</p>
               <p className="mt-0.5 text-xs text-sidebar-foreground/60">
-                Online operations
+                {runtime.status === "ready" && runtime.value.mode === "edge"
+                  ? runtime.value.syncConfigured
+                    ? `${runtime.value.pendingEvents} sale${runtime.value.pendingEvents === 1 ? "" : "s"} awaiting sync`
+                    : `Local cash · ${runtime.value.pendingEvents} queued`
+                  : runtime.status === "ready"
+                    ? "Hosted operations"
+                    : "Checking service mode…"}
               </p>
             </div>
           </div>
@@ -423,6 +432,7 @@ export function StaffWorkspace({
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              <RuntimeBadge state={runtime} />
               <Badge
                 variant="secondary"
                 className="hidden capitalize sm:inline-flex"
@@ -497,6 +507,43 @@ export function StaffWorkspace({
       </div>
     </div>
   )
+}
+
+function RuntimeBadge({
+  state,
+}: {
+  state: ReturnType<typeof useRuntimeStatus>
+}) {
+  if (state.status === "error") {
+    return (
+      <Badge variant="destructive" className="gap-1.5">
+        <WifiOff className="size-3" aria-hidden="true" />
+        Service unavailable
+      </Badge>
+    )
+  }
+  if (state.status === "loading") {
+    return (
+      <Badge variant="outline" className="hidden sm:inline-flex">
+        Checking mode…
+      </Badge>
+    )
+  }
+  if (state.value.mode === "edge") {
+    return (
+      <Badge
+        variant={state.value.syncConfigured ? "secondary" : "outline"}
+        title={
+          state.value.syncConfigured
+            ? "Cash checkout is using this computer and queued events will synchronize."
+            : "Cash checkout is using this computer. Cloud delivery is not enabled yet."
+        }
+      >
+        Local · {state.value.pendingEvents} queued
+      </Badge>
+    )
+  }
+  return <Badge variant="secondary">Hosted</Badge>
 }
 
 function NavButton({

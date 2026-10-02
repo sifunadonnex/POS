@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { DatabaseService } from '../database/database.service.js';
+import { EdgeSyncService } from '../sync/edge-sync.service.js';
 import { SalesService } from './sales.service.js';
 import { SalesWrites } from './sales-writes.js';
 
@@ -179,6 +180,7 @@ describe('SalesService', () => {
 
   it('checks out tendered cash atomically and records the change movement', async () => {
     const cashMovements: unknown[][] = [];
+    const enqueueCompletedCashSale = vi.fn().mockResolvedValue(undefined);
     const query = vi.fn(async (sql: string, params?: unknown[]) => {
       if (sql.includes('SELECT pg_advisory_xact_lock')) return { rows: [] };
       if (sql.includes('SELECT u.id FROM "user" u JOIN session s')) {
@@ -208,7 +210,11 @@ describe('SalesService', () => {
         cashMovements.push([sql, ...(params ?? [])]);
         return { rows: [] };
       }
-      if (sql.includes('INSERT INTO sale')) return { rows: [{ id: 'sale-1' }] };
+      if (sql.includes('INSERT INTO sale')) {
+        return {
+          rows: [{ id: 'sale-1', created_at: '2026-10-02 10:00:00+00' }],
+        };
+      }
       return { rows: [] };
     });
     const module = await Test.createTestingModule({
@@ -223,6 +229,10 @@ describe('SalesService', () => {
               connect: async () => ({ query, release: vi.fn() }),
             },
           },
+        },
+        {
+          provide: EdgeSyncService,
+          useValue: { enqueueCompletedCashSale },
         },
       ],
     }).compile();
@@ -257,6 +267,14 @@ describe('SalesService', () => {
     expect(cashMovements).toHaveLength(2);
     expect(cashMovements[0]).toContain(2000);
     expect(cashMovements[1]).toContain(750);
+    expect(enqueueCompletedCashSale).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        requestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        saleId: 'sale-1',
+        totalMinor: 1250,
+      }),
+    );
   });
 
   it('records a payment against a sale once per request id', async () => {

@@ -1,8 +1,15 @@
 $ErrorActionPreference = 'Stop'
 $backend = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $workspace = [System.IO.Path]::GetFullPath((Join-Path $backend '..'))
+$frontend = Join-Path $workspace 'frontend'
 Push-Location $backend
 try {
+    Push-Location $frontend
+    try {
+        & pnpm.cmd run build
+        if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed; no package created.' }
+    } finally { Pop-Location }
+
     & pnpm.cmd run build
     if ($LASTEXITCODE -ne 0) { throw 'Backend build failed; no package created.' }
 
@@ -33,6 +40,24 @@ try {
         New-Item -ItemType Directory -Path (Split-Path $destination) -Force | Out-Null
         Copy-Item -LiteralPath $source -Destination $destination
     }
+    $frontendFiles = @()
+    $allowedFrontendExtensions = @('.html', '.js', '.css', '.svg', '.png', '.jpg', '.jpeg', '.webp', '.avif', '.ico', '.woff', '.woff2', '.ttf')
+    $frontendOutput = Join-Path $frontend 'dist'
+    foreach ($file in Get-ChildItem -LiteralPath $frontendOutput -Recurse -File) {
+        if ($file.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { throw 'Refusing linked frontend release input.' }
+        if ($allowedFrontendExtensions -notcontains $file.Extension.ToLowerInvariant()) {
+            throw ('Unexpected frontend build artifact: ' + $file.Name)
+        }
+        $relative = $file.FullName.Substring($frontendOutput.Length + 1)
+        $archiveRelative = Join-Path 'public' $relative
+        $destination = Join-Path $stage $archiveRelative
+        New-Item -ItemType Directory -Path (Split-Path $destination) -Force | Out-Null
+        Copy-Item -LiteralPath $file.FullName -Destination $destination
+        $frontendFiles += $archiveRelative
+    }
+    if ($frontendFiles -notcontains 'public\index.html') {
+        throw 'Required frontend entrypoint missing.'
+    }
     Copy-Item -LiteralPath (Join-Path $workspace 'docs\HOSTPINNACLE_DEPLOYMENT.md') -Destination (Join-Path $stage 'DEPLOYMENT.md')
     $archive = Join-Path $output 'pay-and-go-backend.zip'
     Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive
@@ -40,10 +65,19 @@ try {
     $zip = [System.IO.Compression.ZipFile]::OpenRead($archive)
     try {
         $actual = @($zip.Entries | ForEach-Object { $_.FullName.Replace('\', '/') } | Sort-Object)
-        $expected = @(@($files | ForEach-Object { $_.Replace('\', '/') }) + 'DEPLOYMENT.md' | Sort-Object)
+        $expected = @(@($files + $frontendFiles | ForEach-Object { $_.Replace('\', '/') }) + 'DEPLOYMENT.md' | Sort-Object)
         if (Compare-Object $actual $expected) { throw 'Archive differs from the release allowlist.' }
         Write-Output ('Verified archive file count: ' + $actual.Count)
     } finally { $zip.Dispose() }
     Write-Output ('Upload archive: ' + $archive)
-    Write-Output ('SHA256: ' + (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash)
+    $archiveStream = [System.IO.File]::OpenRead($archive)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $sha256.ComputeHash($archiveStream)
+        $hash = [System.BitConverter]::ToString($hashBytes).Replace('-', '')
+        Write-Output ('SHA256: ' + $hash)
+    } finally {
+        $sha256.Dispose()
+        $archiveStream.Dispose()
+    }
 } finally { Pop-Location }

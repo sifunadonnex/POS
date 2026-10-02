@@ -30,6 +30,24 @@ describe('identity configuration', () => {
       }).secureCookies,
     ).toBe(true);
   });
+  it('allows production HTTP only for the loopback-only edge runtime', () => {
+    expect(
+      parseAuthEnvironment({
+        BETTER_AUTH_SECRET: secret,
+        BETTER_AUTH_URL: 'http://127.0.0.1:3000',
+        NODE_ENV: 'production',
+        PAYGO_RUNTIME_MODE: 'edge',
+      }).secureCookies,
+    ).toBe(false);
+    expect(() =>
+      parseAuthEnvironment({
+        BETTER_AUTH_SECRET: secret,
+        BETTER_AUTH_URL: 'http://192.168.1.10:3000',
+        NODE_ENV: 'production',
+        PAYGO_RUNTIME_MODE: 'edge',
+      }),
+    ).toThrow('HTTPS');
+  });
   it.each([
     'https://user:password@example.test',
     'https://example.test/path',

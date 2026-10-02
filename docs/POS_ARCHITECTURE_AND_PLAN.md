@@ -1,10 +1,10 @@
 # Pay & Go POS — Architecture and Delivery Plan
 
-**Status:** Local development active; HostPinnacle deployment verification deferred
+**Status:** Local development active; isolated HostPinnacle/Aiven deployment proof pending
 
 **Version:** 0.10
 
-**Last updated:** 1 October 2026
+**Last updated:** 2 October 2026
 
 **Budget objective:** Zero application licence fees and no additional hosting subscription for the first test shop, within the existing HostPinnacle package. Existing hosting/domain renewals still apply.
 
@@ -18,9 +18,9 @@ This is the development reference for Pay & Go. Version 0.9 records the locally 
 
 Working conventions are defined in [project rules](../AGENTS.md), with scoped [frontend rules](../frontend/AGENTS.md) and [backend rules](../backend/AGENTS.md). Read the [current handoff](HANDOFF.md) for actual implementation and verification status. A planned feature is not an implemented feature.
 
-The initial deployment is an online web application: React/Vite frontend, NestJS backend, and one authoritative PostgreSQL database on HostPinnacle. Cashiers and managers use different screens in the same application through HTTPS.
+The initial deployment is an online web application: React/Vite frontend, NestJS backend on HostPinnacle, and one authoritative PostgreSQL database. HostPinnacle upgraded its local database endpoint from PostgreSQL 10.23 to 13.23 at `127.0.0.200:5432`. Version 13.23 is the final, end-of-life PostgreSQL 13 release; static review suggests the current application SQL may be compatible, but only PostgreSQL 18 is integration-tested. Aiven Free therefore remains the temporary external database for the isolated hosted compatibility proof. Cashiers and managers use different screens in the same application through HTTPS.
 
-Listing the features establishes a deployment candidate, not a tested hosted runtime. HostPinnacle Node.js/PostgreSQL versions, application startup, database connectivity, limits, scheduled jobs and backups must be verified through a small deployment test before the hosted pilot. At the user's direction, local development proceeds while deployment troubleshooting remains deferred.
+Listing the features establishes a deployment candidate, not a tested hosted runtime. HostPinnacle Node.js/application startup, Aiven database connectivity and TLS, service limits, scheduled jobs and backups must be verified through a small deployment test before the hosted pilot. Aiven Free has no production SLA and does not solve internet-outage checkout, so this proof does not establish live-store availability.
 
 The previous local-PC hosting and phone VPN proposal is superseded for this online pilot. A local store service and synchronization remain a future option if checkout must survive internet outages. No Vercel subscription, VPN client, Redis or desktop wrapper is required for the proposed starting deployment.
 
@@ -46,10 +46,11 @@ flowchart TD
     Phone["Manager browser on phone"] -->|Internet + HTTPS| App
     subgraph Hosting["Existing HostPinnacle hosting account"]
         App["React static frontend + NestJS API"]
-        App --> DB[("PostgreSQL<br/>Single authoritative database")]
-        Jobs["Bounded scheduled jobs<br/>if supported by package"] --> DB
-        DB --> Backup["Database backup/export"]
+        Jobs["Bounded scheduled jobs<br/>if supported by package"]
     end
+    App -->|TLS-verified connection| DB[("Aiven PostgreSQL<br/>Single authoritative database")]
+    Jobs --> DB
+    DB --> Backup["Database backup/export"]
     Backup --> Copy["Encrypted independent backup copy"]
     Provider["Payment provider callbacks<br/>when integration is enabled"] -->|HTTPS callback route| App
 ```
@@ -90,7 +91,7 @@ Before live use, decide whether internet-dependent checkout is acceptable. If it
 | ------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------- |
 | Frontend                  | React + TypeScript + Vite                                                               | KES 0 software licence                           | One responsive app, built into static files                                   |
 | Backend                   | NestJS + TypeScript on Node.js                                                          | KES 0 software licence                           | Structured modules and shared language                                        |
-| Database                  | PostgreSQL in existing HostPinnacle account                                             | KES 0 application licence; verify package limits | Transactions, constraints, concurrency, reporting                             |
+| Database                  | Aiven Free PostgreSQL for the isolated proof while HostPinnacle is unsupported          | KES 0 test tier; no production SLA               | Transactions, constraints, concurrency, reporting                             |
 | UI components and styling | Strict shadcn/ui with the existing Base UI preset, Tailwind CSS and shared theme tokens | KES 0 software licence                           | Consistent accessible controls for till and phone screens                     |
 | Hosting                   | Existing HostPinnacle account                                                           | Target KES 0 additional subscription             | Reuse paid capacity; renewal still applies                                    |
 | Authentication            | Better Auth with application users and server sessions in PostgreSQL                    | KES 0 external authentication subscription       | User-selected authentication library; POS permissions enforced by the backend |
@@ -107,7 +108,7 @@ Keep NestJS. Cost does not require replacing it. Use supported, compatible versi
 
 Use Vite for the initial internal application; there is no present requirement for public search indexing or server-rendered pages. Next.js remains an option if a later public-facing application needs it.
 
-Use the provider-managed Node.js and PostgreSQL facilities for the hosted pilot; do not assume root access or Docker support. Local development can use native installations or containers independently of the deployment target.
+Use HostPinnacle's provider-managed Node.js facility and the TLS-verified Aiven PostgreSQL service for the isolated hosted proof; do not assume root access or Docker support. Reassess a production database service after the proof because Aiven Free has no production SLA. Local development can use native installations or containers independently of the deployment target.
 
 ## 5. Phone monitoring and hosting compatibility
 
@@ -115,7 +116,7 @@ Persistence implementation: use the MIT-licensed `pg` driver with parameterized 
 
 ### 5.1 Confirmed context and outstanding checks
 
-The user already pays for HostPinnacle hosting and reports PostgreSQL and Node.js application management in the panel. HostPinnacle also advertises Node.js and SSL on its shared-hosting plans. These facts support trying the existing package first. [HostPinnacle shared hosting](https://www.hostpinnacle.co.ke/hosting/shared-hosting/)
+The user already pays for HostPinnacle hosting and reports PostgreSQL and Node.js application management in the panel. HostPinnacle also advertises Node.js and SSL on its shared-hosting plans. The panel PostgreSQL service is now 13.23 at `127.0.0.200:5432`, replacing the former 10.23 service. PostgreSQL 13 is end-of-life, and this application has not yet been integration-tested on it. The user therefore selected Aiven Free as a temporary external database for the isolated hosted proof while retaining HostPinnacle for Node.js and the public URL. [HostPinnacle shared hosting](https://www.hostpinnacle.co.ke/hosting/shared-hosting/)
 
 Before considering the environment ready, verify:
 
@@ -250,9 +251,24 @@ personal information. On reconnect, revalidate prices, stock, permissions and
 payment status before finalization. Do not use a service worker to cache
 success responses to mutation requests.
 
-### 8.2 If offline checkout becomes necessary
+### 8.2 Edge-first offline checkout phase
 
-Add a local store service and PostgreSQL database accessible by all tills on the store LAN, with hosted reporting retained on HostPinnacle or another suitable service.
+Offline work started on 2 October 2026 with a deliberately narrow single-PC
+edge mode. The same Nest application and PostgreSQL schema run on the shop PC,
+serve the frontend on loopback and remain the authoritative writer whether the
+internet is available or not. Cash checkout appends a versioned outbox event in
+the same transaction as sale, payment, stock and cash movements. The UI exposes
+the runtime mode and pending-event count. Edge mode requires a stable store ID,
+binds to loopback, and disables Daraja; hosted mode retains its existing HTTPS
+and cloud-database behavior.
+
+This is a persistence boundary, not completed cloud synchronization. The
+outbound worker, hosted ingestion/deduplication, acknowledgements,
+reconciliation, initial data/bootstrap process and event coverage beyond cash
+checkout remain required. See [the edge setup note](OFFLINE_EDGE_SETUP.md).
+
+Move to a store-LAN service only after the single-PC boundary is verified and
+additional tills are required.
 
 This is a separate phase because it introduces two data locations and recovery/conflict handling:
 
@@ -265,7 +281,9 @@ This is a separate phase because it introduces two data locations and recovery/c
 
 Preserve one authoritative writer per business operation. Do not switch between unrelated cloud and local checkouts on network failure without a tested reconciliation design.
 
-The first online test must not be presented as having these offline capabilities. If continuity during internet outages is required for the first live shop, implement and verify this phase before launch.
+The hosted deployment and the edge database must not both accept the same shop
+checkout. Do not present the outbox foundation as completed cloud sync or use it
+for live outage continuity until the remaining gates above pass.
 
 ## 9. Payments and eTIMS: testing versus live sales
 
@@ -315,9 +333,9 @@ Reuse the shop's existing supported PC, printer/scanner and router where suitabl
 
 ### 10.1 Deployment proof before the hosted pilot
 
-Selected test URL: `https://dev.sifulabs.co.ke/` (user supplied). The panel screenshot lists Node.js 22.23.2 and Passenger startup settings. The user can upload through File Manager; the panel selects named package.json scripts with optional parameters, not arbitrary shell commands. Hosted dependency installation failed with memory-allocation errors, and a later attempt reported an application lock for `dev`. The current remote process/lock state is unknown. Troubleshooting is deferred by the user; do not rerun hosted scripts as part of local development. Local production-only wrapper/API and real PostgreSQL migration tests passed on Node 22.23.2, in addition to the original Node 24 baseline. Hosted PostgreSQL details, HTTPS routing and actual Passenger behavior remain unverified. The `app.cjs` bridge follows the [CloudLinux CommonJS wrapper for ESM](https://docs.cloudlinux.com/cloudlinuxos/cloudlinux_os_components/#limitations). Follow the [deployment runbook](HOSTPINNACLE_DEPLOYMENT.md) for the backend-only proof; frontend packaging and SPA verification follow separately.
+Selected test URL: `https://dev.sifulabs.co.ke/` (user supplied). The panel runs Node.js 22.23.2 with Passenger startup settings and named package.json scripts. Local production-only wrapper/API and real PostgreSQL migration tests passed on Node 22.23.2, in addition to the original Node 24 baseline. HostPinnacle now exposes end-of-life PostgreSQL 13.23 at `127.0.0.200:5432`; the user selected Aiven Free for the isolated external-database proof. The Aiven migrations completed, and after one cPanel stop/start cleared an initial Passenger request timeout, external liveness and database-readiness requests returned the expected HTTP 200 JSON responses over HTTPS. The release workflow now builds and packages the Vite frontend with Nest for same-origin static serving; local hosting/cache tests pass, but the combined UI and authenticated hosted flows are not yet deployed or verified. This establishes initial backend startup, routing, TLS and database connectivity—not restart/idle reliability, job scheduling or backup/restore. The `app.cjs` bridge follows the [CloudLinux CommonJS wrapper for ESM](https://docs.cloudlinux.com/cloudlinuxos/cloudlinux_os_components/#limitations). Follow the [deployment runbook](HOSTPINNACLE_DEPLOYMENT.md) for the combined proof.
 
-Use an isolated test application/subdomain and test database in the existing account. Deployment requires account access provided through an appropriate secure channel when that step is reached; this document does not record credentials.
+Use an isolated HostPinnacle test application/subdomain and the isolated Aiven test database. Deployment requires account access provided through an appropriate secure channel when that step is reached; this document does not record credentials.
 
 1. Select compatible Node.js/NestJS/PostgreSQL versions supported by the account.
 2. Deploy a minimal compiled NestJS application with a static React page and a health endpoint that exposes no secrets.
@@ -369,6 +387,7 @@ There is no promise of zero lost transactions after hosting failure. Better data
 | --------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | Application and database licences | Open-source components                                        | KES 0 licence fees                                                      |
 | Server hosting                    | Existing HostPinnacle account                                 | Target KES 0 additional subscription; current renewal and limits remain |
+| Test database hosting             | Aiven Free during the isolated compatibility proof            | KES 0 test tier; no production SLA or offline continuity                |
 | Remote monitoring                 | Same hosted application                                       | No separate VPN/remote-access subscription                              |
 | Domain and HTTPS                  | Use existing domain/subdomain and available certificate       | Confirm domain ownership, certificate setup and renewal costs           |
 | Database backup software          | Built-in/free tools                                           | Storage or replacement drive if none available                          |
@@ -411,8 +430,10 @@ Allow approximately 4–8 development weeks plus setup for a credible simulated 
 
 ### 12.2 Deferred until justified
 
-- Local store service/database and offline checkout synchronization.
-- Dedicated store server and additional database replicas.
+- Hosted event ingestion, edge delivery/acknowledgement and reconciliation for
+  the local outbox.
+- Store-LAN multi-till access, a dedicated store server and additional database
+  replicas.
 - Tauri/Electron and automatic printer/drawer bridge.
 - Redis, microservices, Kubernetes and paid monitoring subscriptions.
 - Automated M-Pesa and eTIMS in simulation; promote to launch scope if required for actual trading.
@@ -462,7 +483,8 @@ Retain SQL migrations, modular APIs, stable IDs, and explicit provider adapters 
 3. Which PC, printer, scanner, backup storage and router are already available?
 4. How many products, daily sales, and tills will the pilot cover?
 5. Which HostPinnacle package, Node.js/PostgreSQL versions, resource limits and backup features are actually available?
-6. Is online-only checkout acceptable for live trading, or must offline operation be implemented before launch?
+6. Which physical shop PC, UPS and backup target will host the initial
+   single-PC edge register?
 7. What eTIMS and M-Pesa setup does the shop already have?
 8. Are expiry batches, split payments or credit required immediately, and should the checkout rounding policy also govern fractional supplier costs?
 9. What approval limits, stock policy and cost method should apply?
@@ -498,5 +520,7 @@ These questions refine the pilot. Local PostgreSQL authentication, catalogue, in
 | ADR-021 | Persist external payment attempts and append-only provider events before confirmation; accept payment only on an exact amount/reference match and reconcile unknown outcomes before retry                                | Provider-neutral backend and capability-aware register flow implemented and retained by the Daraja adapter               | 2026-09-23 |
 | ADR-022 | Use Safaricom Daraja M-Pesa Express for automated M-Pesa; enable only with complete server-side credentials, whole-KES amounts, a token-protected public HTTPS callback and exact callback amount/reference confirmation | Adapter, callback and register phone capture implemented; disabled pending credentials and sandbox/callback verification | 2026-09-28 |
 | ADR-023 | Use optional product-specific low-stock thresholds in the product's stock unit; alert at or below the threshold, include missing stock as zero, and exclude archived/unconfigured products                               | Implemented in catalogue history, stock reads and the manager dashboard                                                  | 2026-10-01 |
+| ADR-024 | Use Aiven Free as the temporary external PostgreSQL service for the isolated HostPinnacle deployment proof while HostPinnacle's PostgreSQL service remains end-of-life                                                       | Aiven migrations and public health checks pass; production SLA, authenticated flows and recovery gates remain            | 2026-10-02 |
+| ADR-025 | Start offline continuity with one loopback-only shop-PC edge service and local PostgreSQL; keep cash checkout locally authoritative and atomically append versioned outbox events | First cash-sale outbox/status slice implemented; delivery, ingestion, reconciliation, setup and operational verification remain | 2026-10-02 |
 
-Provider claims cited above were reviewed on 28 September 2026. Recheck plan terms when creating accounts or enabling live integrations.
+Provider claims cited above were reviewed on 2 October 2026. Recheck plan terms when creating accounts or enabling live integrations.

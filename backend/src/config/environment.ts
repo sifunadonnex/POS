@@ -2,6 +2,8 @@ import { loadEnvFile } from 'node:process';
 
 export const APP_CONFIG = Symbol('APP_CONFIG');
 
+export type RuntimeMode = 'hosted' | 'edge';
+
 export function loadLocalEnvironment(): void {
   try {
     loadEnvFile();
@@ -122,6 +124,26 @@ function darajaConfiguration(env: NodeJS.ProcessEnv) {
   } as const;
 }
 
+function runtimeConfiguration(env: NodeJS.ProcessEnv) {
+  const mode = env.PAYGO_RUNTIME_MODE ?? 'hosted';
+  if (mode !== 'hosted' && mode !== 'edge') {
+    throw new Error('PAYGO_RUNTIME_MODE must be hosted or edge');
+  }
+  const storeId = env.PAYGO_STORE_ID?.trim() ?? '';
+  if (
+    mode === 'edge' &&
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      storeId,
+    )
+  ) {
+    throw new Error('PAYGO_STORE_ID must be a UUID when edge mode is enabled');
+  }
+  return {
+    mode: mode as RuntimeMode,
+    storeId: mode === 'edge' ? storeId : null,
+  } as const;
+}
+
 export function parseEnvironment(env: NodeJS.ProcessEnv) {
   const nodeEnv = env.NODE_ENV ?? 'development';
   if (!['development', 'test', 'production'].includes(nodeEnv)) {
@@ -157,13 +179,21 @@ export function parseEnvironment(env: NodeJS.ProcessEnv) {
       'DATABASE_TLS may only be disabled for a loopback database host',
     );
   }
+  const runtime = runtimeConfiguration(env);
+  const daraja = darajaConfiguration(env);
+  if (runtime.mode === 'edge' && daraja) {
+    throw new Error(
+      'DARAJA_ENABLED must remain false in edge mode until online payment handoff is implemented',
+    );
+  }
   return {
     nodeEnv,
     port: integer(env.PORT, 3000, 65535, 'PORT'),
     databaseUrl: url.toString(),
     databaseTls: tls === 'verify',
     databasePoolMax: integer(env.DATABASE_POOL_MAX, 5, 20, 'DATABASE_POOL_MAX'),
-    daraja: darajaConfiguration(env),
+    runtime,
+    daraja,
   };
 }
 

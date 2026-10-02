@@ -14,6 +14,8 @@
     "start:prod": "node dist/main.js",
     "hosting:install": "npx --yes pnpm@11.10.0 install --prod --frozen-lockfile --ignore-scripts",
     "hosting:diagnose": "node -e \"console.log('Node startup OK', process.version, process.platform, process.arch); console.log(JSON.stringify({memoryBytes:process.memoryUsage(),heapLimitBytes:require('node:v8').getHeapStatistics().heap_size_limit},null,2));\"",
+    "hosting:check-config": "node dist/config/hosting-check.js",
+    "hosting:bootstrap-manager": "node --env-file=.local/initial-manager.env dist/identity/bootstrap-hosted-manager.js",
     "hosting:migrate": "node dist/database/migrate.js up",
     "hosting:package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-hosting.ps1",
     "db:migrate": "pnpm run build && node dist/database/migrate.js up",
