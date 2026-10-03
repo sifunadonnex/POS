@@ -7,8 +7,10 @@ databases.
 
 ## What works in this slice
 
-- `PAYGO_RUNTIME_MODE=edge` makes the local service the checkout authority and
-  binds it to `127.0.0.1` for the initial single-PC pilot.
+- `PAYGO_RUNTIME_MODE=edge` binds the local service to `127.0.0.1` and gives
+  the simulated local register its own checkout authority. Once a bootstrap
+  checkpoint exists, operational writes stay fenced until an audited cutover
+  is implemented.
 - Cash checkout still commits the sale, payment, stock reduction and cash
   movements atomically. The same transaction now appends a versioned
   `cash_sale.completed` event to `sync_outbox`. New events use schema version 2
@@ -43,16 +45,60 @@ the same checkout. Manager Sales insights can read hosted operations, the
 configured synchronized store or both, and identifies each cashier/product
 source plus any inbox-to-projection lag. Synchronized returns are explicitly
 marked unavailable and are not subtracted from edge net sales yet. Staff,
-catalogue, stock setup, returns, purchases, stocktake and other configuration
-also do not replicate. Do not use edge mode as the live system until the
-initial data/bootstrap procedure, broader event coverage, backup/restore and
-power-loss checks pass.
+catalogue changes, staff changes, returns, purchases, stocktake and other
+configuration do not replicate. An initial signed snapshot/apply path and
+opening-count signoff are in source, but operational cutover, ongoing change
+delivery, broader event coverage, backup/restore and power-loss checks are
+still required before live use.
 
 The [hosted-to-edge bootstrap design](OFFLINE_BOOTSTRAP_DESIGN.md) defines the
 store cutover, version checkpoints, local staff enrollment, opening stock
-signoff and replacement-PC fencing required before those checks. Its first
-guard/checkpoint slice is implemented; there is still no bootstrap transfer or
-active cutover.
+signoff and replacement-PC fencing required before those checks. The first
+snapshot is now a private signed file, not a network download. No active store
+has been cut over.
+
+## Initial bootstrap rehearsal on disposable databases
+
+Apply migrations through `202610030002_store_bootstrap_publications` to both
+disposable hosted and edge databases. Configure `PAYGO_SYNC_ENABLED=true`, the
+same store UUID and `PAYGO_SYNC_SECRET` on both sides, and a **separate**
+`PAYGO_BOOTSTRAP_SECRET` of 32–500 random characters on both sides. The hosted
+runtime uses `PAYGO_SYNC_STORE_ID`; the edge uses `PAYGO_STORE_ID`. Keep the
+edge sender stopped/disabled during this rehearsal. These values are server
+configuration only, never `VITE_*` variables.
+
+1. A hosted manager with completed MFA calls `POST /api/bootstrap/publications`
+   from their authenticated same-origin session. Save the JSON response in a
+   private file and transfer it to the shop PC within 15 minutes. Treat the
+   file as sensitive roster and price data. The response contains no hosted
+   password hash, MFA secret, recovery code or session token.
+2. On the edge, run `node dist/store/apply-bootstrap.js .local/bootstrap.json`.
+   The command verifies the signature, store/generation, expiry, digest,
+   references and size limits before applying roster/catalogue/checkpoint rows
+   in one transaction. An exact immediate retry is harmless. A dirty database
+   or different publication is refused. Remove the private bundle after the
+   reconciliation evidence is retained securely.
+3. In person, verify the publishing manager's identity and control of their
+   email address. Put `BOOTSTRAP_MANAGER_EMAIL`, `BOOTSTRAP_MANAGER_PASSWORD`,
+   `BOOTSTRAP_ATTEST_IDENTITY=true`, `BOOTSTRAP_ATTEST_EMAIL_CONTROL=true` and
+   `BOOTSTRAP_WITNESSED_BY` in a private `.local/bootstrap-manager.env` file.
+   Run `node --env-file=.local/bootstrap-manager.env
+   dist/store/enroll-bootstrap-manager.js` from `backend/`, then remove the
+   private input file. The command works only once for the publishing manager
+   and audits the witness. The manager signs in to the local app and completes
+   the existing authenticator MFA enrollment/challenge flow.
+4. After physically counting **every** product, the MFA-proven local manager
+   calls `POST /api/bootstrap/opening-stock` from the same-origin session with
+   `{ "requestId": "<new UUID>", "counts": [{ "productId": "<UUID>",
+   "quantityMinor": "<nonnegative integer>" }] }`. Use whole units for
+   `each`/`pack` and thousandths for `kg`/`l`. Include zero counts. The edge
+   creates stock balances and positive opening movements atomically, records
+   variances from hosted proposed quantities and accepts only an exact replay.
+
+This rehearsal does **not** activate checkout. A bootstrapped edge rejects
+operational writes until a later hosted cutover and generation-aware
+activation are implemented and verified. The earlier simulated edge path with
+no bootstrap checkpoint remains suitable only for disposable local tests.
 
 ## Safe local test configuration
 
@@ -74,6 +120,7 @@ AUTH_EMAIL_ENABLED=false
 DARAJA_ENABLED=false
 PAYGO_SYNC_ENABLED=false
 PAYGO_SYNC_SECRET=replace_with_a_separate_random_secret_of_at_least_32_characters
+PAYGO_BOOTSTRAP_SECRET=replace_with_another_private_random_secret_of_at_least_32_characters
 PAYGO_SYNC_URL=https://dev.sifulabs.co.ke/api/sync/events
 PAYGO_SYNC_POLL_SECONDS=10
 ```
@@ -88,6 +135,7 @@ PAYGO_RUNTIME_MODE=hosted
 PAYGO_SYNC_ENABLED=false
 PAYGO_SYNC_STORE_ID=11111111-1111-4111-8111-111111111111
 PAYGO_SYNC_SECRET=replace_with_the_same_store_sync_secret
+PAYGO_BOOTSTRAP_SECRET=replace_with_the_same_private_bootstrap_secret
 PAYGO_SYNC_POLL_SECONDS=10
 ```
 

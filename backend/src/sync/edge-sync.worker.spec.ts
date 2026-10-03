@@ -14,6 +14,7 @@ function config(): AppConfig {
     databasePoolMax: 5,
     runtime: { mode: 'edge', storeId },
     daraja: null,
+    bootstrap: null,
     sync: {
       storeId,
       secret: 's'.repeat(32),

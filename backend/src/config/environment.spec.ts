@@ -199,4 +199,21 @@ describe('environment configuration', () => {
       }),
     ).toThrow('HTTPS');
   });
+
+  it('requires a distinct bootstrap signing secret when configured', () => {
+    const secret = 'b'.repeat(48);
+    expect(
+      parseEnvironment({ ...base, PAYGO_BOOTSTRAP_SECRET: secret }).bootstrap,
+    ).toEqual({ secret });
+    expect(() =>
+      parseEnvironment({ ...base, PAYGO_BOOTSTRAP_SECRET: 'short' }),
+    ).toThrow('PAYGO_BOOTSTRAP_SECRET');
+    expect(() =>
+      parseEnvironment({
+        ...base,
+        PAYGO_BOOTSTRAP_SECRET: secret,
+        PAYGO_SYNC_SECRET: secret,
+      }),
+    ).toThrow('PAYGO_BOOTSTRAP_SECRET');
+  });
 });

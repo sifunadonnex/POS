@@ -61,6 +61,7 @@ function config(): AppConfig {
     runtime: { mode: 'hosted', storeId: null },
     daraja: null,
     sync: { storeId, secret, targetUrl: null, pollSeconds: 10 },
+    bootstrap: null,
   };
 }
 

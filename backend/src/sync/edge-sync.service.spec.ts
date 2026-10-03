@@ -45,6 +45,7 @@ function config(mode: 'hosted' | 'edge'): AppConfig {
     },
     daraja: null,
     sync: null,
+    bootstrap: null,
   };
 }
 

@@ -56,6 +56,7 @@ export class AuthProviderModule {}
         auth,
         disableTrustedOriginsCors: true,
         middleware: audit.middleware,
+        bodyParser: { json: { limit: '2mb' } },
       }),
     }),
   ],

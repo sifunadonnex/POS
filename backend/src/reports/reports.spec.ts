@@ -12,6 +12,7 @@ const config: AppConfig = {
   runtime: { mode: 'hosted', storeId: null },
   daraja: null,
   sync: null,
+  bootstrap: null,
 };
 const storeId = '11111111-1111-4111-8111-111111111111';
 const syncConfig: AppConfig = {

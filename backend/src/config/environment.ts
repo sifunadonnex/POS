@@ -205,6 +205,23 @@ function syncConfiguration(
   } as const;
 }
 
+function bootstrapConfiguration(env: NodeJS.ProcessEnv) {
+  const secret = env.PAYGO_BOOTSTRAP_SECRET?.trim();
+  if (!secret) return null;
+  if (
+    secret.length < 32 ||
+    secret.length > 500 ||
+    secret === env.PAYGO_SYNC_SECRET ||
+    secret === env.BETTER_AUTH_SECRET ||
+    /replace|example|change.me/i.test(secret)
+  ) {
+    throw new Error(
+      'PAYGO_BOOTSTRAP_SECRET must be a separate random secret of 32-500 characters',
+    );
+  }
+  return { secret };
+}
+
 export function parseEnvironment(env: NodeJS.ProcessEnv) {
   const nodeEnv = env.NODE_ENV ?? 'development';
   if (!['development', 'test', 'production'].includes(nodeEnv)) {
@@ -248,6 +265,7 @@ export function parseEnvironment(env: NodeJS.ProcessEnv) {
     );
   }
   const sync = syncConfiguration(env, runtime);
+  const bootstrap = bootstrapConfiguration(env);
   return {
     nodeEnv,
     port: integer(env.PORT, 3000, 65535, 'PORT'),
@@ -257,6 +275,7 @@ export function parseEnvironment(env: NodeJS.ProcessEnv) {
     runtime,
     daraja,
     sync,
+    bootstrap,
   };
 }
 

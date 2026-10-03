@@ -1,14 +1,15 @@
 # Hosted-to-edge bootstrap design
 
-**Status:** Design and first guard/checkpoint slice, 3 October 2026. Hosted
-operational writes are guarded after an internal cutover transition, edge
-staff/catalogue API writes are blocked, and a durable single-store generation
-and configuration checkpoint exists. No active store has been registered or
-cut over. Snapshot transfer, credential enrollment, opening-count signoff and
-generation-aware event delivery are not implemented. This document defines
-the remaining build and acceptance checks for the single-PC, single-store
-pilot. [Edge setup](OFFLINE_EDGE_SETUP.md) describes the working cash-sale
-event path.
+**Status:** The guard/checkpoint and initial publication/apply slices are in
+source as of 3 October 2026. A hosted MFA-proven manager can publish a signed,
+15-minute snapshot for one configured store. The edge CLI validates and applies
+it atomically to an empty database, then a witnessed local manager credential
+enrollment and MFA-proven opening-count signoff complete the local checkpoint.
+The bundle is a private file transferred to the shop PC; no edge download or
+remote provisioning endpoint exists. Checkout on a bootstrapped edge remains
+fenced because there is no operator cutover command or configuration journal.
+No active store has been registered or cut over. [Edge setup](OFFLINE_EDGE_SETUP.md)
+describes the operator flow and the simulated cash-sale path.
 
 ## Authority and cutover
 
@@ -23,9 +24,9 @@ The current application has no branch scope. This plan is therefore limited to
 one store. A manager chooses a cutover time, stops hosted checkout and hosted
 stock writes for that store, and verifies there are no unresolved payments or
 open shifts to migrate. After the first edge sale, hosted checkout for that
-store must remain disabled. The current code does not enforce these restrictions;
-the cutover control and edge/hosted write guards are prerequisites, not an
-operator instruction that can substitute for code.
+store must remain disabled. The hosted write guard is implemented; the full
+cutover control and edge activation gate remain prerequisites, not operator
+instructions.
 
 ## Initial publication and application
 
@@ -38,12 +39,14 @@ operator instruction that can substitute for code.
    include password hashes, MFA secrets, recovery codes, session tokens,
    verification records, mail jobs or authentication audit rows.
 2. Give the publication an immutable `storeId`, `generation`, `schemaVersion`,
-   `configurationVersion`, creation/expiry time, row counts and content digest.
-   The hosted server must authenticate the edge separately from staff browser
-   sessions, authorize that exact store, use HTTPS and a short-lived,
-   single-use provisioning grant, and audit issuance and consumption. Do not
-   reuse the cash-event HMAC secret as the provisioning credential.
-3. The edge downloads and validates the complete publication into staging.
+   `configurationVersion`, creation/expiry time, content digest and HMAC signed
+   with a separate `PAYGO_BOOTSTRAP_SECRET`. The hosted manager endpoint is
+   session/MFA protected and audits issuance. For the single-PC phase, transfer
+   the private JSON file to the edge and apply it with a local CLI; there is no
+   unauthenticated edge HTTP import. Keep the bundle and both secrets out of
+   browser bundles and source control. A future network transport needs a
+   short-lived provisioning grant and separate edge authentication.
+3. The edge validates the complete publication before mutation.
    Check schema version, store identity, generation, expiry, digest, all
    referential constraints, unique normalized emails/SKUs/barcodes, money and
    quantity bounds, and maximum row/byte limits before changing operational
@@ -54,14 +57,14 @@ operator instruction that can substitute for code.
    or pending outbox event. An exact retry is a no-op; a different payload for
    the same version or a version rollback is rejected. Existing catalogue and
    staff history is not silently rewritten.
-5. Enroll a rostered manager's local password and local MFA through a
-   controlled, audited in-person identity check. Then enroll each other
-   rostered person's local password and, where required, MFA. Local email
+5. Enroll the publishing rostered manager's local password through the
+   one-time CLI with witnessed identity/email-control attestations and audit,
+   then complete the existing local Better Auth MFA enrollment. Enrollment of
+   other rostered people remains future work. Local email
    verification or a separate, audited in-person identity check must be
    completed before creating an active edge session. The bootstrap manager
-   path must be implemented explicitly; the existing hosted one-time manager
-   command and ordinary `auth:provision` command do not provide this workflow.
-   No public signup is added.
+   path is separate from the hosted one-time manager command and ordinary
+   `auth:provision` command. No public signup is added.
 6. The proposed stock snapshot is a count worksheet, not an automatic stock
    adjustment. The manager verifies physical counts and signs off the opening
    quantities and cutover time. In one edge transaction, create the initial
@@ -69,8 +72,8 @@ operator instruction that can substitute for code.
    quantities with stable operation IDs, local manager actor and a bootstrap
    reason. Missing/zero products start at zero. A replay cannot add opening
    stock twice. Record the hosted quantity and any counted variance in an
-   audit/checkpoint record, without altering hosted stock. Do not enable
-   checkout until this transaction and reconciliation complete.
+   audit/checkpoint record, without altering hosted stock. Checkout remains
+   blocked even after signoff until a later fenced cutover is implemented.
 
 The publication must not cross a cutover while hosted staff/catalogue writes
 continue unnoticed. Its `configurationVersion` and data must come from the
@@ -155,16 +158,19 @@ connectivity or an independently verified recovery authority.
    Focused HTTP and disposable-PostgreSQL tests cover denied writes, checkpoint
    replay and stale generation rejection. The cutover and fence methods are
    internal only; there is no operator endpoint or command yet.
-2. Implement versioned snapshot publication, bounded authenticated transfer,
-   validation, atomic edge apply and audited local credential enrollment.
-   Exercise crash/retry, duplicate, out-of-order, corrupt and expired payloads
-   against disposable PostgreSQL databases.
+2. Completed in source: versioned hosted publication through an authenticated
+   manager endpoint, bounded signed private-file transfer, validation, atomic
+   initial edge apply, audited one-time manager enrollment and opening-count
+   signoff. Disposable PostgreSQL and HTTP tests cover invalid/replayed/expired
+   bundles, manager authorization, checkpoint fencing, enrollment and opening
+   movement replay. Physical transfer, MFA enrollment and restart rehearsal
+   remain unverified.
 3. Implement the change journal and resume cursor. Test concurrent writer
    commit order, staff suspension/session revocation, catalogue changes and
    CSV import. Verify the 24-hour pilot freshness rule at the authorization
    boundary, including existing sessions.
-4. Implement opening-count signoff and generation fencing. Test exact
-   count/movement replay, restored outbox duplicate delivery, lost-PC
+4. Implement generation-aware cutover/fencing. Test exact
+   restored outbox duplicate delivery, lost-PC
    reconciliation and rejection of the old PC.
 5. Run a two-database rehearsal with identical store ID, dropped responses,
    restarts and a long outage. Record counts, money and stock totals before
