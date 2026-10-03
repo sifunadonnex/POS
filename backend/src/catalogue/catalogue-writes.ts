@@ -68,6 +68,12 @@ export class CatalogueWrites {
         await client.query('COMMIT');
         return receipt.response;
       }
+      await client.query("SELECT set_config('paygo.actor_id', $1, true)", [
+        actor.userId,
+      ]);
+      await client.query("SELECT set_config('paygo.reason', $1, true)", [
+        command.reason,
+      ]);
       const response = await work(client);
       await client.query(
         'INSERT INTO catalogue_request (id, actor_id, fingerprint, response) VALUES ($1, $2, $3, $4)',

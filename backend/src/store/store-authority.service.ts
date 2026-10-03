@@ -20,6 +20,7 @@ type StoreStateRow = {
   last_fence_request_id: string | null;
   opening_stock_at: Date | null;
   cutover_at: Date | null;
+  roster_fresh: boolean;
 };
 
 function uuid(value: string): boolean {
@@ -46,7 +47,10 @@ export class StoreAuthorityService {
     }
     try {
       const result = await this.database.connectionPool.query<StoreStateRow>(
-        'SELECT runtime_mode, checkout_authority, opening_stock_at, cutover_at FROM store_bootstrap_state WHERE singleton',
+        `SELECT runtime_mode, checkout_authority, opening_stock_at, cutover_at,
+          (last_roster_check_at IS NOT NULL AND last_roster_check_at <= now()
+            AND last_roster_check_at > now() - interval '24 hours') AS roster_fresh
+          FROM store_bootstrap_state WHERE singleton`,
       );
       if (
         result.rows[0] &&
@@ -69,10 +73,12 @@ export class StoreAuthorityService {
         scope === 'operational' &&
         this.config.runtime.mode === 'edge' &&
         result.rows[0] &&
-        (!result.rows[0].opening_stock_at || !result.rows[0].cutover_at)
+        (!result.rows[0].opening_stock_at ||
+          !result.rows[0].cutover_at ||
+          !result.rows[0].roster_fresh)
       ) {
         throw new ConflictException(
-          'Local checkout is awaiting opening stock and hosted cutover',
+          'Local checkout requires opening stock, hosted cutover and a fresh roster',
         );
       }
     } catch (error) {

@@ -171,6 +171,9 @@ export class StaffAdminService {
     // Initial password is random and never returned. Staff choose their own password through recovery email.
     const hashed = await hashPassword(randomBytes(32).toString('base64url'));
     return this.transaction(req, async (client) => {
+      await client.query("SELECT set_config('paygo.reason', $1, true)", [
+        input.reason,
+      ]);
       const id = randomUUID();
       const result = await client.query<StaffRow>(
         `INSERT INTO "user" (id, name, email, role) VALUES ($1, $2, $3, $4) RETURNING ${columns}`,
@@ -209,6 +212,9 @@ export class StaffAdminService {
       );
     await this.confirm(req, input.password);
     return this.transaction(req, async (client) => {
+      await client.query("SELECT set_config('paygo.reason', $1, true)", [
+        input.reason,
+      ]);
       const previous = await client.query<StaffRow>(
         `SELECT ${columns} FROM "user" WHERE id = $1 FOR UPDATE`,
         [id],

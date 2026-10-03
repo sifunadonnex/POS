@@ -1,13 +1,13 @@
 # Hosted-to-edge bootstrap design
 
-**Status:** The guard/checkpoint and initial publication/apply slices are in
+**Status:** The guard/checkpoint, initial publication/apply and ordered change slices are in
 source as of 3 October 2026. A hosted MFA-proven manager can publish a signed,
 15-minute snapshot for one configured store. The edge CLI validates and applies
 it atomically to an empty database, then a witnessed local manager credential
 enrollment and MFA-proven opening-count signoff complete the local checkpoint.
 The bundle is a private file transferred to the shop PC; no edge download or
 remote provisioning endpoint exists. Checkout on a bootstrapped edge remains
-fenced because there is no operator cutover command or configuration journal.
+fenced because there is no operator cutover command or generation-aware event delivery.
 No active store has been registered or cut over. [Edge setup](OFFLINE_EDGE_SETUP.md)
 describes the operator flow and the simulated cash-sale path.
 
@@ -165,10 +165,14 @@ connectivity or an independently verified recovery authority.
    bundles, manager authorization, checkpoint fencing, enrollment and opening
    movement replay. Physical transfer, MFA enrollment and restart rehearsal
    remain unverified.
-3. Implement the change journal and resume cursor. Test concurrent writer
-   commit order, staff suspension/session revocation, catalogue changes and
-   CSV import. Verify the 24-hour pilot freshness rule at the authorization
-   boundary, including existing sessions.
+3. Completed in source: transactionally journal hosted staff/catalogue writes
+   after first publication; export manager/MFA-authorized, signed, bounded
+   change batches and apply contiguous batches or empty roster checks through
+   a durable edge cursor. Disposable PostgreSQL tests cover CSV import,
+   concurrent writer order, staff suspension/session revocation, gap/replay
+   rejection and stale/future roster denial, including simulated 25-hour
+   expiry and signed empty-check recovery. Physical file transfer and a
+   full 24-hour wall-clock rehearsal remain unverified.
 4. Implement generation-aware cutover/fencing. Test exact
    restored outbox duplicate delivery, lost-PC
    reconciliation and rejection of the old PC.

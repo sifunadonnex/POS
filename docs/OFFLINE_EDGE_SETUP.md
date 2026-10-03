@@ -45,10 +45,12 @@ the same checkout. Manager Sales insights can read hosted operations, the
 configured synchronized store or both, and identifies each cashier/product
 source plus any inbox-to-projection lag. Synchronized returns are explicitly
 marked unavailable and are not subtracted from edge net sales yet. Staff,
-catalogue changes, staff changes, returns, purchases, stocktake and other
-configuration do not replicate. An initial signed snapshot/apply path and
-opening-count signoff are in source, but operational cutover, ongoing change
-delivery, broader event coverage, backup/restore and power-loss checks are
+returns, purchases, stocktake and other operational events do not replicate.
+An initial signed snapshot/apply path, opening-count signoff and ordered
+staff/catalogue change batches are in source. Change batches currently require
+manual private-file transfer; operational cutover, generation-aware event
+delivery, other staff credential enrollment, broader event coverage,
+backup/restore and power-loss checks are
 still required before live use.
 
 The [hosted-to-edge bootstrap design](OFFLINE_BOOTSTRAP_DESIGN.md) defines the
@@ -59,7 +61,7 @@ has been cut over.
 
 ## Initial bootstrap rehearsal on disposable databases
 
-Apply migrations through `202610030002_store_bootstrap_publications` to both
+Apply migrations through `202610030003_store_configuration_journal` to both
 disposable hosted and edge databases. Configure `PAYGO_SYNC_ENABLED=true`, the
 same store UUID and `PAYGO_SYNC_SECRET` on both sides, and a **separate**
 `PAYGO_BOOTSTRAP_SECRET` of 32–500 random characters on both sides. The hosted
@@ -99,6 +101,35 @@ This rehearsal does **not** activate checkout. A bootstrapped edge rejects
 operational writes until a later hosted cutover and generation-aware
 activation are implemented and verified. The earlier simulated edge path with
 no bootstrap checkpoint remains suitable only for disposable local tests.
+
+## Ongoing configuration rehearsal
+
+After the first snapshot is applied, hosted staff and catalogue writes append
+ordered changes, including verification, suspension, archive and CSV import.
+The hosted manager must have a current MFA session to request a batch. On the
+edge, an MFA-proven manager reads `GET /api/bootstrap/checkpoint`. If the local
+roster has expired and edge login is blocked, an operator with local shell
+access runs `pnpm run edge:configuration-checkpoint` instead. Provide the
+returned `version` and `digest` to hosted `POST /api/bootstrap/changes` as
+`{"afterVersion": 1, "afterDigest": "<digest>"}`. Save the signed response
+as a private JSON file and transfer it to the shop PC within 15 minutes. Run
+`node dist/store/apply-configuration.js .local/changes.json` on the edge.
+Repeat from the new edge checkpoint until the hosted response has an empty
+`events` array. That empty signed batch refreshes the roster check time.
+Keep the batch private because it contains staff identity and catalogue data;
+remove transferred copies after securely retaining reconciliation evidence.
+
+The edge applies each complete batch atomically. A changed digest, version
+gap, incompatible revision, wrong store/generation or replay with different
+content stops application. Hosted catalogue changes retain their actor and
+reason in the edge source audit. A suspended staff member's local sessions are
+removed when their change arrives. After a snapshot has been published,
+publishing a different full snapshot is refused if journal changes exist;
+resume from the journal cursor instead. The edge denies new sessions and
+operational writes if the last authenticated roster check is missing, in the
+future or at least 24 hours old. Existing sessions are denied at the next
+authenticated request. This is a pilot limit and still needs an elapsed-time
+and clock-change rehearsal before live use.
 
 ## Safe local test configuration
 

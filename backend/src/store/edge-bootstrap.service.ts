@@ -131,8 +131,8 @@ export async function applyBootstrapBundle(
       await client.query(
         `INSERT INTO store_bootstrap_state
         (singleton, store_id, runtime_mode, checkout_authority, generation,
-         configuration_version, configuration_digest)
-        VALUES (true, $1, 'edge', 'local', $2, $3, $4)`,
+         configuration_version, configuration_digest, last_roster_check_at)
+        VALUES (true, $1, 'edge', 'local', $2, $3, $4, now())`,
         [
           bundle.storeId,
           bundle.generation,
@@ -148,7 +148,7 @@ export async function applyBootstrapBundle(
       }
       await client.query(
         `UPDATE store_bootstrap_state SET configuration_version = $1,
-        configuration_digest = $2, updated_at = now() WHERE singleton`,
+        configuration_digest = $2, last_roster_check_at = now(), updated_at = now() WHERE singleton`,
         [bundle.configurationVersion, bundle.digest],
       );
     }

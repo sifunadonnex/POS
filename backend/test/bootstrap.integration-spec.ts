@@ -192,14 +192,19 @@ describe('bootstrap publication and edge apply on disposable PostgreSQL', () => 
       'UPDATE catalogue_product SET price_minor = 1300 WHERE id = $1',
       [productId],
     );
-    const changed = await publisher.publish({
-      userId: managerId,
-      sessionId: managerSession,
-    });
-    expect(changed.configurationVersion).toBe(2);
     await expect(
-      applyBootstrapBundle(edge, edgeConfig, changed),
+      publisher.publish({
+        userId: managerId,
+        sessionId: managerSession,
+      }),
     ).rejects.toBeInstanceOf(ConflictException);
+    expect(
+      (
+        await hosted.query<{ configuration_version: string }>(
+          'SELECT configuration_version FROM store_bootstrap_state',
+        )
+      ).rows[0]?.configuration_version,
+    ).toBe('2');
     expect(
       (await edge.query('SELECT id FROM catalogue_product')).rowCount,
     ).toBe(1);

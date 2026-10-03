@@ -102,6 +102,14 @@ export class HostedBootstrapService {
       ) {
         throw new ConflictException('Configuration version is too large');
       }
+      if (
+        previousVersion > 1 ||
+        (previousVersion === 1 && current.configuration_digest !== digest)
+      ) {
+        throw new ConflictException(
+          'Initial snapshot is already published; use configuration changes',
+        );
+      }
       const configurationVersion =
         current.configuration_digest === digest && previousVersion > 0
           ? previousVersion

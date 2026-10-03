@@ -10,12 +10,16 @@ import { StaffGuard } from '../src/identity/staff.guard.js';
 import { BootstrapController } from '../src/store/bootstrap.controller.js';
 import { EdgeBootstrapService } from '../src/store/edge-bootstrap.service.js';
 import { HostedBootstrapService } from '../src/store/hosted-bootstrap.service.js';
+import { HostedConfigurationService } from '../src/store/hosted-configuration.service.js';
+import { EdgeConfigurationService } from '../src/store/edge-configuration.service.js';
 
 describe('bootstrap HTTP authorization', () => {
   let app: INestApplication<App>;
   const getSession = vi.fn();
   const publish = vi.fn().mockResolvedValue({ publicationId: 'publication' });
   const signOffOpening = vi.fn().mockResolvedValue({ status: 'applied' });
+  const publishChanges = vi.fn().mockResolvedValue({ toVersion: 2 });
+  const checkpoint = vi.fn().mockResolvedValue({ version: 2 });
   const identity = { userId: 'manager', sessionId: 'session' };
   const manager = (mfaVerified: boolean) => ({
     user: {
@@ -34,12 +38,19 @@ describe('bootstrap HTTP authorization', () => {
       providers: [
         { provide: HostedBootstrapService, useValue: { publish } },
         { provide: EdgeBootstrapService, useValue: { signOffOpening } },
+        { provide: HostedConfigurationService, useValue: { publishChanges } },
+        { provide: EdgeConfigurationService, useValue: { checkpoint } },
         { provide: AUTH, useValue: { api: { getSession } } },
         {
           provide: AUTH_CONFIG,
           useValue: { baseURL: 'http://localhost:5173' },
         },
-        { provide: DatabaseService, useValue: { connectionPool: {} } },
+        {
+          provide: DatabaseService,
+          useValue: {
+            connectionPool: { query: vi.fn().mockResolvedValue({ rows: [] }) },
+          },
+        },
         { provide: APP_GUARD, useClass: StaffGuard },
       ],
     }).compile();
@@ -51,6 +62,26 @@ describe('bootstrap HTTP authorization', () => {
     getSession.mockReset();
     publish.mockClear();
     signOffOpening.mockClear();
+    publishChanges.mockClear();
+    checkpoint.mockClear();
+  });
+
+  it('denies cashier and unverified-manager configuration access', async () => {
+    getSession.mockResolvedValueOnce({
+      ...manager(true),
+      user: { ...manager(true).user, role: 'cashier' },
+    });
+    await request(app.getHttpServer())
+      .post('/api/bootstrap/changes')
+      .set('Origin', 'http://localhost:5173')
+      .send({ afterVersion: 1, afterDigest: 'a'.repeat(64) })
+      .expect(403);
+    getSession.mockResolvedValueOnce(manager(false));
+    await request(app.getHttpServer())
+      .get('/api/bootstrap/checkpoint')
+      .expect(403);
+    expect(publishChanges).not.toHaveBeenCalled();
+    expect(checkpoint).not.toHaveBeenCalled();
   });
 
   it('denies absent, cashier, and unverified manager sessions for publication', async () => {
@@ -86,7 +117,20 @@ describe('bootstrap HTTP authorization', () => {
       .set('Origin', 'http://localhost:5173')
       .send({ counts: [] })
       .expect(201);
+    await request(app.getHttpServer())
+      .post('/api/bootstrap/changes')
+      .set('Origin', 'http://localhost:5173')
+      .send({ afterVersion: 1, afterDigest: 'a'.repeat(64) })
+      .expect(201);
+    await request(app.getHttpServer())
+      .get('/api/bootstrap/checkpoint')
+      .expect(200);
     expect(publish).toHaveBeenCalledWith(identity);
     expect(signOffOpening).toHaveBeenCalledWith(identity, { counts: [] });
+    expect(publishChanges).toHaveBeenCalledWith(identity, {
+      afterVersion: 1,
+      afterDigest: 'a'.repeat(64),
+    });
+    expect(checkpoint).toHaveBeenCalledOnce();
   });
 });

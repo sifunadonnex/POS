@@ -7,6 +7,8 @@ import { StoreAuthorityService } from './store-authority.service.js';
 import { BootstrapController } from './bootstrap.controller.js';
 import { EdgeBootstrapService } from './edge-bootstrap.service.js';
 import { HostedBootstrapService } from './hosted-bootstrap.service.js';
+import { HostedConfigurationService } from './hosted-configuration.service.js';
+import { EdgeConfigurationService } from './edge-configuration.service.js';
 
 @Module({
   imports: [ConfigModule, DatabaseModule],
@@ -14,6 +16,8 @@ import { HostedBootstrapService } from './hosted-bootstrap.service.js';
     StoreAuthorityService,
     EdgeBootstrapService,
     HostedBootstrapService,
+    HostedConfigurationService,
+    EdgeConfigurationService,
     { provide: APP_GUARD, useClass: StoreAuthorityGuard },
   ],
   controllers: [BootstrapController],

@@ -22,6 +22,8 @@
     "auth:provision": "pnpm run build && node --env-file=.local/staff.env dist/identity/provision.js",
     "edge:bootstrap-apply": "node dist/store/apply-bootstrap.js",
     "edge:bootstrap-manager": "node --env-file=.local/bootstrap-manager.env dist/store/enroll-bootstrap-manager.js",
+    "edge:configuration-apply": "node dist/store/apply-configuration.js",
+    "edge:configuration-checkpoint": "node dist/store/read-configuration-checkpoint.js",
     "auth:setup": "node scripts/setup-local-auth.mjs",
     "db:rollback": "pnpm run build && node dist/database/migrate.js down",
     "lint": "oxlint src/ test/",
