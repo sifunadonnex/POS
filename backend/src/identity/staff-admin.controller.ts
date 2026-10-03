@@ -12,9 +12,11 @@ import {
 import { StaffRoles } from './access.metadata.js';
 import { StaffAdminService } from './staff-admin.service.js';
 import type { StaffRequest } from './staff.guard.js';
+import { StoreWrites } from '../store/store-write.metadata.js';
 
 @Controller('api/identity')
 @StaffRoles('manager')
+@StoreWrites('central')
 export class StaffAdminController {
   constructor(
     @Inject(StaffAdminService) private readonly staff: StaffAdminService,

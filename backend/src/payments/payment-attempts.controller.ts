@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { PublicRoute, StaffRoles } from '../identity/access.metadata.js';
 import type { StaffRequest } from '../identity/staff.guard.js';
+import { StoreWrites } from '../store/store-write.metadata.js';
 import { PaymentAttemptsService } from './payment-attempts.service.js';
 
 function actor(req: StaffRequest) {
@@ -18,6 +19,7 @@ function actor(req: StaffRequest) {
 }
 
 @Controller('api/payment-attempts')
+@StoreWrites('operational')
 export class PaymentAttemptsController {
   constructor(
     @Inject(PaymentAttemptsService)

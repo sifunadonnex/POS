@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { StaffRoles } from '../identity/access.metadata.js';
 import type { StaffRequest } from '../identity/staff.guard.js';
+import { StoreWrites } from '../store/store-write.metadata.js';
 import { SalesLookupService } from './sales-lookup.service.js';
 import { SalesService } from './sales.service.js';
 import { SuspendedOrdersService } from './suspended-orders.service.js';
@@ -26,6 +27,7 @@ function lookupActor(req: StaffRequest) {
 }
 
 @Controller('api/sales')
+@StoreWrites('operational')
 export class SalesController {
   constructor(
     @Inject(SalesService) private readonly sales: SalesService,

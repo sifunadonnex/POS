@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { StaffRoles } from '../identity/access.metadata.js';
 import type { StaffRequest } from '../identity/staff.guard.js';
+import { StoreWrites } from '../store/store-write.metadata.js';
 import { ReturnsService } from './returns.service.js';
 import { ReturnsLookupService } from './returns-lookup.service.js';
 
@@ -18,6 +19,7 @@ function actor(req: StaffRequest) {
 }
 
 @Controller('api/returns')
+@StoreWrites('operational')
 export class ReturnsController {
   constructor(
     @Inject(ReturnsService) private readonly returns: ReturnsService,

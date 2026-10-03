@@ -48,6 +48,12 @@ also do not replicate. Do not use edge mode as the live system until the
 initial data/bootstrap procedure, broader event coverage, backup/restore and
 power-loss checks pass.
 
+The [hosted-to-edge bootstrap design](OFFLINE_BOOTSTRAP_DESIGN.md) defines the
+store cutover, version checkpoints, local staff enrollment, opening stock
+signoff and replacement-PC fencing required before those checks. Its first
+guard/checkpoint slice is implemented; there is still no bootstrap transfer or
+active cutover.
+
 ## Safe local test configuration
 
 Use a separate local database and a different authentication secret from the

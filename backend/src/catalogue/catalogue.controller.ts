@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { StaffRoles } from '../identity/access.metadata.js';
 import type { StaffRequest } from '../identity/staff.guard.js';
+import { StoreWrites } from '../store/store-write.metadata.js';
 import { CatalogueService } from './catalogue.service.js';
 import { CatalogueImportService } from './catalogue-import.service.js';
 
@@ -19,6 +20,7 @@ function actor(req: StaffRequest) {
 }
 
 @Controller('api/catalogue')
+@StoreWrites('central')
 export class CatalogueController {
   constructor(
     @Inject(CatalogueService) private readonly catalogue: CatalogueService,

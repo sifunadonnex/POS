@@ -1,6 +1,7 @@
 import { Body, Controller, Inject, Post, Req } from '@nestjs/common';
 import { StaffRoles } from '../identity/access.metadata.js';
 import type { StaffRequest } from '../identity/staff.guard.js';
+import { StoreWrites } from '../store/store-write.metadata.js';
 import { StocktakeService } from './stocktake.service.js';
 
 function actor(req: StaffRequest) {
@@ -8,6 +9,7 @@ function actor(req: StaffRequest) {
 }
 
 @Controller('api/stocktake')
+@StoreWrites('operational')
 export class StocktakeController {
   constructor(
     @Inject(StocktakeService) private readonly stocktake: StocktakeService,

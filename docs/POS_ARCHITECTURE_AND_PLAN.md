@@ -278,6 +278,17 @@ available rather than presenting edge net/refund figures as complete. Initial
 data/bootstrap and event coverage beyond cash checkout remain required. See
 [the edge setup note](OFFLINE_EDGE_SETUP.md).
 
+The proposed [hosted-to-edge bootstrap design](OFFLINE_BOOTSTRAP_DESIGN.md)
+assigns hosted authority to staff roster and catalogue, and edge authority to
+stock and checkout after a controlled store cutover. It calls for an atomic
+versioned configuration snapshot, contiguous change checkpoints, a physically
+verified opening count, local staff credentials/MFA, and a fenced generation
+handoff when replacing the PC. The first slice now blocks edge staff/catalogue
+API writes, guards hosted operational writes after cutover, and persists a
+single-store generation/configuration checkpoint. Snapshot transfer,
+generation-aware delivery, opening-count approval and a controlled cutover
+command remain unimplemented; no store has been cut over.
+
 Move to a store-LAN service only after the single-PC boundary is verified and
 additional tills are required.
 
@@ -533,5 +544,6 @@ These questions refine the pilot. Local PostgreSQL authentication, catalogue, in
 | ADR-023 | Use optional product-specific low-stock thresholds in the product's stock unit; alert at or below the threshold, include missing stock as zero, and exclude archived/unconfigured products                               | Implemented in catalogue history, stock reads and the manager dashboard                                                  | 2026-10-01 |
 | ADR-024 | Use Aiven Free as the temporary external PostgreSQL service for the isolated HostPinnacle deployment proof while HostPinnacle's PostgreSQL service remains end-of-life                                                       | Aiven migrations and public health checks pass; production SLA, authenticated flows and recovery gates remain            | 2026-10-02 |
 | ADR-025 | Start offline continuity with one loopback-only shop-PC edge service and local PostgreSQL; keep cash checkout locally authoritative and atomically append versioned outbox events | Cash-sale outbox, signed retrying delivery, idempotent hosted inbox, reporting projection/reconciliation and source-filtered manager insights implemented; setup, broader event coverage and operational verification remain | 2026-10-02 |
+| ADR-026 | Proposed one-way hosted-to-edge staff/catalogue bootstrap with a signed-off opening stock count, ordered configuration checkpoint and fenced PC generation | First guard/checkpoint slice implemented; transfer, enrollment, opening count, generation-aware delivery and operational fencing remain | 2026-10-03 |
 
 Provider claims cited above were reviewed on 2 October 2026. Recheck plan terms when creating accounts or enabling live integrations.

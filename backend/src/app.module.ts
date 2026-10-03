@@ -14,12 +14,14 @@ import { ReturnsModule } from './returns/returns.module.js';
 import { SalesModule } from './sales/sales.module.js';
 import { ShiftsModule } from './shifts/shifts.module.js';
 import { StocktakeModule } from './stocktake/stocktake.module.js';
+import { StoreAuthorityModule } from './store/store-authority.module.js';
 
 @Module({
   imports: [
     ConfigModule,
     DatabaseModule,
     IdentityModule,
+    StoreAuthorityModule,
     CatalogueModule,
     InventoryModule,
     SalesModule,
