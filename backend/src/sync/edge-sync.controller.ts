@@ -26,10 +26,11 @@ export class EdgeSyncController {
     @Headers('x-paygo-event-id') eventId: string | undefined,
     @Headers('x-paygo-timestamp') timestamp: string | undefined,
     @Headers('x-paygo-signature') signature: string | undefined,
+    @Headers('x-paygo-generation') generation: string | undefined,
     @Body() body: unknown,
   ) {
     return this.hostedSync.ingest(
-      { storeId, eventId, timestamp, signature },
+      { storeId, eventId, timestamp, signature, generation },
       body,
     );
   }

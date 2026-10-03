@@ -5,6 +5,7 @@ import { EdgeBootstrapService } from './edge-bootstrap.service.js';
 import { HostedBootstrapService } from './hosted-bootstrap.service.js';
 import { HostedConfigurationService } from './hosted-configuration.service.js';
 import { EdgeConfigurationService } from './edge-configuration.service.js';
+import { HostedCutoverService } from './hosted-cutover.service.js';
 
 @Controller('api/bootstrap')
 @StaffRoles('manager')
@@ -17,6 +18,8 @@ export class BootstrapController {
     private readonly configuration: HostedConfigurationService,
     @Inject(EdgeConfigurationService)
     private readonly edgeConfiguration: EdgeConfigurationService,
+    @Inject(HostedCutoverService)
+    private readonly cutover: HostedCutoverService,
   ) {}
 
   @Post('publications')
@@ -46,5 +49,23 @@ export class BootstrapController {
   @Get('checkpoint')
   checkpoint() {
     return this.edgeConfiguration.checkpoint();
+  }
+
+  @Post('cutover')
+  issueCutover(@Req() req: StaffRequest, @Body() body: unknown) {
+    return this.cutover.issue(
+      { userId: req.staff.user.id, sessionId: req.staff.session.id },
+      'cutover',
+      body,
+    );
+  }
+
+  @Post('fence')
+  issueFence(@Req() req: StaffRequest, @Body() body: unknown) {
+    return this.cutover.issue(
+      { userId: req.staff.user.id, sessionId: req.staff.session.id },
+      'fence',
+      body,
+    );
   }
 }

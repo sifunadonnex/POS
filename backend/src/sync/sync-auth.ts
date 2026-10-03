@@ -34,9 +34,12 @@ export function createSyncSignature(
   eventId: string,
   timestamp: string,
   value: unknown,
+  generation?: number,
 ): string {
   return createHmac('sha256', secret)
-    .update(`${storeId}\n${eventId}\n${timestamp}\n${syncPayloadHash(value)}`)
+    .update(
+      `${storeId}\n${eventId}\n${timestamp}\n${generation === undefined ? '' : `${generation}\n`}${syncPayloadHash(value)}`,
+    )
     .digest('hex');
 }
 

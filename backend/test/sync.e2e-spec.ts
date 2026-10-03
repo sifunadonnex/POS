@@ -64,6 +64,7 @@ describe('store synchronization HTTP boundary', () => {
         eventId: body.eventId,
         timestamp: '1790942400',
         signature: 'a'.repeat(64),
+        generation: undefined,
       },
       body,
     );

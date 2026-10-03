@@ -67,6 +67,7 @@ describe('EdgeSyncWorker', () => {
   it('marks an event delivered only after a matching acknowledgement', async () => {
     const query = vi
       .fn()
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [job] })
       .mockResolvedValueOnce({ rows: [] });
     const fetcher = vi.fn().mockResolvedValue(
@@ -93,12 +94,13 @@ describe('EdgeSyncWorker', () => {
         }),
       }),
     );
-    expect(String(query.mock.calls[1][0])).toContain('delivered_at = now()');
+    expect(String(query.mock.calls[2][0])).toContain('delivered_at = now()');
   });
 
   it('retains an event and schedules backoff after an invalid response', async () => {
     const query = vi
       .fn()
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [job] })
       .mockResolvedValueOnce({ rows: [] });
     const worker = new EdgeSyncWorker(
@@ -108,7 +110,35 @@ describe('EdgeSyncWorker', () => {
     );
 
     await expect(worker.deliverBatch()).resolves.toBe(1);
-    expect(String(query.mock.calls[1][0])).toContain('next_attempt_at');
-    expect(query.mock.calls[1][1]).toEqual([eventId, 5, 1]);
+    expect(String(query.mock.calls[2][0])).toContain('next_attempt_at');
+    expect(query.mock.calls[2][1]).toEqual([eventId, 5, 1]);
+  });
+
+  it('signs the active generation and requires its acknowledgement', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        rows: [{ generation: 2, cutover_at: new Date() }],
+      })
+      .mockResolvedValueOnce({ rows: [job] })
+      .mockResolvedValueOnce({ rows: [] });
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          eventId,
+          status: 'duplicate',
+          generation: 2,
+        }),
+        { status: 200 },
+      ),
+    );
+    const worker = new EdgeSyncWorker(
+      config(),
+      { connectionPool: { query } } as never,
+      fetcher,
+    );
+    await expect(worker.deliverBatch()).resolves.toBe(1);
+    expect(fetcher.mock.calls[0][1].headers['X-PayGo-Generation']).toBe('2');
+    expect(String(query.mock.calls[2][0])).toContain('delivered_at = now()');
   });
 });

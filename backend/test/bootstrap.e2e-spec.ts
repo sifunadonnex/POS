@@ -12,6 +12,7 @@ import { EdgeBootstrapService } from '../src/store/edge-bootstrap.service.js';
 import { HostedBootstrapService } from '../src/store/hosted-bootstrap.service.js';
 import { HostedConfigurationService } from '../src/store/hosted-configuration.service.js';
 import { EdgeConfigurationService } from '../src/store/edge-configuration.service.js';
+import { HostedCutoverService } from '../src/store/hosted-cutover.service.js';
 
 describe('bootstrap HTTP authorization', () => {
   let app: INestApplication<App>;
@@ -20,6 +21,7 @@ describe('bootstrap HTTP authorization', () => {
   const signOffOpening = vi.fn().mockResolvedValue({ status: 'applied' });
   const publishChanges = vi.fn().mockResolvedValue({ toVersion: 2 });
   const checkpoint = vi.fn().mockResolvedValue({ version: 2 });
+  const issue = vi.fn().mockResolvedValue({ signature: 'a'.repeat(64) });
   const identity = { userId: 'manager', sessionId: 'session' };
   const manager = (mfaVerified: boolean) => ({
     user: {
@@ -40,6 +42,7 @@ describe('bootstrap HTTP authorization', () => {
         { provide: EdgeBootstrapService, useValue: { signOffOpening } },
         { provide: HostedConfigurationService, useValue: { publishChanges } },
         { provide: EdgeConfigurationService, useValue: { checkpoint } },
+        { provide: HostedCutoverService, useValue: { issue } },
         { provide: AUTH, useValue: { api: { getSession } } },
         {
           provide: AUTH_CONFIG,
@@ -64,6 +67,51 @@ describe('bootstrap HTTP authorization', () => {
     signOffOpening.mockClear();
     publishChanges.mockClear();
     checkpoint.mockClear();
+    issue.mockClear();
+  });
+
+  it('guards both cutover and replacement fencing with manager MFA', async () => {
+    const body = {
+      requestId: '11111111-1111-4111-8111-111111111111',
+      expectedGeneration: 1,
+      configurationVersion: 1,
+      configurationDigest: 'a'.repeat(64),
+    };
+    getSession.mockResolvedValueOnce(null);
+    await request(app.getHttpServer())
+      .post('/api/bootstrap/cutover')
+      .set('Origin', 'http://localhost:5173')
+      .send(body)
+      .expect(401);
+    getSession.mockResolvedValueOnce({
+      ...manager(true),
+      user: { ...manager(true).user, role: 'cashier' },
+    });
+    await request(app.getHttpServer())
+      .post('/api/bootstrap/fence')
+      .set('Origin', 'http://localhost:5173')
+      .send(body)
+      .expect(403);
+    getSession.mockResolvedValueOnce(manager(false));
+    await request(app.getHttpServer())
+      .post('/api/bootstrap/cutover')
+      .set('Origin', 'http://localhost:5173')
+      .send(body)
+      .expect(403);
+    expect(issue).not.toHaveBeenCalled();
+    getSession.mockResolvedValue(manager(true));
+    await request(app.getHttpServer())
+      .post('/api/bootstrap/cutover')
+      .set('Origin', 'http://localhost:5173')
+      .send(body)
+      .expect(201);
+    await request(app.getHttpServer())
+      .post('/api/bootstrap/fence')
+      .set('Origin', 'http://localhost:5173')
+      .send(body)
+      .expect(201);
+    expect(issue).toHaveBeenNthCalledWith(1, identity, 'cutover', body);
+    expect(issue).toHaveBeenNthCalledWith(2, identity, 'fence', body);
   });
 
   it('denies cashier and unverified-manager configuration access', async () => {

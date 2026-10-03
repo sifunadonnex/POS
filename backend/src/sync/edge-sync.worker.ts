@@ -73,6 +73,15 @@ export class EdgeSyncWorker
     ) {
       return 0;
     }
+    const authority = await this.database.connectionPool.query<{
+      generation: number;
+      cutover_at: Date | null;
+    }>(
+      'SELECT generation, cutover_at FROM store_bootstrap_state WHERE singleton',
+    );
+    const state = authority.rows[0];
+    if (state && !state.cutover_at) return 0;
+    const generation = state?.generation;
     const claimed = await this.database.connectionPool.query<OutboxJob>(
       `WITH ready AS (
         SELECT id FROM sync_outbox
@@ -113,12 +122,16 @@ export class EdgeSyncWorker
               'X-PayGo-Store-Id': job.store_id,
               'X-PayGo-Event-Id': job.id,
               'X-PayGo-Timestamp': timestamp,
+              ...(generation
+                ? { 'X-PayGo-Generation': String(generation) }
+                : {}),
               'X-PayGo-Signature': createSyncSignature(
                 sync.secret,
                 job.store_id,
                 job.id,
                 timestamp,
                 envelope,
+                generation,
               ),
             },
             body: JSON.stringify(envelope),
@@ -132,7 +145,10 @@ export class EdgeSyncWorker
             acknowledgement.eventId !== job.id ||
             !('status' in acknowledgement) ||
             (acknowledgement.status !== 'accepted' &&
-              acknowledgement.status !== 'duplicate')
+              acknowledgement.status !== 'duplicate') ||
+            (generation !== undefined &&
+              (!('generation' in acknowledgement) ||
+                acknowledgement.generation !== generation))
           ) {
             throw new Error('Invalid synchronization acknowledgement');
           }

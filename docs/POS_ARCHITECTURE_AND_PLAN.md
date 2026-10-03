@@ -293,9 +293,12 @@ bootstrapped edge stays closed to operational writes after signoff. Hosted
 staff/catalogue changes now enter a commit-ordered journal after the first
 snapshot; manager/MFA-authorized signed batches carry a durable edge cursor,
 source audit and a 24-hour pilot roster freshness gate. Manual private-file
-transfer is the current transport. Generation-aware event delivery, other
-staff enrollment and a controlled cutover command remain unimplemented. No
-store has been cut over.
+transfer is the current transport. An MFA-proven manager can issue signed
+cutover/fence tickets behind a disabled-by-default gate. The edge verifies
+the ticket and matching cursor before activation; event signatures then bind
+the PC generation, and fencing requires a rotated synchronization secret.
+Other staff enrollment, lost-PC reconciliation and the physical recovery
+rehearsal remain. No store has been cut over.
 
 Move to a store-LAN service only after the single-PC boundary is verified and
 additional tills are required.
@@ -552,6 +555,6 @@ These questions refine the pilot. Local PostgreSQL authentication, catalogue, in
 | ADR-023 | Use optional product-specific low-stock thresholds in the product's stock unit; alert at or below the threshold, include missing stock as zero, and exclude archived/unconfigured products                               | Implemented in catalogue history, stock reads and the manager dashboard                                                  | 2026-10-01 |
 | ADR-024 | Use Aiven Free as the temporary external PostgreSQL service for the isolated HostPinnacle deployment proof while HostPinnacle's PostgreSQL service remains end-of-life                                                       | Aiven migrations and public health checks pass; production SLA, authenticated flows and recovery gates remain            | 2026-10-02 |
 | ADR-025 | Start offline continuity with one loopback-only shop-PC edge service and local PostgreSQL; keep cash checkout locally authoritative and atomically append versioned outbox events | Cash-sale outbox, signed retrying delivery, idempotent hosted inbox, reporting projection/reconciliation and source-filtered manager insights implemented; setup, broader event coverage and operational verification remain | 2026-10-02 |
-| ADR-026 | One-way hosted-to-edge staff/catalogue bootstrap with a signed-off opening stock count, ordered configuration checkpoint and fenced PC generation | Guard/checkpoint, signed snapshot and ordered change batches with edge resume cursor, witnessed manager enrollment, opening-count signoff and pilot roster freshness gate implemented in source; other staff enrollment, generation-aware delivery and operational cutover remain | 2026-10-03 |
+| ADR-026 | One-way hosted-to-edge staff/catalogue bootstrap with a signed-off opening stock count, ordered configuration checkpoint and fenced PC generation | Guard/checkpoint, signed snapshot/change batches, witnessed manager enrollment, opening signoff, roster freshness and disabled-by-default signed cutover/fence tickets implemented; full recovery and operational rehearsal remain | 2026-10-03 |
 
 Provider claims cited above were reviewed on 2 October 2026. Recheck plan terms when creating accounts or enabling live integrations.

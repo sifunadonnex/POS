@@ -9,8 +9,8 @@ databases.
 
 - `PAYGO_RUNTIME_MODE=edge` binds the local service to `127.0.0.1` and gives
   the simulated local register its own checkout authority. Once a bootstrap
-  checkpoint exists, operational writes stay fenced until an audited cutover
-  is implemented.
+  checkpoint exists, operational writes stay fenced until an audited signed
+  cutover ticket is applied. Ticket issuance/application is disabled by default.
 - Cash checkout still commits the sale, payment, stock reduction and cash
   movements atomically. The same transaction now appends a versioned
   `cash_sale.completed` event to `sync_outbox`. New events use schema version 2
@@ -48,8 +48,9 @@ marked unavailable and are not subtracted from edge net sales yet. Staff,
 returns, purchases, stocktake and other operational events do not replicate.
 An initial signed snapshot/apply path, opening-count signoff and ordered
 staff/catalogue change batches are in source. Change batches currently require
-manual private-file transfer; operational cutover, generation-aware event
-delivery, other staff credential enrollment, broader event coverage,
+manual private-file transfer. Signed cutover and generation-aware delivery
+are implemented behind a disabled-by-default gate; other staff credential
+enrollment, lost-PC reconciliation, broader event coverage,
 backup/restore and power-loss checks are
 still required before live use.
 
@@ -61,7 +62,7 @@ has been cut over.
 
 ## Initial bootstrap rehearsal on disposable databases
 
-Apply migrations through `202610030003_store_configuration_journal` to both
+Apply migrations through `202610030004_store_cutover_fence` to both
 disposable hosted and edge databases. Configure `PAYGO_SYNC_ENABLED=true`, the
 same store UUID and `PAYGO_SYNC_SECRET` on both sides, and a **separate**
 `PAYGO_BOOTSTRAP_SECRET` of 32–500 random characters on both sides. The hosted
@@ -99,7 +100,7 @@ configuration only, never `VITE_*` variables.
 
 This rehearsal does **not** activate checkout. A bootstrapped edge rejects
 operational writes until a later hosted cutover and generation-aware
-activation are implemented and verified. The earlier simulated edge path with
+activation are explicitly enabled for a disposable rehearsal. The earlier simulated edge path with
 no bootstrap checkpoint remains suitable only for disposable local tests.
 
 ## Ongoing configuration rehearsal
@@ -131,6 +132,47 @@ future or at least 24 hours old. Existing sessions are denied at the next
 authenticated request. This is a pilot limit and still needs an elapsed-time
 and clock-change rehearsal before live use.
 
+## Cutover and replacement rehearsal on disposable databases only
+
+`PAYGO_CUTOVER_ENABLED=false` is the default on both runtimes. A controlled
+rehearsal may set it to `true` on a disposable hosted/edge pair after migration.
+The flag does not authorize cutting over an active store.
+The migration adds a nullable synchronization-secret fingerprint and new audit
+actions; it does not rewrite sales or stock. Rolling it back after cutover audit
+rows exist requires a deliberate recovery plan and backup rather than an
+automatic down migration.
+
+1. Complete the edge opening count and apply configuration changes until the
+   edge checkpoint equals hosting. Close hosted shifts and resolve pending or
+   unknown payment attempts. An MFA-proven hosted manager calls
+   `POST /api/bootstrap/cutover` with `requestId` (new UUID),
+   `expectedGeneration`, `configurationVersion` and `configurationDigest` from
+   the edge checkpoint. Hosting atomically blocks hosted operational writes,
+   records the actor and returns a signed ticket valid for 15 minutes. If the
+   response is lost, repeat the same request ID for a fresh ticket.
+2. Transfer the ticket privately and run
+   `node dist/store/apply-cutover.js .local/cutover.json` on the edge. The edge
+   checks the signature, store, generation, current sync secret, exact
+   configuration cursor, opening signoff, roster freshness and open work before
+   enabling checkout. An exact retry is harmless. Keep the edge closed if
+   transfer or validation fails.
+3. For a replacement PC, first freeze/retire the old PC and reconcile its
+   outbox and hosted receipts against the restored backup. Rotate
+   `PAYGO_SYNC_SECRET` on hosting and the restored edge, then an MFA-proven
+   hosted manager calls `POST /api/bootstrap/fence` with the same checkpoint
+   fields and the old `expectedGeneration`. Hosting refuses the old secret,
+   advances the generation and returns a signed fence ticket. Apply it on the
+   restored edge with the same CLI; local sessions are revoked. The hosted
+   inbox then rejects generation 1, while an identical queued event delivered
+   under generation 2 receives a duplicate acknowledgement. A missing or
+   behind backup requires an explicit recovery procedure, not a blank edge.
+
+Generation is included in the signed delivery headers after cutover. A
+disconnected old PC may still write to its own database, so it must be
+physically retired. Lost-PC reconciliation, a full backup/restore and long
+outage rehearsal have not been completed; leave the cutover flag off for active
+stores.
+
 ## Safe local test configuration
 
 Use a separate local database and a different authentication secret from the
@@ -152,6 +194,7 @@ DARAJA_ENABLED=false
 PAYGO_SYNC_ENABLED=false
 PAYGO_SYNC_SECRET=replace_with_a_separate_random_secret_of_at_least_32_characters
 PAYGO_BOOTSTRAP_SECRET=replace_with_another_private_random_secret_of_at_least_32_characters
+PAYGO_CUTOVER_ENABLED=false
 PAYGO_SYNC_URL=https://dev.sifulabs.co.ke/api/sync/events
 PAYGO_SYNC_POLL_SECONDS=10
 ```
@@ -167,6 +210,7 @@ PAYGO_SYNC_ENABLED=false
 PAYGO_SYNC_STORE_ID=11111111-1111-4111-8111-111111111111
 PAYGO_SYNC_SECRET=replace_with_the_same_store_sync_secret
 PAYGO_BOOTSTRAP_SECRET=replace_with_the_same_private_bootstrap_secret
+PAYGO_CUTOVER_ENABLED=false
 PAYGO_SYNC_POLL_SECONDS=10
 ```
 

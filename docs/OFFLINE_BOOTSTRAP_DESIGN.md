@@ -7,7 +7,8 @@ it atomically to an empty database, then a witnessed local manager credential
 enrollment and MFA-proven opening-count signoff complete the local checkpoint.
 The bundle is a private file transferred to the shop PC; no edge download or
 remote provisioning endpoint exists. Checkout on a bootstrapped edge remains
-fenced because there is no operator cutover command or generation-aware event delivery.
+fenced by default. A disabled-by-default cutover ticket path and generation-aware
+event delivery now exist for disposable rehearsal; no live cutover has occurred.
 No active store has been registered or cut over. [Edge setup](OFFLINE_EDGE_SETUP.md)
 describes the operator flow and the simulated cash-sale path.
 
@@ -24,9 +25,9 @@ The current application has no branch scope. This plan is therefore limited to
 one store. A manager chooses a cutover time, stops hosted checkout and hosted
 stock writes for that store, and verifies there are no unresolved payments or
 open shifts to migrate. After the first edge sale, hosted checkout for that
-store must remain disabled. The hosted write guard is implemented; the full
-cutover control and edge activation gate remain prerequisites, not operator
-instructions.
+store must remain disabled. The ticket controls are implemented in source but
+disabled by default while the full operator rehearsal and recovery gates remain
+outstanding.
 
 ## Initial publication and application
 
@@ -119,9 +120,12 @@ remain blocked.
 ## Replacement shop PC
 
 The `storeId` represents the physical store and stays stable. A replacement
-PC receives a new `generation` and new credentials; only one generation may
-send events or accept checkout. The existing event envelope and hosted inbox
-do not yet enforce generations, so this is a required protocol change.
+PC receives a new `generation` and rotated synchronization secret. The hosted
+inbox now requires the HMAC-bound generation after cutover and rejects a fenced
+generation, including previously accepted event IDs. An identical restored
+outbox event can be acknowledged under the new generation without another
+inbox or reporting row. A disconnected old PC cannot be stopped remotely from
+writing to its own database, so physical retirement remains mandatory.
 
 1. Freeze the old edge, stop checkout and workers, and preserve its encrypted
    database backup. Verify local sale, return, stock and outbox totals and the
@@ -156,8 +160,8 @@ connectivity or an independently verified recovery authority.
 1. Completed in source: hosted operational cutover guards, edge staff/catalogue
    API guards and a durable single-store generation/configuration checkpoint.
    Focused HTTP and disposable-PostgreSQL tests cover denied writes, checkpoint
-   replay and stale generation rejection. The cutover and fence methods are
-   internal only; there is no operator endpoint or command yet.
+   replay and stale generation rejection. Manager/MFA-protected ticket endpoints
+   and a local apply CLI are now implemented but disabled by default.
 2. Completed in source: versioned hosted publication through an authenticated
    manager endpoint, bounded signed private-file transfer, validation, atomic
    initial edge apply, audited one-time manager enrollment and opening-count
@@ -173,9 +177,14 @@ connectivity or an independently verified recovery authority.
    rejection and stale/future roster denial, including simulated 25-hour
    expiry and signed empty-check recovery. Physical file transfer and a
    full 24-hour wall-clock rehearsal remain unverified.
-4. Implement generation-aware cutover/fencing. Test exact
-   restored outbox duplicate delivery, lost-PC
-   reconciliation and rejection of the old PC.
+4. Completed in source for disposable databases: issue signed, short-lived
+   hosted cutover/fence tickets, apply them on a matching edge, rotate the
+   per-store synchronization secret before fencing, and bind event signatures
+   to the active generation. Tests cover cutover replay, wrong-cursor and
+   tampered ticket refusal, old-generation rejection and exact duplicate
+   delivery under the new generation. The operator gate defaults off.
+   Lost-PC reconciliation, real backup/restore and physical retirement remain
+   unverified; do not enable active-store cutover.
 5. Run a two-database rehearsal with identical store ID, dropped responses,
    restarts and a long outage. Record counts, money and stock totals before
    considering a live offline pilot.

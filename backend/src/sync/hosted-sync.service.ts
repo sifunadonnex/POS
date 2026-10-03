@@ -19,12 +19,14 @@ import {
 } from './sync-auth.js';
 import { parseSyncEnvelope, type SyncEnvelope } from './sync-envelope.js';
 import { projectCompletedCashSale } from './sync-projection.js';
+import { syncSecretDigest } from '../store/cutover-ticket.js';
 
 export type SyncHeaders = {
   storeId?: string;
   eventId?: string;
   timestamp?: string;
   signature?: string;
+  generation?: string;
 };
 
 @Injectable()
@@ -47,12 +49,18 @@ export class HostedSyncService {
     const eventId = headers.eventId ?? '';
     const timestamp = headers.timestamp ?? '';
     const signature = headers.signature ?? '';
+    const generation = headers.generation;
+    const generationNumber =
+      generation === undefined ? null : Number(generation);
     const seconds = Number(timestamp);
     if (
       storeId !== sync.storeId ||
       !/^\d{10}$/.test(timestamp) ||
       !Number.isSafeInteger(seconds) ||
-      Math.abs(Math.floor(now / 1000) - seconds) > 300
+      Math.abs(Math.floor(now / 1000) - seconds) > 300 ||
+      (generation !== undefined &&
+        (!/^[1-9][0-9]*$/.test(generation) ||
+          !Number.isSafeInteger(generationNumber)))
     ) {
       throw new UnauthorizedException('Invalid synchronization credentials');
     }
@@ -64,6 +72,7 @@ export class HostedSyncService {
         eventId,
         timestamp,
         value,
+        generationNumber ?? undefined,
       );
     } catch {
       throw new UnauthorizedException('Invalid synchronization credentials');
@@ -78,15 +87,42 @@ export class HostedSyncService {
     const fingerprint = createHash('sha256')
       .update(canonicalJson(value))
       .digest('hex');
-    return this.persist(envelope, fingerprint);
+    return this.persist(envelope, fingerprint, generationNumber);
   }
 
-  private async persist(envelope: SyncEnvelope, fingerprint: string) {
+  private async persist(
+    envelope: SyncEnvelope,
+    fingerprint: string,
+    generation: number | null,
+  ) {
     let client: PoolClient | undefined;
     try {
       client = await this.database.connectionPool.connect();
       await client.query('BEGIN');
       await client.query("SET LOCAL statement_timeout = '10s'");
+      const authority = await client.query<{
+        store_id: string;
+        runtime_mode: string;
+        checkout_authority: string;
+        generation: number;
+        sync_secret_digest: string | null;
+      }>(
+        'SELECT store_id, runtime_mode, checkout_authority, generation, sync_secret_digest FROM store_bootstrap_state WHERE singleton FOR SHARE',
+      );
+      const state = authority.rows[0];
+      if (
+        state &&
+        (state.store_id !== envelope.storeId ||
+          state.runtime_mode !== 'hosted' ||
+          state.checkout_authority !== 'local' ||
+          generation !== state.generation ||
+          state.sync_secret_digest !==
+            syncSecretDigest(this.config.sync!.secret))
+      ) {
+        throw new ConflictException(
+          'Store generation is not authorized for delivery',
+        );
+      }
       const lockKeys = [
         `${envelope.storeId}:event:${envelope.eventId}`,
         `${envelope.storeId}:${envelope.eventType}:${envelope.aggregateId}`,
@@ -159,6 +195,7 @@ export class HostedSyncService {
       return {
         eventId: envelope.eventId,
         status,
+        ...(state ? { generation: state.generation } : {}),
         checkpoint: {
           acceptedEvents: Number(checkpoint.rows[0]?.accepted_events ?? 0),
           latestReceivedAt: checkpoint.rows[0]?.latest_received_at ?? null,
