@@ -59,6 +59,12 @@ it("uses a full application shell with contextual actions and session controls",
   )
 
   expect(screen.getByLabelText("Primary navigation")).toBeTruthy()
+  expect(screen.getByLabelText("Mobile navigation")).toBeTruthy()
+  expect(
+    screen
+      .getAllByRole("button", { name: "Dashboard" })[0]
+      .getAttribute("aria-current")
+  ).toBe("page")
   expect(screen.getByText("Amina Manager", { exact: true })).toBeTruthy()
   expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy()
   expect(screen.getByRole("button", { name: "Open register" })).toBeTruthy()
@@ -68,6 +74,11 @@ it("uses a full application shell with contextual actions and session controls",
   fireEvent.click(screen.getAllByRole("button", { name: "Sales register" })[0])
 
   expect(screen.getByText("Register workspace")).toBeTruthy()
+  expect(
+    screen
+      .getAllByRole("button", { name: "Sales register" })[0]
+      .getAttribute("aria-current")
+  ).toBe("page")
   expect(screen.queryByRole("button", { name: "Open register" })).toBeNull()
   expect(document.title).toBe("Sales register — Pay & Go")
   fireEvent.click(screen.getByRole("button", { name: "Sign out" }))

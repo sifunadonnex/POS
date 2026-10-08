@@ -289,7 +289,7 @@ export function StaffWorkspace({
   return (
     <div className="flex h-svh w-full overflow-hidden bg-background">
       <aside
-        className={`hidden border-r bg-sidebar text-sidebar-foreground lg:flex lg:flex-col ${sidebarCollapsed ? "w-[4.5rem]" : "w-64"} transition-[width] duration-200`}
+        className={`hidden border-r bg-sidebar text-sidebar-foreground lg:flex lg:flex-col ${sidebarCollapsed ? "w-[4.5rem]" : "w-64"} transition-[width] duration-200 motion-reduce:transition-none`}
         aria-label="Primary navigation"
       >
         <div className="flex items-center justify-between border-b px-3 py-3">
@@ -312,7 +312,7 @@ export function StaffWorkspace({
             type="button"
             variant="ghost"
             size="icon"
-            className="size-8 shrink-0"
+            className="size-10 shrink-0"
             aria-label={
               sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
             }
@@ -393,7 +393,7 @@ export function StaffWorkspace({
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="size-8 shrink-0"
+                className="size-10 shrink-0"
                 aria-label="Sign out"
                 title="Sign out"
                 disabled={signingOut}
@@ -420,21 +420,23 @@ export function StaffWorkspace({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="border-b bg-background/95 px-4 py-4 backdrop-blur sm:px-6">
-          <div className="flex items-start justify-between gap-4">
+        <header className="workspace-chrome border-b bg-background/95 px-4 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/85 sm:px-6">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
             <div className="min-w-0">
               <p className="text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">
                 {currentPage.section}
               </p>
-              <h2 className="mt-1 truncate text-2xl font-semibold tracking-tight sm:text-3xl">
+              <h2 className="mt-1 truncate text-2xl leading-tight font-semibold tracking-tight sm:text-3xl">
                 {currentPage.title}
               </h2>
               <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
                 {currentPage.description}
               </p>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="col-span-2 row-start-2 sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:pt-1">
               <RuntimeBadge state={runtime} />
+            </div>
+            <div className="col-start-2 row-start-1 flex shrink-0 items-center gap-2 sm:col-start-3 sm:pt-1">
               <Badge
                 variant="secondary"
                 className="hidden capitalize sm:inline-flex"
@@ -444,20 +446,22 @@ export function StaffWorkspace({
               {tab !== "sales" && (
                 <Button
                   aria-label="Open register"
-                  className="gap-2"
+                  className="size-10 gap-2 sm:h-9 sm:w-auto sm:px-3"
                   onClick={() => navigate("sales")}
                 >
                   <ShoppingCart className="size-4" aria-hidden="true" />
                   <span className="hidden sm:inline">Open register</span>
-                  <span className="sm:hidden">Register</span>
                 </Button>
               )}
             </div>
           </div>
         </header>
 
-        <div className="border-b bg-muted/20 px-4 py-2 lg:hidden">
-          <div className="flex [scrollbar-width:none] gap-1 overflow-x-auto pb-0.5 [&::-webkit-scrollbar]:hidden">
+        <div className="workspace-chrome border-b bg-background/95 px-4 py-2 backdrop-blur lg:hidden">
+          <nav
+            aria-label="Mobile navigation"
+            className="flex [scrollbar-width:none] gap-1 overflow-x-auto pb-0.5 [&::-webkit-scrollbar]:hidden"
+          >
             {visibleSections
               .flatMap((section) => section.items)
               .map((item) => (
@@ -470,7 +474,7 @@ export function StaffWorkspace({
                   onClick={() => item.available !== false && navigate(item.id)}
                 />
               ))}
-          </div>
+          </nav>
         </div>
 
         <main className="min-w-0 flex-1 overflow-auto p-4 sm:p-6">
@@ -525,11 +529,7 @@ function RuntimeBadge({
     )
   }
   if (state.status === "loading") {
-    return (
-      <Badge variant="outline" className="hidden sm:inline-flex">
-        Checking mode…
-      </Badge>
-    )
+    return <Badge variant="outline">Checking mode…</Badge>
   }
   if (state.value.mode === "edge") {
     return (
@@ -589,13 +589,13 @@ function NavButton({
   const buttonProps: ComponentProps<typeof Button> = {
     type: "button",
     variant: active ? "secondary" : "ghost",
-    size: mobile ? "sm" : "default",
+    size: "default",
     className: mobile
-      ? "shrink-0 gap-2"
-      : `w-full gap-2 px-2.5 ${collapsed ? "justify-center px-0" : "justify-start"}`,
+      ? `min-h-11 shrink-0 gap-2 rounded-full px-3 ${active ? "font-semibold shadow-xs" : ""}`
+      : `min-h-10 w-full gap-2 px-2.5 ${collapsed ? "justify-center px-0" : "justify-start"} ${active ? "font-semibold shadow-xs" : ""}`,
     disabled: item.available === false,
     title: collapsed ? item.label : item.description,
-    "aria-pressed": active,
+    "aria-current": active ? "page" : undefined,
     onClick,
   }
   return (

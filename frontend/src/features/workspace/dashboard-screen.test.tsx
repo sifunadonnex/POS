@@ -110,8 +110,15 @@ it("shows live manager operations and navigates to implemented inventory work", 
   fireEvent.click(screen.getByRole("button", { name: "Open stock control" }))
   expect(onNavigate).toHaveBeenCalledWith("stock")
 
-  fireEvent.click(screen.getByRole("button", { name: "Receive goods" }))
+  fireEvent.click(
+    screen.getByRole("button", { name: "Receive goods: Purchase intake" })
+  )
   expect(onNavigate).toHaveBeenCalledWith("purchases")
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Browse products: Product catalogue" })
+  )
+  expect(onNavigate).toHaveBeenCalledWith("catalogue")
 })
 
 it("keeps manager figures private while exposing cashier workflows", () => {

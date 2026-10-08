@@ -77,6 +77,12 @@ function money(minor: number) {
   return formatKes(minor)
 }
 
+function greetingForHour(hour: number) {
+  if (hour < 12) return "Good morning"
+  if (hour < 17) return "Good afternoon"
+  return "Good evening"
+}
+
 function stockQuantity(
   quantityMinor: number,
   unit: "each" | "pack" | "kg" | "l"
@@ -136,7 +142,13 @@ function WorkArea({
   onClick: () => void
 }) {
   return (
-    <div className="group flex min-h-40 flex-col justify-between rounded-xl border bg-card p-4 shadow-xs transition-colors hover:bg-muted/30">
+    <Button
+      type="button"
+      variant="outline"
+      aria-label={`${action}: ${title}`}
+      onClick={onClick}
+      className="group h-auto min-h-40 w-full flex-col items-stretch justify-between rounded-xl bg-card p-4 text-left whitespace-normal shadow-xs transition-[background-color,box-shadow,transform] duration-150 hover:bg-muted/30 hover:shadow-sm active:translate-y-0 active:scale-[0.99] motion-reduce:transition-colors motion-reduce:active:scale-100"
+    >
       <div>
         <div className="flex items-start justify-between gap-3">
           <div className="rounded-xl bg-muted p-2.5 text-muted-foreground transition-colors group-hover:text-foreground">
@@ -148,21 +160,18 @@ function WorkArea({
             </Badge>
           )}
         </div>
-        <h3 className="mt-4 font-medium">{title}</h3>
-        <p className="mt-1 text-sm leading-5 text-muted-foreground">
+        <span className="mt-4 block text-base font-semibold tracking-tight">
+          {title}
+        </span>
+        <span className="mt-1 block text-sm leading-5 font-normal text-muted-foreground">
           {description}
-        </p>
+        </span>
       </div>
-      <Button
-        className="mt-5 w-fit gap-1.5 px-0"
-        variant="link"
-        size="sm"
-        onClick={onClick}
-      >
+      <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-primary group-hover:underline">
         {action}
         <ArrowRight className="size-3.5" aria-hidden="true" />
-      </Button>
-    </div>
+      </span>
+    </Button>
   )
 }
 
@@ -273,7 +282,8 @@ export function DashboardScreen({
                 Main shop · Command centre
               </div>
               <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-                Good morning, {staffName.split(" ")[0]}
+                {greetingForHour(new Date().getHours())},{" "}
+                {staffName.split(" ")[0]}
               </h2>
               <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
                 {manager
