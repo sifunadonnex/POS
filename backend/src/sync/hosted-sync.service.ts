@@ -17,8 +17,11 @@ import {
   createSyncSignature,
   signaturesMatch,
 } from './sync-auth.js';
-import { parseSyncEnvelope, type SyncEnvelope } from './sync-envelope.js';
-import { projectCompletedCashSale } from './sync-projection.js';
+import {
+  parseActivityEnvelope,
+  type ActivityEnvelope,
+} from './sync-activity-envelope.js';
+import { projectActivityEvent } from './sync-projection.js';
 import { syncSecretDigest } from '../store/cutover-ticket.js';
 
 export type SyncHeaders = {
@@ -80,7 +83,7 @@ export class HostedSyncService {
     if (!signaturesMatch(expected, signature)) {
       throw new UnauthorizedException('Invalid synchronization credentials');
     }
-    const envelope = parseSyncEnvelope(value);
+    const envelope = parseActivityEnvelope(value);
     if (envelope.storeId !== storeId || envelope.eventId !== eventId) {
       throw new UnauthorizedException('Invalid synchronization credentials');
     }
@@ -91,7 +94,7 @@ export class HostedSyncService {
   }
 
   private async persist(
-    envelope: SyncEnvelope,
+    envelope: ActivityEnvelope,
     fingerprint: string,
     generation: number | null,
   ) {
@@ -181,7 +184,7 @@ export class HostedSyncService {
           ],
         );
       }
-      await projectCompletedCashSale(client, envelope);
+      await projectActivityEvent(client, envelope);
       const checkpoint = await client.query<{
         accepted_events: string;
         latest_received_at: string | null;

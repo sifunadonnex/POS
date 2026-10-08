@@ -122,6 +122,31 @@ it("renders reconciliation totals and opens the selected supplier ledger", async
   )
 })
 
+it("labels synchronized purchase records and does not open the operational ledger for them", async () => {
+  mocks.getPurchaseReconciliation.mockResolvedValue({
+    ...report,
+    suppliers: [
+      {
+        ...report.suppliers[0],
+        source: "edge",
+        storeId: "11111111-1111-4111-8111-111111111111",
+      },
+    ],
+    receipts: [
+      {
+        ...report.receipts[0],
+        source: "edge",
+        storeId: "11111111-1111-4111-8111-111111111111",
+      },
+    ],
+  })
+  render(<PurchaseReconciliationScreen />)
+  expect(await screen.findByText("Net purchases")).toBeTruthy()
+  expect(screen.getAllByText("Shop PC")).toHaveLength(2)
+  expect(screen.queryByRole("button", { name: "View ledger" })).toBeNull()
+  expect(mocks.getSupplierLedger).not.toHaveBeenCalled()
+})
+
 it("applies a valid date range and rejects an inverted range locally", async () => {
   render(<PurchaseReconciliationScreen />)
   await screen.findByText("Net purchases")

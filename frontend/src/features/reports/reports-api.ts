@@ -35,6 +35,8 @@ export type PurchaseReconciliation = {
   suppliers: Array<{
     supplierId: string
     supplierName: string
+    source: "operational" | "edge"
+    storeId: string | null
     receiptCount: number
     receivedTotalMinor: number
     returnCount: number
@@ -46,6 +48,8 @@ export type PurchaseReconciliation = {
     receiptId: string
     supplierId: string
     supplierName: string
+    source: "operational" | "edge"
+    storeId: string | null
     totalMinor: number
     returnedTotalMinor: number
     netTotalMinor: number
@@ -69,7 +73,7 @@ export type SalesInsights = {
     latestReceivedAt: string | null
   }
   coverage: {
-    synchronizedReturns: "not_applicable" | "not_available"
+    synchronizedReturns: "not_applicable" | "not_available" | "available"
   }
   summary: {
     saleCount: number
@@ -112,6 +116,63 @@ export type SalesInsights = {
     quantityMinor: number
     grossSalesMinor: number
     saleCount: number
+  }>
+}
+
+export type StockPosition = {
+  source: "operational" | "edge"
+  storeId: string | null
+  reportingLag: SalesInsights["reportingLag"]
+  products: Array<{
+    productId: string
+    sku: string
+    name: string
+    unit: "each" | "pack" | "kg" | "l"
+    quantityMinor: number
+    movementCount: number
+  }>
+}
+
+export type OperationDocuments = {
+  from: string
+  to: string
+  page: number
+  storeId: string | null
+  source: "edge"
+  total: number
+  documents: Array<{
+    eventId: string
+    documentId: string
+    eventType:
+      | "purchase_receipt.received"
+      | "purchase_return.returned"
+      | "stocktake.counted"
+    occurredAt: string
+    actorId: string
+    actorName: string
+    reason: string
+    supplierId: string | null
+    supplierName: string | null
+    receiptId: string | null
+    totalMinor: number | null
+    productId: string | null
+    productName: string | null
+    sku: string | null
+    unit: "each" | "pack" | "kg" | "l" | null
+    previousQuantityMinor: number | null
+    countedQuantityMinor: number | null
+    deltaMinor: number | null
+    lines: Array<{
+      lineId: string
+      productId: string
+      productName: string
+      sku: string
+      unit: "each" | "pack" | "kg" | "l"
+      quantityMinor: number
+      unitCostMinor: number
+      lineTotalMinor: number
+      receiptLineId?: string
+    }>
   }>
 }
 
@@ -299,6 +360,12 @@ function parsePurchaseReconciliation(value: unknown): PurchaseReconciliation {
     if (
       typeof supplier.supplierId !== "string" ||
       typeof supplier.supplierName !== "string" ||
+      ![undefined, "operational", "edge"].includes(
+        supplier.source as string | undefined
+      ) ||
+      (supplier.source === "edge" &&
+        (typeof supplier.storeId !== "string" ||
+          !UUID.test(supplier.storeId))) ||
       (supplier.lastReceiptAt !== null && !isDate(supplier.lastReceiptAt)) ||
       fields.some((field) =>
         field === "netPurchasesMinor"
@@ -311,6 +378,11 @@ function parsePurchaseReconciliation(value: unknown): PurchaseReconciliation {
     return {
       supplierId: supplier.supplierId,
       supplierName: supplier.supplierName,
+      source:
+        supplier.source === "edge"
+          ? ("edge" as const)
+          : ("operational" as const),
+      storeId: supplier.source === "edge" ? (supplier.storeId as string) : null,
       receiptCount: supplier.receiptCount as number,
       receivedTotalMinor: supplier.receivedTotalMinor as number,
       returnCount: supplier.returnCount as number,
@@ -335,6 +407,11 @@ function parsePurchaseReconciliation(value: unknown): PurchaseReconciliation {
       typeof receipt.receiptId !== "string" ||
       typeof receipt.supplierId !== "string" ||
       typeof receipt.supplierName !== "string" ||
+      ![undefined, "operational", "edge"].includes(
+        receipt.source as string | undefined
+      ) ||
+      (receipt.source === "edge" &&
+        (typeof receipt.storeId !== "string" || !UUID.test(receipt.storeId))) ||
       typeof receipt.reason !== "string" ||
       !isDate(receipt.createdAt) ||
       fields.some((field) =>
@@ -349,6 +426,11 @@ function parsePurchaseReconciliation(value: unknown): PurchaseReconciliation {
       receiptId: receipt.receiptId,
       supplierId: receipt.supplierId,
       supplierName: receipt.supplierName,
+      source:
+        receipt.source === "edge"
+          ? ("edge" as const)
+          : ("operational" as const),
+      storeId: receipt.source === "edge" ? (receipt.storeId as string) : null,
       totalMinor: receipt.totalMinor as number,
       returnedTotalMinor: receipt.returnedTotalMinor as number,
       netTotalMinor: receipt.netTotalMinor as number,
@@ -472,7 +554,8 @@ function parseSalesInsights(value: unknown): SalesInsights {
   const coverage = row.coverage as Record<string, unknown>
   if (
     coverage.synchronizedReturns !== "not_applicable" &&
-    coverage.synchronizedReturns !== "not_available"
+    coverage.synchronizedReturns !== "not_available" &&
+    coverage.synchronizedReturns !== "available"
   ) {
     throw new Error("Invalid sales reporting coverage")
   }
@@ -668,4 +751,243 @@ export async function getSalesInsights(
     throw new Error(message)
   }
   return parseSalesInsights(result)
+}
+
+export async function getStockPosition(
+  signal?: AbortSignal
+): Promise<StockPosition> {
+  const response = await fetch("/api/reports/stock", {
+    credentials: "same-origin",
+    cache: "no-store",
+    signal,
+  })
+  if (response.status === 401) {
+    window.dispatchEvent(new Event("paygo-session-expired"))
+    throw new Error("Your session expired. Sign in again to continue.")
+  }
+  const value: unknown = await response.json()
+  if (!response.ok) {
+    throw new Error(
+      value &&
+        typeof value === "object" &&
+        "message" in value &&
+        typeof value.message === "string"
+        ? value.message
+        : "Stock position could not be loaded. Please retry."
+    )
+  }
+  if (!value || typeof value !== "object")
+    throw new Error("Invalid stock position response")
+  const row = value as Record<string, unknown>
+  if (
+    (row.source !== "operational" && row.source !== "edge") ||
+    (row.storeId !== null &&
+      (typeof row.storeId !== "string" || !UUID.test(row.storeId))) ||
+    (row.source === "edge" && row.storeId === null) ||
+    !Array.isArray(row.products) ||
+    !row.reportingLag ||
+    typeof row.reportingLag !== "object"
+  ) {
+    throw new Error("Invalid stock position response")
+  }
+  const lag = row.reportingLag as Record<string, unknown>
+  if (
+    !["current", "lagging", "not_configured"].includes(String(lag.status)) ||
+    !integer(lag.pendingEvents) ||
+    !integer(lag.receivedEvents) ||
+    !integer(lag.projectedEvents) ||
+    (lag.latestReceivedAt !== null && !isDate(lag.latestReceivedAt)) ||
+    lag.projectedEvents > lag.receivedEvents
+  ) {
+    throw new Error("Invalid stock reporting lag")
+  }
+  const products = row.products.map((value) => {
+    if (!value || typeof value !== "object")
+      throw new Error("Invalid stock position product")
+    const item = value as Record<string, unknown>
+    if (
+      typeof item.productId !== "string" ||
+      !UUID.test(item.productId) ||
+      typeof item.sku !== "string" ||
+      !item.sku.trim() ||
+      typeof item.name !== "string" ||
+      !item.name.trim() ||
+      !["each", "pack", "kg", "l"].includes(String(item.unit)) ||
+      !integer(item.quantityMinor, true) ||
+      !integer(item.movementCount)
+    ) {
+      throw new Error("Invalid stock position product")
+    }
+    return {
+      productId: item.productId,
+      sku: item.sku,
+      name: item.name,
+      unit: item.unit as StockPosition["products"][number]["unit"],
+      quantityMinor: item.quantityMinor as number,
+      movementCount: item.movementCount as number,
+    }
+  })
+  return {
+    source: row.source,
+    storeId: row.storeId as string | null,
+    reportingLag: {
+      status: lag.status as StockPosition["reportingLag"]["status"],
+      pendingEvents: lag.pendingEvents as number,
+      receivedEvents: lag.receivedEvents as number,
+      projectedEvents: lag.projectedEvents as number,
+      latestReceivedAt: lag.latestReceivedAt as string | null,
+    },
+    products,
+  }
+}
+
+export async function getOperationDocuments(
+  from: string,
+  to: string,
+  page = 1,
+  signal?: AbortSignal
+): Promise<OperationDocuments> {
+  const response = await fetch(
+    `/api/reports/operation-documents?${new URLSearchParams({ from, to, page: String(page) })}`,
+    { credentials: "same-origin", cache: "no-store", signal }
+  )
+  if (response.status === 401) {
+    window.dispatchEvent(new Event("paygo-session-expired"))
+    throw new Error("Your session expired. Sign in again to continue.")
+  }
+  const value: unknown = await response.json()
+  if (!response.ok) {
+    throw new Error(
+      value &&
+        typeof value === "object" &&
+        "message" in value &&
+        typeof value.message === "string"
+        ? value.message
+        : "Store documents could not be loaded. Please retry."
+    )
+  }
+  if (!value || typeof value !== "object")
+    throw new Error("Invalid store documents response")
+  const row = value as Record<string, unknown>
+  if (
+    row.source !== "edge" ||
+    (row.storeId !== null &&
+      (typeof row.storeId !== "string" || !UUID.test(row.storeId))) ||
+    row.from !== from ||
+    row.to !== to ||
+    row.page !== page ||
+    !integer(row.total) ||
+    !Array.isArray(row.documents) ||
+    row.documents.length > 50
+  )
+    throw new Error("Invalid store documents response")
+  const documents: OperationDocuments["documents"] = row.documents.map(
+    (value) => {
+      if (!value || typeof value !== "object")
+        throw new Error("Invalid store document")
+      const doc = value as Record<string, unknown>
+      if (
+        typeof doc.eventId !== "string" ||
+        !UUID.test(doc.eventId) ||
+        typeof doc.documentId !== "string" ||
+        !UUID.test(doc.documentId) ||
+        ![
+          "purchase_receipt.received",
+          "purchase_return.returned",
+          "stocktake.counted",
+        ].includes(String(doc.eventType)) ||
+        !isDate(doc.occurredAt) ||
+        typeof doc.actorId !== "string" ||
+        typeof doc.actorName !== "string" ||
+        !doc.actorName.trim() ||
+        typeof doc.reason !== "string" ||
+        !doc.reason.trim() ||
+        (doc.supplierName !== null &&
+          (typeof doc.supplierName !== "string" || !doc.supplierName.trim())) ||
+        (doc.productName !== null &&
+          (typeof doc.productName !== "string" || !doc.productName.trim())) ||
+        (doc.sku !== null && typeof doc.sku !== "string") ||
+        (doc.unit !== null &&
+          !["each", "pack", "kg", "l"].includes(String(doc.unit))) ||
+        !Array.isArray(doc.lines)
+      )
+        throw new Error("Invalid store document")
+      for (const field of ["supplierId", "receiptId", "productId"] as const) {
+        if (
+          doc[field] !== null &&
+          (typeof doc[field] !== "string" || !UUID.test(doc[field]))
+        )
+          throw new Error("Invalid store document")
+      }
+      for (const field of [
+        "totalMinor",
+        "previousQuantityMinor",
+        "countedQuantityMinor",
+        "deltaMinor",
+      ] as const) {
+        if (doc[field] !== null && !integer(doc[field], field === "deltaMinor"))
+          throw new Error("Invalid store document amount")
+      }
+      const lines = doc.lines.map((value: unknown) => {
+        if (!value || typeof value !== "object")
+          throw new Error("Invalid store document line")
+        const line = value as Record<string, unknown>
+        if (
+          typeof line.lineId !== "string" ||
+          !UUID.test(line.lineId) ||
+          typeof line.productId !== "string" ||
+          !UUID.test(line.productId) ||
+          typeof line.productName !== "string" ||
+          !line.productName.trim() ||
+          typeof line.sku !== "string" ||
+          !line.sku.trim() ||
+          !["each", "pack", "kg", "l"].includes(String(line.unit)) ||
+          !integer(line.quantityMinor) ||
+          line.quantityMinor === 0 ||
+          !integer(line.unitCostMinor) ||
+          !integer(line.lineTotalMinor) ||
+          (line.receiptLineId !== undefined &&
+            (typeof line.receiptLineId !== "string" ||
+              !UUID.test(line.receiptLineId)))
+        )
+          throw new Error("Invalid store document line")
+        return line as OperationDocuments["documents"][number]["lines"][number]
+      })
+      if (doc.eventType === "stocktake.counted") {
+        if (
+          doc.productId === null ||
+          doc.countedQuantityMinor === null ||
+          doc.previousQuantityMinor === null ||
+          doc.deltaMinor === null ||
+          doc.productName === null ||
+          doc.unit === null ||
+          (doc.countedQuantityMinor as number) -
+            (doc.previousQuantityMinor as number) !==
+            doc.deltaMinor ||
+          lines.length !== 0
+        )
+          throw new Error("Invalid stocktake document")
+      } else if (
+        doc.supplierId === null ||
+        doc.supplierName === null ||
+        doc.totalMinor === null ||
+        lines.length === 0 ||
+        lines.reduce((sum, line) => sum + BigInt(line.lineTotalMinor), 0n) !==
+          BigInt(doc.totalMinor as number) ||
+        (doc.eventType === "purchase_return.returned" && doc.receiptId === null)
+      ) {
+        throw new Error("Invalid purchase document")
+      }
+      return { ...doc, lines } as OperationDocuments["documents"][number]
+    }
+  )
+  return {
+    from,
+    to,
+    page,
+    storeId: row.storeId as string | null,
+    source: "edge",
+    total: row.total as number,
+    documents,
+  }
 }

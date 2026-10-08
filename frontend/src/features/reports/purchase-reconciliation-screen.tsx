@@ -133,8 +133,10 @@ export function PurchaseReconciliationScreen() {
         <div>
           <h2 className="text-xl font-semibold">Purchase reconciliation</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Compare supplier receipts with returns and review the net stock
-            cost.
+            Compare supplier receipts with returns and review the net stock cost
+            across hosted operations and delivered shop-PC documents. Compare
+            the shop PC's pending event count before treating these totals as
+            current.
           </p>
         </div>
         <Button
@@ -244,8 +246,8 @@ export function PurchaseReconciliationScreen() {
             <CardHeader className="border-b">
               <CardTitle>Supplier ledger summary</CardTitle>
               <CardDescription>
-                Select a supplier to inspect its signed receipt and return
-                entries.
+                Hosted suppliers have a signed operational ledger. Shop-PC
+                document details appear under Store documents.
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
@@ -270,6 +272,11 @@ export function PurchaseReconciliationScreen() {
                       <TableRow key={supplier.supplierId}>
                         <TableCell className="font-medium">
                           {supplier.supplierName}
+                          {supplier.source === "edge" && (
+                            <Badge variant="outline" className="ml-2">
+                              Shop PC
+                            </Badge>
+                          )}
                         </TableCell>
                         <TableCell>{supplier.receiptCount}</TableCell>
                         <TableCell className="tabular-nums">
@@ -282,14 +289,22 @@ export function PurchaseReconciliationScreen() {
                           {money(supplier.netPurchasesMinor)}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => void openLedger(supplier.supplierId)}
-                            disabled={ledgerLoading}
-                          >
-                            View ledger
-                          </Button>
+                          {supplier.source === "edge" ? (
+                            <span className="text-xs text-muted-foreground">
+                              Store documents
+                            </span>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                void openLedger(supplier.supplierId)
+                              }
+                              disabled={ledgerLoading}
+                            >
+                              View ledger
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -337,6 +352,11 @@ export function PurchaseReconciliationScreen() {
                         <TableCell>{shortDate(receipt.createdAt)}</TableCell>
                         <TableCell className="font-medium">
                           {receipt.supplierName}
+                          {receipt.source === "edge" && (
+                            <Badge variant="outline" className="ml-2">
+                              Shop PC
+                            </Badge>
+                          )}
                         </TableCell>
                         <TableCell className="font-mono text-xs">
                           {receipt.receiptId.slice(0, 8)}

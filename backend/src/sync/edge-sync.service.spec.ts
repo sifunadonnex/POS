@@ -139,6 +139,12 @@ describe('EdgeSyncService', () => {
       pendingTotalMinor: '3000',
       deliveredEvents: 3,
       deliveredTotalMinor: '5250',
+      enqueuedRefundMinor: '0',
+      pendingRefundMinor: '0',
+      deliveredRefundMinor: '0',
+      enqueuedStockDeltaMinor: '0',
+      pendingStockDeltaMinor: '0',
+      deliveredStockDeltaMinor: '0',
     });
   });
 
@@ -178,6 +184,12 @@ describe('EdgeSyncService', () => {
       projectedTotalMinor: '6100',
       unprojectedEvents: 1,
       amountVarianceMinor: '1200',
+      receivedRefundMinor: '0',
+      projectedRefundMinor: '0',
+      refundVarianceMinor: '0',
+      receivedStockDeltaMinor: '0',
+      projectedStockDeltaMinor: '0',
+      stockDeltaVarianceMinor: '0',
     });
   });
 });

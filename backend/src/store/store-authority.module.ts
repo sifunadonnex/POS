@@ -10,6 +10,7 @@ import { HostedBootstrapService } from './hosted-bootstrap.service.js';
 import { HostedConfigurationService } from './hosted-configuration.service.js';
 import { EdgeConfigurationService } from './edge-configuration.service.js';
 import { HostedCutoverService } from './hosted-cutover.service.js';
+import { EdgeStaffEnrollmentService } from './edge-staff-enrollment.service.js';
 
 @Module({
   imports: [ConfigModule, DatabaseModule],
@@ -20,6 +21,7 @@ import { HostedCutoverService } from './hosted-cutover.service.js';
     HostedConfigurationService,
     EdgeConfigurationService,
     HostedCutoverService,
+    EdgeStaffEnrollmentService,
     { provide: APP_GUARD, useClass: StoreAuthorityGuard },
   ],
   controllers: [BootstrapController],

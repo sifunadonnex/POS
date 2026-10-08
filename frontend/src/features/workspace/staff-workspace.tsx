@@ -135,7 +135,7 @@ const navigationSections: Array<{
       {
         id: "reports",
         label: "Reports",
-        description: "Sales insights and purchase reconciliation",
+        description: "Sales, stock and purchase reports",
         icon: BarChart3,
         managerOnly: true,
       },
@@ -234,7 +234,7 @@ const pageDetails: Record<
     section: "Insights",
     title: "Reports",
     description:
-      "Review sales trends, cashier performance and purchase reconciliation.",
+      "Review sales trends, stock position and purchase reconciliation.",
   },
 }
 

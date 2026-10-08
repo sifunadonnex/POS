@@ -414,46 +414,210 @@ export class ReportsService {
       const receivedTotalMinor = safeInteger(summary.received_total_minor);
       const returnedTotalMinor = safeInteger(summary.returned_total_minor);
 
+      const edgeStoreId =
+        this.config.runtime.mode === 'hosted'
+          ? this.config.sync?.storeId
+          : undefined;
+      const edgeDocuments = edgeStoreId
+        ? await this.database.connectionPool.query<{
+            document_id: string;
+            event_type:
+              'purchase_receipt.received' | 'purchase_return.returned';
+            supplier_id: string;
+            supplier_name: string;
+            receipt_id: string | null;
+            total_minor: string;
+            reason: string;
+            occurred_at: string;
+            line_count: number;
+          }>(
+            `SELECT document_id,event_type,supplier_id,supplier_name,receipt_id,
+              total_minor::text,reason,occurred_at::text,
+              jsonb_array_length(lines) AS line_count
+             FROM sync_operation_document_projection
+             WHERE store_id = $1 AND event_type IN
+               ('purchase_receipt.received','purchase_return.returned')
+               AND (occurred_at AT TIME ZONE 'Africa/Nairobi')::date
+                 BETWEEN $2::date AND $3::date`,
+            [edgeStoreId, from, to],
+          )
+        : {
+            rows: [] as Array<{
+              document_id: string;
+              event_type: string;
+              supplier_id: string;
+              supplier_name: string;
+              receipt_id: string | null;
+              total_minor: string;
+              reason: string;
+              occurred_at: string;
+              line_count: number;
+            }>,
+          };
+      const edgeReceipts = edgeDocuments.rows.filter(
+        (row) => row.event_type === 'purchase_receipt.received',
+      );
+      const edgeReturns = edgeDocuments.rows.filter(
+        (row) => row.event_type === 'purchase_return.returned',
+      );
+      const returnedForReceipts =
+        edgeStoreId && edgeReceipts.length
+          ? await this.database.connectionPool.query<{
+              receipt_id: string;
+              returned_minor: string;
+            }>(
+              `SELECT receipt_id, SUM(total_minor)::text AS returned_minor
+             FROM sync_operation_document_projection
+             WHERE store_id = $1 AND event_type = 'purchase_return.returned'
+               AND receipt_id = ANY($2::uuid[]) GROUP BY receipt_id`,
+              [edgeStoreId, edgeReceipts.map((row) => row.document_id)],
+            )
+          : {
+              rows: [] as Array<{ receipt_id: string; returned_minor: string }>,
+            };
+      const returnedByReceipt = new Map(
+        returnedForReceipts.rows.map((row) => [
+          row.receipt_id,
+          safeInteger(row.returned_minor),
+        ]),
+      );
+      const edgeSuppliers = new Map<
+        string,
+        {
+          supplierId: string;
+          supplierName: string;
+          source: 'edge';
+          storeId: string;
+          receiptCount: number;
+          receivedTotalMinor: number;
+          returnCount: number;
+          returnedTotalMinor: number;
+          netPurchasesMinor: number;
+          lastReceiptAt: string | null;
+        }
+      >();
+      for (const row of edgeDocuments.rows) {
+        const key = row.supplier_id;
+        let supplier = edgeSuppliers.get(key);
+        if (!supplier) {
+          supplier = {
+            supplierId: key,
+            supplierName: row.supplier_name,
+            source: 'edge',
+            storeId: edgeStoreId!,
+            receiptCount: 0,
+            receivedTotalMinor: 0,
+            returnCount: 0,
+            returnedTotalMinor: 0,
+            netPurchasesMinor: 0,
+            lastReceiptAt: null,
+          };
+          edgeSuppliers.set(key, supplier);
+        }
+        const amount = safeInteger(row.total_minor);
+        if (row.event_type === 'purchase_receipt.received') {
+          supplier.receiptCount++;
+          supplier.receivedTotalMinor = safeInteger(
+            supplier.receivedTotalMinor + amount,
+          );
+          if (
+            !supplier.lastReceiptAt ||
+            row.occurred_at > supplier.lastReceiptAt
+          )
+            supplier.lastReceiptAt = row.occurred_at;
+        } else {
+          supplier.returnCount++;
+          supplier.returnedTotalMinor = safeInteger(
+            supplier.returnedTotalMinor + amount,
+          );
+        }
+        supplier.netPurchasesMinor = safeInteger(
+          supplier.receivedTotalMinor - supplier.returnedTotalMinor,
+        );
+      }
+      const edgeReceived = edgeReceipts.reduce(
+        (sum, row) => sum + safeInteger(row.total_minor),
+        0,
+      );
+      const edgeReturned = edgeReturns.reduce(
+        (sum, row) => sum + safeInteger(row.total_minor),
+        0,
+      );
+      const allReceived = safeInteger(receivedTotalMinor + edgeReceived);
+      const allReturned = safeInteger(returnedTotalMinor + edgeReturned);
+      const supplierCount = new Set([
+        ...supplierResult.rows.map((row) => row.supplier_id),
+        ...edgeSuppliers.keys(),
+      ]).size;
+
       return {
         from,
         to,
+        reportingLag: await this.reportingLag(),
         summary: {
-          receiptCount: safeInteger(summary.receipt_count),
-          receivedTotalMinor,
-          returnCount: safeInteger(summary.return_count),
-          returnedTotalMinor,
-          netPurchasesMinor: receivedTotalMinor - returnedTotalMinor,
-          supplierCount: safeInteger(summary.supplier_count),
+          receiptCount:
+            safeInteger(summary.receipt_count) + edgeReceipts.length,
+          receivedTotalMinor: allReceived,
+          returnCount: safeInteger(summary.return_count) + edgeReturns.length,
+          returnedTotalMinor: allReturned,
+          netPurchasesMinor: safeInteger(allReceived - allReturned),
+          supplierCount,
         },
-        suppliers: supplierResult.rows.map((row) => {
-          const received = safeInteger(row.received_total_minor);
-          const returned = safeInteger(row.returned_total_minor);
-          return {
-            supplierId: row.supplier_id,
-            supplierName: row.supplier_name,
-            receiptCount: safeInteger(row.receipt_count),
-            receivedTotalMinor: received,
-            returnCount: safeInteger(row.return_count),
-            returnedTotalMinor: returned,
-            netPurchasesMinor: received - returned,
-            lastReceiptAt: row.last_receipt_at,
-          };
-        }),
-        receipts: receiptResult.rows.map((row) => {
-          const total = safeInteger(row.total_minor);
-          const returned = safeInteger(row.returned_total_minor);
-          return {
-            receiptId: row.receipt_id,
-            supplierId: row.supplier_id,
-            supplierName: row.supplier_name,
-            totalMinor: total,
-            returnedTotalMinor: returned,
-            netTotalMinor: total - returned,
-            reason: row.reason,
-            createdAt: row.created_at,
-            lineCount: safeInteger(row.line_count),
-          };
-        }),
+        suppliers: [
+          ...supplierResult.rows.map((row) => {
+            const received = safeInteger(row.received_total_minor);
+            const returned = safeInteger(row.returned_total_minor);
+            return {
+              supplierId: row.supplier_id,
+              supplierName: row.supplier_name,
+              source: 'operational' as const,
+              storeId: null,
+              receiptCount: safeInteger(row.receipt_count),
+              receivedTotalMinor: received,
+              returnCount: safeInteger(row.return_count),
+              returnedTotalMinor: returned,
+              netPurchasesMinor: received - returned,
+              lastReceiptAt: row.last_receipt_at,
+            };
+          }),
+          ...edgeSuppliers.values(),
+        ],
+        receipts: [
+          ...receiptResult.rows.map((row) => {
+            const total = safeInteger(row.total_minor);
+            const returned = safeInteger(row.returned_total_minor);
+            return {
+              receiptId: row.receipt_id,
+              supplierId: row.supplier_id,
+              supplierName: row.supplier_name,
+              source: 'operational' as const,
+              storeId: null,
+              totalMinor: total,
+              returnedTotalMinor: returned,
+              netTotalMinor: total - returned,
+              reason: row.reason,
+              createdAt: row.created_at,
+              lineCount: safeInteger(row.line_count),
+            };
+          }),
+          ...edgeReceipts.map((row) => {
+            const total = safeInteger(row.total_minor);
+            const returned = returnedByReceipt.get(row.document_id) ?? 0;
+            return {
+              receiptId: row.document_id,
+              supplierId: row.supplier_id,
+              supplierName: row.supplier_name,
+              source: 'edge' as const,
+              storeId: edgeStoreId!,
+              totalMinor: total,
+              returnedTotalMinor: returned,
+              netTotalMinor: total - returned,
+              reason: row.reason,
+              createdAt: row.occurred_at,
+              lineCount: row.line_count,
+            };
+          }),
+        ],
       };
     } catch (error) {
       if (
@@ -662,12 +826,19 @@ export class ReportsService {
       productResult,
     ] = await Promise.all([
       this.database.connectionPool.query<SalesSummaryRow>(
-        `SELECT COUNT(*)::int AS sale_count,
-          COALESCE(SUM(total_minor), 0)::bigint AS gross_sales_minor,
-          0::int AS refund_count, 0::bigint AS refund_minor,
-          COUNT(DISTINCT cashier_id)::int AS active_cashier_count
-        FROM sync_cash_sale_projection sale
-        WHERE store_id = $3 AND ${period()}`,
+        `WITH sales AS (
+          SELECT COUNT(*)::int AS sale_count,
+            COALESCE(SUM(total_minor), 0)::bigint AS gross_sales_minor,
+            COUNT(DISTINCT cashier_id)::int AS active_cashier_count
+          FROM sync_cash_sale_projection sale
+          WHERE store_id = $3 AND ${period()}
+        ), refunds AS (
+          SELECT COUNT(*)::int AS refund_count,
+            COALESCE(SUM(amount_minor), 0)::bigint AS refund_minor
+          FROM sync_refund_projection refund
+          WHERE store_id = $3 AND ${period('refund')}
+        )
+        SELECT * FROM sales CROSS JOIN refunds`,
         params,
       ),
       this.database.connectionPool.query<DailySalesRow>(
@@ -680,26 +851,55 @@ export class ReportsService {
             FROM sync_cash_sale_projection sale
             WHERE sale.store_id = $3 AND ${period()}
             GROUP BY 1
+          ), refunds AS (
+            SELECT (refund.occurred_at AT TIME ZONE 'Africa/Nairobi')::date AS day,
+              COALESCE(SUM(refund.amount_minor), 0)::bigint AS refund_minor
+            FROM sync_refund_projection refund
+            WHERE refund.store_id = $3 AND ${period('refund')}
+            GROUP BY 1
           )
           SELECT calendar.day::text AS day,
             COALESCE(sales.sale_count, 0)::int AS sale_count,
             COALESCE(sales.gross_sales_minor, 0)::bigint AS gross_sales_minor,
-            0::bigint AS refund_minor
+            COALESCE(refunds.refund_minor, 0)::bigint AS refund_minor
           FROM calendar LEFT JOIN sales USING (day)
+          LEFT JOIN refunds USING (day)
           ORDER BY calendar.day`,
         params,
       ),
       this.database.connectionPool.query<CashierSalesRow>(
-        `SELECT sale.cashier_id,
-          (array_agg(sale.cashier_name ORDER BY sale.occurred_at DESC))[1] AS cashier_name,
-          COUNT(*)::int AS sale_count,
-          COALESCE(SUM(sale.total_minor), 0)::bigint AS gross_sales_minor,
-          0::bigint AS refund_minor
-        FROM sync_cash_sale_projection sale
-        WHERE sale.store_id = $3 AND ${period()}
-        GROUP BY sale.cashier_id
-        ORDER BY gross_sales_minor DESC, lower((array_agg(sale.cashier_name
-          ORDER BY sale.occurred_at DESC))[1]), sale.cashier_id`,
+        `WITH sales AS (
+          SELECT sale.cashier_id,
+            (array_agg(sale.cashier_name ORDER BY sale.occurred_at DESC))[1]
+              AS cashier_name,
+            COUNT(*)::int AS sale_count,
+            COALESCE(SUM(sale.total_minor), 0)::bigint AS gross_sales_minor
+          FROM sync_cash_sale_projection sale
+          WHERE sale.store_id = $3 AND ${period()}
+          GROUP BY sale.cashier_id
+        ), refunds AS (
+          SELECT refund.cashier_id,
+            (array_agg(refund.cashier_name ORDER BY refund.occurred_at DESC))[1]
+              AS cashier_name,
+            COALESCE(SUM(refund.amount_minor), 0)::bigint AS refund_minor
+          FROM sync_refund_projection refund
+          WHERE refund.store_id = $3 AND ${period('refund')}
+          GROUP BY refund.cashier_id
+        ), activity AS (
+          SELECT cashier_id FROM sales UNION SELECT cashier_id FROM refunds
+        )
+        SELECT activity.cashier_id,
+          COALESCE(sales.cashier_name, refunds.cashier_name) AS cashier_name,
+          COALESCE(sales.sale_count, 0)::int AS sale_count,
+          COALESCE(sales.gross_sales_minor, 0)::bigint AS gross_sales_minor,
+          COALESCE(refunds.refund_minor, 0)::bigint AS refund_minor
+        FROM activity
+        LEFT JOIN sales USING (cashier_id)
+        LEFT JOIN refunds USING (cashier_id)
+        ORDER BY (COALESCE(sales.gross_sales_minor, 0) -
+          COALESCE(refunds.refund_minor, 0)) DESC,
+          lower(COALESCE(sales.cashier_name, refunds.cashier_name)),
+          activity.cashier_id`,
         params,
       ),
       this.database.connectionPool.query<PaymentMixRow>(
@@ -919,10 +1119,15 @@ export class ReportsService {
       latest_received_at: string | null;
     }>(
       `SELECT COUNT(i.id)::int AS received_events,
-        COUNT(p.event_id)::int AS projected_events,
+        (COUNT(p.event_id) + COUNT(r.event_id) + COUNT(m.event_id)
+          + COUNT(d.event_id))::int
+          AS projected_events,
         MAX(i.received_at)::text AS latest_received_at
       FROM sync_inbox i
       LEFT JOIN sync_cash_sale_projection p ON p.event_id = i.id
+      LEFT JOIN sync_refund_projection r ON r.event_id = i.id
+      LEFT JOIN sync_stock_movement_projection m ON m.event_id = i.id
+      LEFT JOIN sync_operation_document_projection d ON d.event_id = i.id
       WHERE i.store_id = $1`,
       [sync.storeId],
     );
@@ -983,7 +1188,7 @@ export class ReportsService {
           synchronizedReturns:
             sources.selected.source === 'operational'
               ? ('not_applicable' as const)
-              : ('not_available' as const),
+              : ('available' as const),
         },
         ...data,
       };
@@ -998,5 +1203,186 @@ export class ReportsService {
         'Sales insights are temporarily unavailable',
       );
     }
+  }
+
+  async stockPosition() {
+    const state = await this.database.connectionPool.query<{
+      store_id: string;
+      checkout_authority: 'hosted' | 'local';
+      runtime_mode: 'hosted' | 'edge';
+    }>(
+      'SELECT store_id, checkout_authority, runtime_mode FROM store_bootstrap_state WHERE singleton',
+    );
+    const edgeSource =
+      this.config.runtime.mode === 'hosted' &&
+      state.rows[0]?.runtime_mode === 'hosted' &&
+      state.rows[0]?.checkout_authority === 'local';
+    if (
+      edgeSource &&
+      (!this.config.sync || state.rows[0].store_id !== this.config.sync.storeId)
+    )
+      throw new ServiceUnavailableException(
+        'Store synchronization is unavailable',
+      );
+    const storeId = edgeSource ? (this.config.sync?.storeId ?? null) : null;
+    const rows = edgeSource
+      ? await this.database.connectionPool.query<{
+          product_id: string;
+          sku: string;
+          product_name: string;
+          unit: 'each' | 'pack' | 'kg' | 'l';
+          quantity_minor: string;
+          movement_count: string;
+        }>(
+          `SELECT p.id AS product_id, p.sku, p.name AS product_name,
+            p.unit, COALESCE(SUM(m.delta_minor), 0)::text AS quantity_minor,
+            COUNT(m.event_id)::text AS movement_count
+          FROM catalogue_product p
+          LEFT JOIN sync_stock_movement_projection m
+            ON m.product_id = p.id AND m.store_id = $1
+          GROUP BY p.id, p.sku, p.name, p.unit
+          ORDER BY lower(p.name), p.id`,
+          [storeId],
+        )
+      : await this.database.connectionPool.query<{
+          product_id: string;
+          sku: string;
+          product_name: string;
+          unit: 'each' | 'pack' | 'kg' | 'l';
+          quantity_minor: string;
+          movement_count: string;
+        }>(
+          `SELECT p.id AS product_id, p.sku, p.name AS product_name,
+            p.unit, COALESCE(s.quantity_minor, 0)::text AS quantity_minor,
+            0::text AS movement_count
+          FROM catalogue_product p
+          LEFT JOIN inventory_stock s ON s.product_id = p.id
+          ORDER BY lower(p.name), p.id`,
+        );
+    return {
+      source: edgeSource ? ('edge' as const) : ('operational' as const),
+      storeId,
+      reportingLag: await this.reportingLag(),
+      products: rows.rows.map((row) => ({
+        productId: row.product_id,
+        sku: row.sku,
+        name: row.product_name,
+        unit: row.unit,
+        quantityMinor: safeInteger(row.quantity_minor),
+        movementCount: safeInteger(row.movement_count),
+      })),
+    };
+  }
+
+  async operationDocuments(
+    fromValue: string,
+    toValue: string,
+    pageValue?: string,
+  ) {
+    const { from, to } = this.validateRange(fromValue, toValue, 366);
+    const page = pageValue === undefined ? 1 : Number(pageValue);
+    if (!Number.isSafeInteger(page) || page < 1 || page > 1000)
+      throw new BadRequestException('Invalid document page');
+    const storeId = this.config.sync?.storeId ?? null;
+    if (this.config.runtime.mode !== 'hosted' || !storeId) {
+      return {
+        from,
+        to,
+        page,
+        storeId: null,
+        source: 'edge' as const,
+        total: 0,
+        documents: [],
+      };
+    }
+    const state = await this.database.connectionPool.query<{
+      store_id: string;
+      runtime_mode: string;
+    }>(
+      'SELECT store_id, runtime_mode FROM store_bootstrap_state WHERE singleton',
+    );
+    if (
+      state.rows[0] &&
+      (state.rows[0].store_id !== storeId ||
+        state.rows[0].runtime_mode !== 'hosted')
+    )
+      throw new ServiceUnavailableException(
+        'Store synchronization is unavailable',
+      );
+    const params = [storeId, from, to];
+    const total = await this.database.connectionPool.query<{ total: string }>(
+      `SELECT COUNT(*)::text AS total FROM sync_operation_document_projection
+       WHERE store_id = $1 AND (occurred_at AT TIME ZONE 'Africa/Nairobi')::date
+         BETWEEN $2::date AND $3::date`,
+      params,
+    );
+    const rows = await this.database.connectionPool.query<{
+      event_id: string;
+      document_id: string;
+      event_type: string;
+      occurred_at: string;
+      actor_id: string;
+      actor_name: string;
+      reason: string;
+      supplier_id: string | null;
+      supplier_name: string | null;
+      receipt_id: string | null;
+      total_minor: string | null;
+      product_id: string | null;
+      product_name: string | null;
+      sku: string | null;
+      unit: string | null;
+      previous_quantity_minor: string | null;
+      counted_quantity_minor: string | null;
+      delta_minor: string | null;
+      lines: unknown;
+    }>(
+      `SELECT event_id,document_id,event_type,occurred_at,actor_id,actor_name,
+        reason,supplier_id,supplier_name,receipt_id,total_minor,product_id,
+        product_name,sku,unit,previous_quantity_minor,counted_quantity_minor,
+        delta_minor,lines
+       FROM sync_operation_document_projection
+       WHERE store_id = $1 AND (occurred_at AT TIME ZONE 'Africa/Nairobi')::date
+         BETWEEN $2::date AND $3::date
+       ORDER BY occurred_at DESC,event_id DESC LIMIT 50 OFFSET $4`,
+      [...params, (page - 1) * 50],
+    );
+    return {
+      from,
+      to,
+      page,
+      storeId,
+      source: 'edge' as const,
+      total: safeInteger(total.rows[0]?.total ?? 0),
+      documents: rows.rows.map((row) => ({
+        eventId: row.event_id,
+        documentId: row.document_id,
+        eventType: row.event_type,
+        occurredAt: row.occurred_at,
+        actorId: row.actor_id,
+        actorName: row.actor_name,
+        reason: row.reason,
+        supplierId: row.supplier_id,
+        supplierName: row.supplier_name,
+        receiptId: row.receipt_id,
+        totalMinor:
+          row.total_minor === null ? null : safeInteger(row.total_minor),
+        productId: row.product_id,
+        productName: row.product_name,
+        sku: row.sku,
+        unit: row.unit,
+        previousQuantityMinor:
+          row.previous_quantity_minor === null
+            ? null
+            : safeInteger(row.previous_quantity_minor),
+        countedQuantityMinor:
+          row.counted_quantity_minor === null
+            ? null
+            : safeInteger(row.counted_quantity_minor),
+        deltaMinor:
+          row.delta_minor === null ? null : safeInteger(row.delta_minor),
+        lines: row.lines,
+      })),
+    };
   }
 }

@@ -16,6 +16,14 @@ databases.
   `cash_sale.completed` event to `sync_outbox`. New events use schema version 2
   with immutable cashier and product display snapshots; the hosted parser can
   still ingest already-queued version-1 events using explicit legacy labels.
+- On a bootstrapped edge, every immutable inventory movement now appends a
+  `stock_movement.recorded` event in the same transaction. This covers opening
+  counts, sales, customer and supplier returns, receipts, adjustments and
+  stocktakes. A paid customer refund similarly appends `sale_refund.paid`.
+- Completed supplier receipts, supplier returns and stocktake counts also
+  enqueue immutable document snapshots. Receipt/return triggers run at commit
+  so they include every line and reject missing or mismatched lines. A count
+  with zero delta is valid and still produces its stock/document events.
 - The workspace identifies a local register and displays the pending outbox
   count. Browser internet-loss events recheck the local API instead of
   automatically ejecting the cashier.
@@ -27,32 +35,43 @@ databases.
   batches, signs them with a per-store HMAC and delivers them to the hosted
   HTTPS inbox. Failures retain the event with exponential retry; only a
   matching accepted/duplicate acknowledgement marks it delivered.
-- The hosted inbox verifies the store, timestamp, signature and cash-sale
-  invariants, then commits each event idempotently by event and sale identity.
-  In the same transaction it creates append-only cash-sale and line reporting
-  projections without writing hosted operational sales, payments or stock. Its
+- The hosted inbox verifies the store, timestamp, signature and event
+  invariants, then commits each event idempotently by event and aggregate
+  identity. In the same transaction it creates append-only cash-sale, refund,
+  stock-movement and operation-document projections without writing hosted
+  operational sales, payments, purchases or stock. Its
   acknowledgement includes an accepted-event checkpoint.
 - The authenticated status API exposes edge queued/delivered totals and hosted
   received/projected counts. A manager-only reconciliation read compares exact
   edge queue totals or hosted inbox/projection totals; the workspace raises a
-  visible warning when a received hosted event is missing its projection.
+  visible warning when a received hosted event is missing its projection. The
+  manager Store documents report pages through delivered supplier/count records.
 
-## Not implemented yet
+## Reporting scope and remaining work
 
-Projected edge cash sales are intentionally separate from hosted operational
+Projected edge activity is intentionally separate from hosted operational
 `sale`, payment and stock tables, so hosting never becomes a second writer for
 the same checkout. Manager Sales insights can read hosted operations, the
 configured synchronized store or both, and identifies each cashier/product
-source plus any inbox-to-projection lag. Synchronized returns are explicitly
-marked unavailable and are not subtracted from edge net sales yet. Staff,
-returns, purchases, stocktake and other operational events do not replicate.
+source plus any inbox-to-projection lag. Paid edge refunds now reduce edge net
+sales. Manager Stock position reads the authoritative operational balance or
+the sum of synchronized edge movements, depending on cutover state. Stock
+reports still require comparison with the edge pending-event count before a
+hosted quantity can be treated as current. Supplier receipts/returns and
+stocktake counts have separate synchronized document projections. Purchase
+reconciliation combines this server's operational purchases with
+delivered edge receipt/return documents, labelling supplier and receipt rows by
+source. The operational supplier ledger stays operational-only; use Store
+documents to inspect edge detail. Pending edge events are absent from hosted
+totals until delivery.
+
 An initial signed snapshot/apply path, opening-count signoff and ordered
 staff/catalogue change batches are in source. Change batches currently require
 manual private-file transfer. Signed cutover and generation-aware delivery
-are implemented behind a disabled-by-default gate; other staff credential
-enrollment, lost-PC reconciliation, broader event coverage,
-backup/restore and power-loss checks are
-still required before live use.
+are implemented behind a disabled-by-default gate. Other rostered staff
+credential enrollment is in source; lost-PC reconciliation, non-stock business
+other business-event coverage, backup/restore and power-loss checks are still required before live
+use.
 
 The [hosted-to-edge bootstrap design](OFFLINE_BOOTSTRAP_DESIGN.md) defines the
 store cutover, version checkpoints, local staff enrollment, opening stock
@@ -62,7 +81,7 @@ has been cut over.
 
 ## Initial bootstrap rehearsal on disposable databases
 
-Apply migrations through `202610030004_store_cutover_fence` to both
+Apply migrations through `202610080001_sync_operation_documents` to both
 disposable hosted and edge databases. Configure `PAYGO_SYNC_ENABLED=true`, the
 same store UUID and `PAYGO_SYNC_SECRET` on both sides, and a **separate**
 `PAYGO_BOOTSTRAP_SECRET` of 32–500 random characters on both sides. The hosted
@@ -97,6 +116,28 @@ configuration only, never `VITE_*` variables.
    `each`/`pack` and thousandths for `kg`/`l`. Include zero counts. The edge
    creates stock balances and positive opening movements atomically, records
    variances from hosted proposed quantities and accepts only an exact replay.
+
+### Enroll other rostered staff
+
+First apply the signed hosted configuration batches until the local roster is
+current. The target staff member must be enabled and hosted-email-verified in
+that roster, with no local credential yet. An MFA-proven local manager calls
+`POST /api/bootstrap/enrollment-grants` from their same-origin session with
+`{"staffId":"<rostered staff ID>"}`. The response contains a one-use token
+valid for 15 minutes. Transfer it privately to the edge operator; do not put it
+in a URL, log, screenshot or tracked file. Only its SHA-256 digest is stored.
+
+In person, verify the staff member's identity and control of the rostered email
+address. Place `EDGE_STAFF_GRANT_TOKEN`, `EDGE_STAFF_EMAIL`,
+`EDGE_STAFF_PASSWORD`, `EDGE_STAFF_ATTEST_IDENTITY=true`,
+`EDGE_STAFF_ATTEST_EMAIL_CONTROL=true` and `EDGE_STAFF_WITNESSED_BY` in private
+`backend/.local/edge-staff.env`. Run `pnpm run edge:staff-enroll` from `backend/`
+after building the backend, then remove that private input file. The password
+must be 12–128 characters and is hashed through Better Auth. The CLI commits
+the local credential, verification and audits together. An expired, replayed,
+wrong-generation or suspended-staff grant fails. Managers then sign in and
+complete their own local MFA setup. This flow does not copy hosted passwords,
+MFA secrets or sessions and does not allow public registration.
 
 This rehearsal does **not** activate checkout. A bootstrapped edge rejects
 operational writes until a later hosted cutover and generation-aware
@@ -141,6 +182,21 @@ The migration adds a nullable synchronization-secret fingerprint and new audit
 actions; it does not rewrite sales or stock. Rolling it back after cutover audit
 rows exist requires a deliberate recovery plan and backup rather than an
 automatic down migration.
+The staff-enrollment migration adds a grant table and audit actions without
+rewriting staff credentials. Its down migration likewise needs a deliberate
+data-preservation plan after enrollment audit rows exist.
+The refund/stock synchronization migration adds append-only reporting tables
+and edge outbox triggers; it does not rewrite existing operational sales or
+stock. Before rolling it back after events exist, back up and reconcile the
+outbox/inbox and projections. A routine down migration would discard those
+projections and cannot restore the old event-type constraints while new event
+rows remain.
+The operation-document migration adds a separate append-only projection and
+edge triggers. It does not backfill documents created before installation.
+Back up and reconcile outbox/inbox and projections before rollback after any
+events exist; dropping the projection would discard delivered history. Its
+zero-delta stocktake allowance also cannot be rolled back while zero-delta
+movement rows remain.
 
 1. Complete the edge opening count and apply configuration changes until the
    edge checkpoint equals hosting. Close hosted shifts and resolve pending or

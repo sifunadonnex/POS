@@ -36,4 +36,20 @@ export class ReportsController {
   ) {
     return this.reports.salesInsights(from, to, source, storeId);
   }
+
+  @Get('stock')
+  @StaffRoles('manager')
+  stockPosition() {
+    return this.reports.stockPosition();
+  }
+
+  @Get('operation-documents')
+  @StaffRoles('manager')
+  operationDocuments(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('page') page?: string,
+  ) {
+    return this.reports.operationDocuments(from, to, page);
+  }
 }

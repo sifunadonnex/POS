@@ -13,6 +13,7 @@ import { HostedBootstrapService } from '../src/store/hosted-bootstrap.service.js
 import { HostedConfigurationService } from '../src/store/hosted-configuration.service.js';
 import { EdgeConfigurationService } from '../src/store/edge-configuration.service.js';
 import { HostedCutoverService } from '../src/store/hosted-cutover.service.js';
+import { EdgeStaffEnrollmentService } from '../src/store/edge-staff-enrollment.service.js';
 
 describe('bootstrap HTTP authorization', () => {
   let app: INestApplication<App>;
@@ -22,6 +23,7 @@ describe('bootstrap HTTP authorization', () => {
   const publishChanges = vi.fn().mockResolvedValue({ toVersion: 2 });
   const checkpoint = vi.fn().mockResolvedValue({ version: 2 });
   const issue = vi.fn().mockResolvedValue({ signature: 'a'.repeat(64) });
+  const issueGrant = vi.fn().mockResolvedValue({ grantId: 'grant' });
   const identity = { userId: 'manager', sessionId: 'session' };
   const manager = (mfaVerified: boolean) => ({
     user: {
@@ -43,6 +45,7 @@ describe('bootstrap HTTP authorization', () => {
         { provide: HostedConfigurationService, useValue: { publishChanges } },
         { provide: EdgeConfigurationService, useValue: { checkpoint } },
         { provide: HostedCutoverService, useValue: { issue } },
+        { provide: EdgeStaffEnrollmentService, useValue: { issueGrant } },
         { provide: AUTH, useValue: { api: { getSession } } },
         {
           provide: AUTH_CONFIG,
@@ -68,6 +71,7 @@ describe('bootstrap HTTP authorization', () => {
     publishChanges.mockClear();
     checkpoint.mockClear();
     issue.mockClear();
+    issueGrant.mockClear();
   });
 
   it('guards both cutover and replacement fencing with manager MFA', async () => {
@@ -130,6 +134,45 @@ describe('bootstrap HTTP authorization', () => {
       .expect(403);
     expect(publishChanges).not.toHaveBeenCalled();
     expect(checkpoint).not.toHaveBeenCalled();
+  });
+
+  it('allows enrollment grants only from a same-origin MFA-proven manager', async () => {
+    const body = { staffId: 'cashier-1' };
+    getSession.mockResolvedValueOnce(null);
+    await request(app.getHttpServer())
+      .post('/api/bootstrap/enrollment-grants')
+      .set('Origin', 'http://localhost:5173')
+      .send(body)
+      .expect(401);
+    getSession.mockResolvedValueOnce({
+      ...manager(true),
+      user: { ...manager(true).user, role: 'cashier' },
+    });
+    await request(app.getHttpServer())
+      .post('/api/bootstrap/enrollment-grants')
+      .set('Origin', 'http://localhost:5173')
+      .send(body)
+      .expect(403);
+    getSession.mockResolvedValueOnce(manager(false));
+    await request(app.getHttpServer())
+      .post('/api/bootstrap/enrollment-grants')
+      .set('Origin', 'http://localhost:5173')
+      .send(body)
+      .expect(403);
+    getSession.mockResolvedValueOnce(manager(true));
+    await request(app.getHttpServer())
+      .post('/api/bootstrap/enrollment-grants')
+      .set('Origin', 'https://untrusted.example')
+      .send(body)
+      .expect(403);
+    expect(issueGrant).not.toHaveBeenCalled();
+    await request(app.getHttpServer())
+      .post('/api/bootstrap/enrollment-grants')
+      .set('Origin', 'http://localhost:5173')
+      .send(body)
+      .expect(201)
+      .expect('Cache-Control', 'no-store');
+    expect(issueGrant).toHaveBeenCalledWith(identity, body);
   });
 
   it('denies absent, cashier, and unverified manager sessions for publication', async () => {

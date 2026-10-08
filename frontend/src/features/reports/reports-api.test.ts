@@ -3,11 +3,161 @@ import {
   getDailySummary,
   getPurchaseReconciliation,
   getSalesInsights,
+  getStockPosition,
+  getOperationDocuments,
 } from "./reports-api"
 
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+})
+
+it("validates synchronized supplier documents and their line totals", async () => {
+  const storeId = "11111111-1111-4111-8111-111111111111"
+  const documentId = "22222222-2222-4222-8222-222222222222"
+  const productId = "33333333-3333-4333-8333-333333333333"
+  const response = {
+    from: "2026-10-08",
+    to: "2026-10-08",
+    page: 1,
+    storeId,
+    source: "edge",
+    total: 1,
+    documents: [
+      {
+        eventId: documentId,
+        documentId,
+        eventType: "purchase_receipt.received",
+        occurredAt: "2026-10-08T10:00:00Z",
+        actorId: "cashier",
+        actorName: "Amina",
+        reason: "Supplier delivery",
+        supplierId: "44444444-4444-4444-8444-444444444444",
+        supplierName: "Market Foods",
+        receiptId: null,
+        totalMinor: 300,
+        productId: null,
+        productName: null,
+        sku: null,
+        unit: null,
+        previousQuantityMinor: null,
+        countedQuantityMinor: null,
+        deltaMinor: null,
+        lines: [
+          {
+            lineId: "55555555-5555-4555-8555-555555555555",
+            productId,
+            productName: "Rice",
+            sku: "RICE",
+            unit: "each",
+            quantityMinor: 3,
+            unitCostMinor: 100,
+            lineTotalMinor: 300,
+          },
+        ],
+      },
+    ],
+  }
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }))
+  vi.stubGlobal("fetch", fetch)
+  await expect(
+    getOperationDocuments("2026-10-08", "2026-10-08")
+  ).resolves.toMatchObject({
+    total: 1,
+    documents: [{ supplierName: "Market Foods" }],
+  })
+  expect(fetch).toHaveBeenCalledWith(
+    "/api/reports/operation-documents?from=2026-10-08&to=2026-10-08&page=1",
+    expect.objectContaining({ credentials: "same-origin", cache: "no-store" })
+  )
+  fetch.mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        ...response,
+        documents: [{ ...response.documents[0], totalMinor: "300" }],
+      }),
+      { status: 200 }
+    )
+  )
+  await expect(
+    getOperationDocuments("2026-10-08", "2026-10-08")
+  ).rejects.toThrow("Invalid store document amount")
+})
+
+it("loads an authority-labelled stock position with movement coverage", async () => {
+  const storeId = "11111111-1111-4111-8111-111111111111"
+  const fetch = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        source: "edge",
+        storeId,
+        reportingLag: {
+          status: "current",
+          pendingEvents: 0,
+          receivedEvents: 9,
+          projectedEvents: 9,
+          latestReceivedAt: "2026-10-06T08:00:00.000Z",
+        },
+        products: [
+          {
+            productId: "22222222-2222-4222-8222-222222222222",
+            sku: "RICE",
+            name: "Rice",
+            unit: "kg",
+            quantityMinor: 1250,
+            movementCount: 4,
+          },
+        ],
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    )
+  )
+  vi.stubGlobal("fetch", fetch)
+  await expect(getStockPosition()).resolves.toMatchObject({
+    source: "edge",
+    products: [{ name: "Rice", quantityMinor: 1250 }],
+  })
+  expect(fetch).toHaveBeenCalledWith(
+    "/api/reports/stock",
+    expect.objectContaining({ credentials: "same-origin", cache: "no-store" })
+  )
+})
+
+it("rejects malformed stock quantities", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          source: "operational",
+          storeId: null,
+          reportingLag: {
+            status: "not_configured",
+            pendingEvents: 0,
+            receivedEvents: 0,
+            projectedEvents: 0,
+            latestReceivedAt: null,
+          },
+          products: [
+            {
+              productId: "22222222-2222-4222-8222-222222222222",
+              sku: "RICE",
+              name: "Rice",
+              unit: "kg",
+              quantityMinor: "1250",
+              movementCount: 0,
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+  )
+  await expect(getStockPosition()).rejects.toThrow(
+    "Invalid stock position product"
+  )
 })
 
 it("parses product-specific low-stock alerts in the daily summary", async () => {
@@ -70,6 +220,8 @@ it("parses the purchase reconciliation report with net totals", async () => {
           {
             supplierId: "supplier-1",
             supplierName: "Alpha Foods",
+            source: "edge",
+            storeId: "11111111-1111-4111-8111-111111111111",
             receiptCount: 2,
             receivedTotalMinor: 30000,
             returnCount: 1,
@@ -83,6 +235,8 @@ it("parses the purchase reconciliation report with net totals", async () => {
             receiptId: "receipt-1",
             supplierId: "supplier-1",
             supplierName: "Alpha Foods",
+            source: "edge",
+            storeId: "11111111-1111-4111-8111-111111111111",
             totalMinor: 20000,
             returnedTotalMinor: 5000,
             netTotalMinor: 15000,
@@ -101,8 +255,12 @@ it("parses the purchase reconciliation report with net totals", async () => {
     getPurchaseReconciliation("2026-09-01", "2026-09-21")
   ).resolves.toMatchObject({
     summary: { netPurchasesMinor: 40000 },
-    suppliers: [expect.objectContaining({ netPurchasesMinor: 25000 })],
-    receipts: [expect.objectContaining({ netTotalMinor: 15000 })],
+    suppliers: [
+      expect.objectContaining({ source: "edge", netPurchasesMinor: 25000 }),
+    ],
+    receipts: [
+      expect.objectContaining({ source: "edge", netTotalMinor: 15000 }),
+    ],
   })
   expect(fetch).toHaveBeenCalledWith(
     "/api/reports/purchases?from=2026-09-01&to=2026-09-21",

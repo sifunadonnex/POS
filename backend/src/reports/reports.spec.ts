@@ -499,7 +499,7 @@ describe('ReportsService', () => {
       receivedEvents: 4,
       projectedEvents: 3,
     });
-    expect(result.coverage.synchronizedReturns).toBe('not_available');
+    expect(result.coverage.synchronizedReturns).toBe('available');
 
     const combined = await module
       .get(ReportsService)

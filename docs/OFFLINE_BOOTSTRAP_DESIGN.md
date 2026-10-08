@@ -61,9 +61,12 @@ outstanding.
 5. Enroll the publishing rostered manager's local password through the
    one-time CLI with witnessed identity/email-control attestations and audit,
    then complete the existing local Better Auth MFA enrollment. Enrollment of
-   other rostered people remains future work. Local email
-   verification or a separate, audited in-person identity check must be
-   completed before creating an active edge session. The bootstrap manager
+   other rostered people uses a 15-minute, one-use grant issued by a local
+   MFA-proven manager to a current, enabled hosted-verified roster entry. The
+   edge CLI checks the grant, generation, fresh roster, witnessed identity and
+   email-control attestations before storing a separate local password and
+   marking the local email verified. Grant and redemption are audited without
+   storing the token. The bootstrap manager
    path is separate from the hosted one-time manager command and ordinary
    `auth:provision` command. No public signup is added.
 6. The proposed stock snapshot is a count worksheet, not an automatic stock
@@ -185,6 +188,11 @@ connectivity or an independently verified recovery authority.
    delivery under the new generation. The operator gate defaults off.
    Lost-PC reconciliation, real backup/restore and physical retirement remain
    unverified; do not enable active-store cutover.
-5. Run a two-database rehearsal with identical store ID, dropped responses,
+5. Completed in source: manager/MFA-authorized edge staff enrollment grants,
+   witnessed local credential creation and generation-bound one-use redemption.
+   Disposable PostgreSQL covers expiry, replay, disabled staff and generation
+   fencing; HTTP tests cover the authorization boundary. Physical identity
+   witnessing and staff sign-in remain to be rehearsed.
+6. Run a two-database rehearsal with identical store ID, dropped responses,
    restarts and a long outage. Record counts, money and stock totals before
    considering a live offline pilot.

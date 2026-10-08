@@ -87,8 +87,8 @@ export class PurchasesService {
       throw new BadRequestException(
         'Reason must contain at least three characters',
       );
-    if (!lines || lines.length === 0)
-      throw new BadRequestException('Provide at least one receipt line');
+    if (!lines || lines.length === 0 || lines.length > 200)
+      throw new BadRequestException('Provide 1 to 200 receipt lines');
 
     return this.writes.execute(
       actor,
@@ -180,6 +180,10 @@ export class PurchasesService {
           });
         }
 
+        if (totalMinor > BigInt(Number.MAX_SAFE_INTEGER))
+          throw new BadRequestException(
+            'Receipt total exceeds the supported amount',
+          );
         const receipt = await client.query<{ id: string }>(
           `INSERT INTO purchase_receipt (id, supplier_id, actor_id, reason, total_minor, status, created_at)
           VALUES ($1, $2, $3, $4, $5, 'received', now()) RETURNING id`,
@@ -258,8 +262,8 @@ export class PurchasesService {
       throw new BadRequestException(
         'Reason must contain at least three characters',
       );
-    if (!lines || lines.length === 0)
-      throw new BadRequestException('Provide at least one return line');
+    if (!lines || lines.length === 0 || lines.length > 200)
+      throw new BadRequestException('Provide 1 to 200 return lines');
 
     return this.writes.execute(
       actor,
@@ -420,6 +424,10 @@ export class PurchasesService {
           });
         }
 
+        if (totalMinor > BigInt(Number.MAX_SAFE_INTEGER))
+          throw new BadRequestException(
+            'Return total exceeds the supported amount',
+          );
         const returnResult = await client.query<{ id: string }>(
           `INSERT INTO purchase_return (id, receipt_id, actor_id, reason, total_minor, status, created_at)
           VALUES ($1, $2, $3, $4, $5, 'returned', now()) RETURNING id`,

@@ -6,6 +6,7 @@ import { HostedBootstrapService } from './hosted-bootstrap.service.js';
 import { HostedConfigurationService } from './hosted-configuration.service.js';
 import { EdgeConfigurationService } from './edge-configuration.service.js';
 import { HostedCutoverService } from './hosted-cutover.service.js';
+import { EdgeStaffEnrollmentService } from './edge-staff-enrollment.service.js';
 
 @Controller('api/bootstrap')
 @StaffRoles('manager')
@@ -20,6 +21,8 @@ export class BootstrapController {
     private readonly edgeConfiguration: EdgeConfigurationService,
     @Inject(HostedCutoverService)
     private readonly cutover: HostedCutoverService,
+    @Inject(EdgeStaffEnrollmentService)
+    private readonly staffEnrollment: EdgeStaffEnrollmentService,
   ) {}
 
   @Post('publications')
@@ -33,6 +36,14 @@ export class BootstrapController {
   @Post('opening-stock')
   signOffOpening(@Req() req: StaffRequest, @Body() body: unknown) {
     return this.edge.signOffOpening(
+      { userId: req.staff.user.id, sessionId: req.staff.session.id },
+      body,
+    );
+  }
+
+  @Post('enrollment-grants')
+  issueEnrollmentGrant(@Req() req: StaffRequest, @Body() body: unknown) {
+    return this.staffEnrollment.issueGrant(
       { userId: req.staff.user.id, sessionId: req.staff.session.id },
       body,
     );

@@ -15,7 +15,13 @@ export type SyncFetch = typeof globalThis.fetch;
 type OutboxJob = {
   id: string;
   store_id: string;
-  event_type: 'cash_sale.completed';
+  event_type:
+    | 'cash_sale.completed'
+    | 'sale_refund.paid'
+    | 'stock_movement.recorded'
+    | 'purchase_receipt.received'
+    | 'purchase_return.returned'
+    | 'stocktake.counted';
   aggregate_id: string;
   schema_version: 1 | 2;
   payload: Record<string, unknown>;

@@ -262,20 +262,27 @@ the runtime mode and pending-event count. Edge mode requires a stable store ID,
 binds to loopback, and disables Daraja; hosted mode retains its existing HTTPS
 and cloud-database behavior.
 
-The delivery boundary and first hosted reporting projection are implemented.
+The delivery boundary and hosted reporting projections are implemented.
 The edge worker signs events with a per-store HMAC, retries with bounded
 backoff, and marks delivery only after an exact acknowledgement. The hosted
-inbox verifies the signature and timestamp, validates the cash-sale event and
-deduplicates both event and sale identities transactionally. Before
-acknowledgement it also inserts immutable sale and line snapshots into a
+inbox verifies the signature and timestamp, validates cash-sale, paid-refund,
+stock-movement and supplier/count document events and deduplicates event and aggregate identities
+transactionally. Before acknowledgement it inserts immutable snapshots into a
 separate reporting read model; it never mutates hosted operational sales,
 payments or stock. Status detects missing projections and a manager-only read
 reconciles exact event counts and minor-unit totals. Manager Sales insights now
 keeps hosted and synchronized data physically separate while allowing an
 explicit operational/store/all filter, source-labelled cashier/product rows
-and a reporting-lag indicator. It warns that synchronized returns are not yet
-available rather than presenting edge net/refund figures as complete. Initial
-data/bootstrap and event coverage beyond cash checkout remain required. See
+and a reporting-lag indicator. Edge paid refunds contribute to net sales and
+a manager stock-position read uses authoritative hosted stock before cutover
+or summed edge movement projections afterward. All edge inventory-movement
+kinds are captured in the source transaction. Immutable supplier receipt,
+supplier return and stocktake documents are separately projected with
+line/supplier/actor snapshots for manager inspection; hosted operational
+purchases are not mutated. Purchase reconciliation combines operational and
+delivered edge receipt/return amounts with source-labelled rows; it cannot
+include events still queued on the edge. Physical delivery and recovery
+reconciliation remain required before live use. See
 [the edge setup note](OFFLINE_EDGE_SETUP.md).
 
 The proposed [hosted-to-edge bootstrap design](OFFLINE_BOOTSTRAP_DESIGN.md)
@@ -297,8 +304,11 @@ transfer is the current transport. An MFA-proven manager can issue signed
 cutover/fence tickets behind a disabled-by-default gate. The edge verifies
 the ticket and matching cursor before activation; event signatures then bind
 the PC generation, and fencing requires a rotated synchronization secret.
-Other staff enrollment, lost-PC reconciliation and the physical recovery
-rehearsal remain. No store has been cut over.
+Other rostered staff can enroll through a short-lived one-use grant issued by
+an MFA-proven local manager, with generation binding, witnessed identity and
+email-control attestations, a separate local password and durable audit. Lost-PC
+reconciliation and the physical recovery rehearsal remain. No store has been
+cut over.
 
 Move to a store-LAN service only after the single-PC boundary is verified and
 additional tills are required.
@@ -554,7 +564,7 @@ These questions refine the pilot. Local PostgreSQL authentication, catalogue, in
 | ADR-022 | Use Safaricom Daraja M-Pesa Express for automated M-Pesa; enable only with complete server-side credentials, whole-KES amounts, a token-protected public HTTPS callback and exact callback amount/reference confirmation | Adapter, callback and register phone capture implemented; disabled pending credentials and sandbox/callback verification | 2026-09-28 |
 | ADR-023 | Use optional product-specific low-stock thresholds in the product's stock unit; alert at or below the threshold, include missing stock as zero, and exclude archived/unconfigured products                               | Implemented in catalogue history, stock reads and the manager dashboard                                                  | 2026-10-01 |
 | ADR-024 | Use Aiven Free as the temporary external PostgreSQL service for the isolated HostPinnacle deployment proof while HostPinnacle's PostgreSQL service remains end-of-life                                                       | Aiven migrations and public health checks pass; production SLA, authenticated flows and recovery gates remain            | 2026-10-02 |
-| ADR-025 | Start offline continuity with one loopback-only shop-PC edge service and local PostgreSQL; keep cash checkout locally authoritative and atomically append versioned outbox events | Cash-sale outbox, signed retrying delivery, idempotent hosted inbox, reporting projection/reconciliation and source-filtered manager insights implemented; setup, broader event coverage and operational verification remain | 2026-10-02 |
-| ADR-026 | One-way hosted-to-edge staff/catalogue bootstrap with a signed-off opening stock count, ordered configuration checkpoint and fenced PC generation | Guard/checkpoint, signed snapshot/change batches, witnessed manager enrollment, opening signoff, roster freshness and disabled-by-default signed cutover/fence tickets implemented; full recovery and operational rehearsal remain | 2026-10-03 |
+| ADR-025 | Start offline continuity with one loopback-only shop-PC edge service and local PostgreSQL; keep cash checkout locally authoritative and atomically append versioned outbox events | Cash-sale, paid-refund, stock movement and supplier/count document events enter the durable outbox; signed delivery, hosted projections/reconciliation, source-filtered net/refund insights, combined delivered purchase totals and authoritative stock reporting are implemented. Physical setup/recovery remain | 2026-10-02 |
+| ADR-026 | One-way hosted-to-edge staff/catalogue bootstrap with a signed-off opening stock count, ordered configuration checkpoint and fenced PC generation | Guard/checkpoint, signed snapshot/change batches, witnessed manager and other rostered staff enrollment, opening signoff, roster freshness and disabled-by-default signed cutover/fence tickets implemented; full recovery and operational rehearsal remain | 2026-10-03 |
 
 Provider claims cited above were reviewed on 2 October 2026. Recheck plan terms when creating accounts or enabling live integrations.
