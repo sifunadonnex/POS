@@ -1,6 +1,6 @@
 # HostPinnacle: isolated backend deployment proof
 
-Target: `https://dev.sifulabs.co.ke/`. The combined package contains the compiled NestJS API, migrations and compiled React frontend. It is still an isolated test deployment, not a production-ready POS. Hosting verification remains pending until the checks below pass. The user uploads files and runs panel commands; no SSH is required if the panel supports these commands with application environment variables.
+Target: `https://pos.sifulabs.co.ke/`. The combined package contains the compiled NestJS API, migrations and compiled React frontend. It is still an isolated test deployment, not a production-ready POS. Hosting verification remains pending until the checks below pass. The user uploads files and runs panel commands; no SSH is required if the panel supports these commands with application environment variables.
 
 ## 1. Build the upload package locally
 
@@ -21,7 +21,7 @@ Confirm the selected subdomain and directory do not serve an existing applicatio
 | Node.js version | `22.23.2` as shown in the user's panel |
 | Application mode | Production (this is still an isolated test, not live trading) |
 | Application root | `pay-and-go-dev`, a new directory outside `public_html` |
-| Application URL | `dev.sifulabs.co.ke`, path `/` |
+| Application URL | `pos.sifulabs.co.ke`, path `/` |
 | Application startup file | `app.cjs` |
 | Passenger log file | A private writable path under the account's logs directory; use the actual account path |
 
@@ -49,7 +49,7 @@ Set these privately in the application's environment-variable controls:
 | `DATABASE_POOL_MAX` | `3` initially; Aiven Free currently allows 20 total connections, including reserved/admin use and every application process |
 | `NODE_EXTRA_CA_CERTS` | The actual absolute path to the uploaded Aiven CA, such as `/home/CPANEL_USER/private/pay-and-go/aiven-ca.pem` |
 | `BETTER_AUTH_SECRET` | A unique random secret of at least 32 characters, stored only in the panel environment |
-| `BETTER_AUTH_URL` | `https://dev.sifulabs.co.ke` (HTTPS origin only; no path, query, fragment or credentials) |
+| `BETTER_AUTH_URL` | `https://pos.sifulabs.co.ke` (HTTPS origin only; no path, query, fragment or credentials) |
 | `AUTH_EMAIL_ENABLED` | `false` until SMTP delivery is configured and verified |
 | `DARAJA_ENABLED` | `false` until the complete sandbox callback/reconciliation checklist passes |
 | `PAYGO_RUNTIME_MODE` | `hosted` |
@@ -61,7 +61,7 @@ Set these privately in the application's environment-variable controls:
 `NODE_EXTRA_CA_CERTS` is read when Node starts. Save all environment values before running the migration, and restart the Passenger application after any CA-path change. The panel migration script must receive the same environment as the application. Do not add `sslmode` back to the URL, use `DATABASE_TLS=disable`, or disable certificate verification to work around a connection error.
 
 The hosted sync inbox has no target URL. The edge PC alone receives
-`PAYGO_SYNC_URL=https://dev.sifulabs.co.ke/api/sync/events`. Configure the same
+`PAYGO_SYNC_URL=https://pos.sifulabs.co.ke/api/sync/events`. Configure the same
 store UUID and sync secret at both ends, enable/restart the hosted inbox first,
 then enable the edge sender. Keep the secret out of screenshots and command
 history.
@@ -108,10 +108,12 @@ In this panel, select **hosting:migrate** with parameters empty, only after inst
 
 ## 5. Restart and verify
 
+When changing the hosted domain, update `BETTER_AUTH_URL` to the exact new HTTPS origin and restart the Node application. On 13 October 2026, the new `pos.sifulabs.co.ke` origin returned HTTP 403 while the old origin reached password validation; this confirmed the running authentication service still trusted the old URL. A generic sign-in message can hide this configuration rejection. Keep Origin/CSRF checks enabled.
+
 Use the panel's Restart control, then open:
 
-- `https://dev.sifulabs.co.ke/api/health/live`: HTTP 200, `{"status":"ok"}`.
-- `https://dev.sifulabs.co.ke/api/health/ready`: HTTP 200, `{"status":"ok","database":"reachable"}`.
+- `https://pos.sifulabs.co.ke/api/health/live`: HTTP 200, `{"status":"ok"}`.
+- `https://pos.sifulabs.co.ke/api/health/ready`: HTTP 200, `{"status":"ok","database":"reachable"}`.
 
 Readiness 503 means connectivity is unavailable; liveness alone does not prove database access. Both responses must include Cache-Control: no-store. Readiness does not check schema currency. Verify `app_metadata` and `pgmigrations` through Aiven's database tools after migration. The root URL must render the Pay & Go staff portal with `Cache-Control: no-store`; fingerprinted files under `/assets/` must use long-lived immutable caching. API routes remain under `/api` and authoritative API responses retain their own cache rules.
 
@@ -141,7 +143,7 @@ Use an email address you control. The final attestation explicitly records that 
 Initial hosted manager created and marked verified. Delete .local/initial-manager.env now.
 ```
 
-Immediately delete the plaintext file, then sign in at `https://dev.sifulabs.co.ke/`. Enroll authenticator MFA, save the recovery codes somewhere separate and confirm an authenticator code before using manager features. The command is transactionally audit-recorded and refuses a second run. Do not change `NODE_ENV`, enable public signup, edit password hashes manually or retain the bootstrap file as a workaround.
+Immediately delete the plaintext file, then sign in at `https://pos.sifulabs.co.ke/`. Enroll authenticator MFA, save the recovery codes somewhere separate and confirm an authenticator code before using manager features. The command is transactionally audit-recorded and refuses a second run. Do not change `NODE_ENV`, enable public signup, edit password hashes manually or retain the bootstrap file as a workaround.
 
 Bootstrap failures report only a safe category. `invalid-input` means check the name, email syntax, 12–128-character password, exact lowercase `manager` role and provisioned-by label without sharing their values. `invalid-confirmation` means copy both confirmation lines exactly. `users-exist` means an account is already present: stop and identify/recover that account rather than deleting data or repeating provisioning. `database write failed` means the transaction rolled back and the private server log/database permissions need inspection.
 
