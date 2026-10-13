@@ -4,22 +4,22 @@
 
 Login/security implementation now includes email verification, password recovery/change, authenticator MFA and recovery codes, staff administration, account suspension/session revocation, security history, and a 15-minute inactivity lock. Managers must complete MFA before using protected features. Cashiers may enable MFA.
 
-**PostgreSQL 18 is installed and running locally.** On 16 September 2026 all migrations, isolated database integration tests and real development manager/cashier password logins passed. SMTP delivery and full connected browser checks remain unverified. Local success does not establish hosted login.
+**PostgreSQL 18 is installed and running locally.** On 16 September 2026 all migrations, isolated database integration tests and real development manager/cashier password logins passed. Direct Resend SMTP and disposable-PostgreSQL verification/recovery queue delivery passed on 13 October 2026; full connected browser and hosted checks remain unverified. Local success does not establish hosted login.
 
 No public registration, social login, paid identity service, checkout, business reports or branch/till permissions. Hosting troubleshooting remains deferred.
 
-## Configure the existing SMTP mailbox privately
+## Configure SMTP privately
 
-The user selected an existing SMTP mailbox. Add its actual settings in ignored `backend/.env`, using `backend/.env.example` as the template:
+The user selected Resend SMTP on 13 October 2026. Configure it in ignored `backend/.env`: host `smtp.resend.com`, port `587` with required STARTTLS (or `465` with implicit TLS), username `resend`, and the private Resend API key as `SMTP_PASSWORD`. `SMTP_FROM` must be a bare address at the exact verified sending domain, `pos.sifulabs.co.ke`. Receiving mail is not required for these outbound messages. The direct local SMTP test passed, with user-confirmed Inbox arrival; local delivery is enabled and real app queue delivery passed on disposable PostgreSQL, while browser/timer/restart and hosted delivery remain separate checks. See [Resend SMTP settings](https://resend.com/docs/send-with-smtp).
 
 | Variable | Purpose |
 | --- | --- |
 | AUTH_EMAIL_ENABLED | Keep `false` until ready; set `true` to enable queued delivery |
 | SMTP_HOST | Mail provider's SMTP hostname |
 | SMTP_PORT | `465` for implicit TLS or `587` for required STARTTLS |
-| SMTP_USER | Mailbox login |
-| SMTP_PASSWORD | Mailbox/app password, stored only in private server configuration |
-| SMTP_FROM | Bare sender email address authorized for this mailbox |
+| SMTP_USER | SMTP provider login; `resend` for Resend |
+| SMTP_PASSWORD | Private SMTP password/API key; Resend uses its API key |
+| SMTP_FROM | Bare sender address at the provider-authorized sending domain |
 | BETTER_AUTH_URL | Exact browser origin; local default `http://localhost:5173` |
 
 Never put these credentials in `VITE_*`, screenshots, command arguments or chat. Certificate verification is required; there is no insecure SMTP fallback. Nodemailer 10.0.10 is pinned (MIT-0, Node >=20), with types 8.0.1. No real email is sent by the automated suites.
