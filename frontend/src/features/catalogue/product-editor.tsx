@@ -17,6 +17,7 @@ import {
 import { CategoryPicker } from "./category-picker"
 import { useCatalogueWrite } from "./use-catalogue-write"
 import { WriteFeedback } from "./write-feedback"
+import { ProductPhotoEditor } from "./product-photo-editor"
 
 export function ProductEditor({
   product,
@@ -30,8 +31,9 @@ export function ProductEditor({
   const [unit, setUnit] = useState<SaleUnit>(product?.unit ?? "each")
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? "")
   const [active, setActive] = useState(product?.active ?? true)
+  const [photoBusy, setPhotoBusy] = useState(false)
   const write = useCatalogueWrite((value) => onSaved(savedProduct(value)))
-  const disabled = write.pending || write.uncertain
+  const disabled = write.pending || write.uncertain || photoBusy
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
@@ -243,6 +245,19 @@ export function ProductEditor({
         </fieldset>
         <WriteFeedback {...write} />
       </form>
+      {product ? (
+        <ProductPhotoEditor
+          product={product}
+          onSaved={onSaved}
+          blocked={write.pending || write.uncertain}
+          onBusy={setPhotoBusy}
+        />
+      ) : (
+        <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+          A photo is optional. Save this product first, then open it to add a
+          photo.
+        </p>
+      )}
     </section>
   )
 }

@@ -9,6 +9,7 @@ export type StaffAccount = {
   emailVerified: boolean
   twoFactorEnabled: boolean
   revision: number
+  archived?: boolean
 }
 export type AuditEntry = {
   id: string
@@ -34,7 +35,8 @@ export function parseStaffAccount(value: unknown): StaffAccount {
     typeof v.twoFactorEnabled !== "boolean" ||
     typeof v.revision !== "number" ||
     !Number.isSafeInteger(v.revision) ||
-    v.revision < 1
+    v.revision < 1 ||
+    (v.archived !== undefined && typeof v.archived !== "boolean")
   )
     throw new Error("Invalid staff response")
   return {
@@ -46,12 +48,13 @@ export function parseStaffAccount(value: unknown): StaffAccount {
     emailVerified: v.emailVerified,
     twoFactorEnabled: v.twoFactorEnabled,
     revision: v.revision,
+    archived: v.archived === true,
   }
 }
 
-export async function listStaff(search: string, page: number) {
+export async function listStaff(search: string, page: number, status = "all") {
   const result = await identityRequest(
-    `staff?${new URLSearchParams({ search, page: String(page) })}`
+    `staff?${new URLSearchParams({ search, page: String(page), status })}`
   )
   if (
     !result ||

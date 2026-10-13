@@ -2,18 +2,21 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Inject,
   Param,
   Patch,
   Post,
   Query,
   Req,
+  StreamableFile,
 } from '@nestjs/common';
 import { StaffRoles } from '../identity/access.metadata.js';
 import type { StaffRequest } from '../identity/staff.guard.js';
 import { StoreWrites } from '../store/store-write.metadata.js';
 import { CatalogueService } from './catalogue.service.js';
 import { CatalogueImportService } from './catalogue-import.service.js';
+import { ProductPhotoService } from './product-photo.service.js';
 
 function actor(req: StaffRequest) {
   return { userId: req.staff.user.id, sessionId: req.staff.session.id };
@@ -26,6 +29,7 @@ export class CatalogueController {
     @Inject(CatalogueService) private readonly catalogue: CatalogueService,
     @Inject(CatalogueImportService)
     private readonly importer: CatalogueImportService,
+    @Inject(ProductPhotoService) private readonly photos: ProductPhotoService,
   ) {}
 
   @Get('categories') categories() {
@@ -44,6 +48,26 @@ export class CatalogueController {
   @StaffRoles('manager')
   history(@Param('id') id: string, @Query('page') page: unknown) {
     return this.catalogue.history(id, page);
+  }
+  @Get('products/:id/photo')
+  @Header('Cache-Control', 'no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  async photo(@Req() req: StaffRequest, @Param('id') id: string) {
+    const photo = await this.photos.read(id, req.staff.user.role === 'manager');
+    return new StreamableFile(photo.content, {
+      type: photo.mime_type,
+      disposition: 'inline',
+      length: photo.content.length,
+    });
+  }
+  @Post('products/:id/photo')
+  @StaffRoles('manager')
+  savePhoto(
+    @Req() req: StaffRequest,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ) {
+    return this.photos.save(actor(req), id, body);
   }
   @Post('products')
   @StaffRoles('manager')

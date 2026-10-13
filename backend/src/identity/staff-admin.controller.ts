@@ -23,8 +23,12 @@ export class StaffAdminController {
   ) {}
 
   @Get('staff')
-  list(@Query('search') search: unknown, @Query('page') page: unknown) {
-    return this.staff.list(search, page);
+  list(
+    @Query('search') search: unknown,
+    @Query('page') page: unknown,
+    @Query('status') status: unknown,
+  ) {
+    return this.staff.list(search, page, status);
   }
 
   @Post('staff')

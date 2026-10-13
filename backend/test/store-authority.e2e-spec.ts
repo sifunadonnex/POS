@@ -4,6 +4,7 @@ import request from 'supertest';
 import { CatalogueController } from '../src/catalogue/catalogue.controller.js';
 import { CatalogueImportService } from '../src/catalogue/catalogue-import.service.js';
 import { CatalogueService } from '../src/catalogue/catalogue.service.js';
+import { ProductPhotoService } from '../src/catalogue/product-photo.service.js';
 import { parseEnvironment, APP_CONFIG } from '../src/config/environment.js';
 import { DatabaseService } from '../src/database/database.service.js';
 import { StaffAdminController } from '../src/identity/staff-admin.controller.js';
@@ -53,6 +54,7 @@ async function application(mode: 'edge' | 'hosted', localAuthority: boolean) {
         useValue: { createProduct, categories: () => [] },
       },
       { provide: CatalogueImportService, useValue: { import: vi.fn() } },
+      { provide: ProductPhotoService, useValue: { save: createProduct } },
       { provide: StaffAdminService, useValue: { create: createStaff } },
       { provide: SalesService, useValue: { checkout } },
       { provide: SalesLookupService, useValue: { listSales: () => [] } },
@@ -89,6 +91,16 @@ describe('store authority HTTP guards', () => {
       .send({})
       .expect(403);
     expect(edge.createStaff).not.toHaveBeenCalled();
+    await request(edge.app.getHttpServer())
+      .post(
+        '/api/catalogue/products/11111111-1111-4111-8111-111111111111/photo',
+      )
+      .send({})
+      .expect(403);
+    await request(edge.app.getHttpServer())
+      .post('/api/identity/staff/staff-id/archive')
+      .send({})
+      .expect(403);
     expect(edge.createProduct).not.toHaveBeenCalled();
     expect(edge.query).not.toHaveBeenCalled();
     await request(edge.app.getHttpServer())

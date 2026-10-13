@@ -11,6 +11,7 @@ import { CatalogueController } from '../src/catalogue/catalogue.controller.js';
 import { CatalogueService } from '../src/catalogue/catalogue.service.js';
 import { CatalogueImportService } from '../src/catalogue/catalogue-import.service.js';
 import { CatalogueWrites } from '../src/catalogue/catalogue-writes.js';
+import { ProductPhotoService } from '../src/catalogue/product-photo.service.js';
 
 describe('catalogue HTTP contracts without PostgreSQL', () => {
   let app: INestApplication<App>;
@@ -49,6 +50,7 @@ describe('catalogue HTTP contracts without PostgreSQL', () => {
       providers: [
         CatalogueService,
         CatalogueImportService,
+        ProductPhotoService,
         { provide: CatalogueWrites, useValue: { execute } },
         { provide: DatabaseService, useValue: { connectionPool: { query } } },
         { provide: AUTH, useValue: { api: { getSession } } },
@@ -76,6 +78,43 @@ describe('catalogue HTTP contracts without PostgreSQL', () => {
       .get('/api/catalogue/products')
       .expect(403);
     expect(query).not.toHaveBeenCalled();
+  });
+  it('guards photo writes with manager MFA and the exact trusted Origin', async () => {
+    const path = `/api/catalogue/products/${productId}/photo`;
+    const photoBody = {
+      requestId: body.requestId,
+      reason: 'Add product photo',
+      revision: 1,
+      photo: {
+        data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=',
+      },
+    };
+    getSession.mockResolvedValueOnce(null);
+    await request(app.getHttpServer())
+      .post(path)
+      .set('Origin', origin)
+      .send(photoBody)
+      .expect(401);
+    getSession.mockResolvedValueOnce(session('cashier'));
+    await request(app.getHttpServer())
+      .post(path)
+      .set('Origin', origin)
+      .send(photoBody)
+      .expect(403);
+    getSession.mockResolvedValueOnce(session('manager', false));
+    await request(app.getHttpServer())
+      .post(path)
+      .set('Origin', origin)
+      .send(photoBody)
+      .expect(403);
+    await request(app.getHttpServer()).post(path).send(photoBody).expect(403);
+    expect(execute).not.toHaveBeenCalled();
+    await request(app.getHttpServer())
+      .post(path)
+      .set('Origin', origin)
+      .send(photoBody)
+      .expect(201);
+    expect(execute).toHaveBeenCalledOnce();
   });
   it('permits cashier reads of active products, but denies archived products and history', async () => {
     getSession.mockResolvedValue(session('cashier'));

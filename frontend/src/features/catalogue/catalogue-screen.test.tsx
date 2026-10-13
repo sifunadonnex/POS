@@ -35,6 +35,7 @@ const product: Product = {
   active: true,
   revision: 1,
   barcodes: ["0012345"],
+  hasImage: false,
 }
 beforeEach(() => {
   mocks.getProducts.mockResolvedValue({ products: [product], hasMore: false })

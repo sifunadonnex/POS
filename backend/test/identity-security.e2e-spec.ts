@@ -17,6 +17,7 @@ describe('staff security HTTP boundaries without PostgreSQL', () => {
   const getSession = vi.fn();
   const list = vi.fn().mockResolvedValue({ staff: [], hasMore: false });
   const update = vi.fn().mockResolvedValue({ status: true });
+  const action = vi.fn().mockResolvedValue({ status: true });
   function staff(overrides = {}) {
     return {
       user: {
@@ -42,7 +43,7 @@ describe('staff security HTTP boundaries without PostgreSQL', () => {
           useValue: { baseURL: 'http://localhost:5173', smtp: null },
         },
         { provide: DatabaseService, useValue: { connectionPool: { query } } },
-        { provide: StaffAdminService, useValue: { list, update } },
+        { provide: StaffAdminService, useValue: { list, update, action } },
         { provide: APP_GUARD, useClass: StaffGuard },
       ],
     }).compile();
@@ -61,6 +62,39 @@ describe('staff security HTTP boundaries without PostgreSQL', () => {
       .expect(200)
       .expect({ emailDelivery: false, idleSeconds: 900 });
     expect(getSession).not.toHaveBeenCalled();
+  });
+  it('requires manager MFA and exact Origin for removal and restoration', async () => {
+    for (const operation of ['archive', 'restore']) {
+      const path = `/api/identity/staff/target/${operation}`;
+      getSession.mockResolvedValueOnce(null);
+      await request(app.getHttpServer())
+        .post(path)
+        .set('Origin', 'http://localhost:5173')
+        .send({})
+        .expect(401);
+      getSession.mockResolvedValueOnce(staff({ role: 'cashier' }));
+      await request(app.getHttpServer())
+        .post(path)
+        .set('Origin', 'http://localhost:5173')
+        .send({})
+        .expect(403);
+      const unverified = staff();
+      unverified.session.mfaVerified = false;
+      getSession.mockResolvedValueOnce(unverified);
+      await request(app.getHttpServer())
+        .post(path)
+        .set('Origin', 'http://localhost:5173')
+        .send({})
+        .expect(403);
+      await request(app.getHttpServer()).post(path).send({}).expect(403);
+      expect(action).not.toHaveBeenCalled();
+    }
+    await request(app.getHttpServer())
+      .post('/api/identity/staff/target/archive')
+      .set('Origin', 'http://localhost:5173')
+      .send({})
+      .expect(201);
+    expect(action).toHaveBeenCalledOnce();
   });
   it('refuses anonymous and cashier access to staff administration', async () => {
     getSession.mockResolvedValueOnce(null);

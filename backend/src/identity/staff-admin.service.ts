@@ -36,9 +36,10 @@ type StaffRow = {
   emailVerified: boolean;
   twoFactorEnabled: boolean;
   revision: number;
+  archived: boolean;
 };
 const columns =
-  'id, name, email, role, disabled, "emailVerified", "twoFactorEnabled", revision';
+  'id, name, email, role, disabled, "emailVerified", "twoFactorEnabled", revision, archived_at IS NOT NULL AS archived';
 
 @Injectable()
 export class StaffAdminService {
@@ -49,7 +50,13 @@ export class StaffAdminService {
     @Inject(AUTH_CONFIG) private readonly config: AuthConfig,
   ) {}
 
-  async list(search: unknown, page: unknown) {
+  async list(search: unknown, page: unknown, statusValue: unknown = 'all') {
+    const status = statusValue ?? 'all';
+    if (
+      typeof status !== 'string' ||
+      !['all', 'active', 'suspended', 'removed'].includes(status)
+    )
+      throw new BadRequestException('Invalid staff status');
     const query =
       search === undefined || search === ''
         ? ''
@@ -59,8 +66,11 @@ export class StaffAdminService {
       throw new BadRequestException('Invalid page');
     try {
       const result = await this.database.connectionPool.query<StaffRow>(
-        `SELECT ${columns} FROM "user" WHERE strpos(lower(name || ' ' || email), lower($1)) > 0 ORDER BY lower(name), id LIMIT 51 OFFSET $2`,
-        [query, pageNumber * 50],
+        `SELECT ${columns} FROM "user" WHERE strpos(lower(name || ' ' || email), lower($1)) > 0
+        AND (($3 = 'removed' AND archived_at IS NOT NULL) OR (archived_at IS NULL AND
+        ($3 = 'all' OR ($3 = 'active' AND NOT disabled) OR ($3 = 'suspended' AND disabled))))
+        ORDER BY lower(name), id LIMIT 51 OFFSET $2`,
+        [query, pageNumber * 50, status],
       );
       return {
         staff: result.rows.slice(0, 50),
@@ -221,6 +231,10 @@ export class StaffAdminService {
       );
       const existing = previous.rows[0];
       if (!existing) throw new NotFoundException('Staff account not found');
+      if (existing.archived)
+        throw new ConflictException(
+          'Restore this removed account before editing',
+        );
       if (existing.revision !== revision)
         throw new ConflictException(
           'This account changed. Reload before editing',
@@ -266,6 +280,8 @@ export class StaffAdminService {
         'reset-mfa',
         'send-reset',
         'send-verification',
+        'archive',
+        'restore',
       ].includes(action)
     )
       throw new BadRequestException('Unknown staff action');
@@ -273,6 +289,16 @@ export class StaffAdminService {
       throw new ConflictException(
         'Use your recovery codes or ask another manager to reset your MFA',
       );
+    if (action === 'archive' && id === req.staff.user.id)
+      throw new ConflictException('You cannot remove your own account');
+    const body = objectInput(value);
+    if (
+      ['archive', 'restore'].includes(action) &&
+      (typeof body.revision !== 'number' ||
+        !Number.isSafeInteger(body.revision) ||
+        body.revision < 1)
+    )
+      throw new BadRequestException('Provide the account revision');
     if (action.startsWith('send-') && !this.config.smtp)
       throw new ServiceUnavailableException(
         'Configure SMTP email delivery first',
@@ -285,6 +311,56 @@ export class StaffAdminService {
       );
       const staff = result.rows[0];
       if (!staff) throw new NotFoundException('Staff account not found');
+      if (['archive', 'restore'].includes(action)) {
+        if (staff.revision !== body.revision)
+          throw new ConflictException(
+            'This account changed. Reload before editing',
+          );
+        if (
+          (action === 'archive' && staff.archived) ||
+          (action === 'restore' && !staff.archived)
+        )
+          throw new ConflictException(
+            'Account status already changed. Reload before retrying',
+          );
+        if (
+          action === 'archive' &&
+          staff.role === 'manager' &&
+          !staff.disabled
+        ) {
+          const remaining = await client.query(
+            'SELECT id FROM "user" WHERE role = $1 AND NOT disabled AND id <> $2 LIMIT 1',
+            ['manager', id],
+          );
+          if (!remaining.rowCount)
+            throw new ConflictException('Keep at least one active manager');
+        }
+        await client.query("SELECT set_config('paygo.reason', $1, true)", [
+          input.reason,
+        ]);
+        await client.query(
+          `UPDATE "user" SET archived_at = ${action === 'archive' ? 'now()' : 'NULL'}, disabled = true, "updatedAt" = now() WHERE id = $1`,
+          [id],
+        );
+        await client.query('DELETE FROM session WHERE "userId" = $1', [id]);
+        await client.query('DELETE FROM verification WHERE value = $1', [id]);
+        await client.query(
+          "UPDATE auth_mail_outbox SET status = 'failed', payload = NULL, locked_at = NULL WHERE user_id = $1 AND status IN ('pending', 'sending')",
+          [id],
+        );
+        await this.audit(
+          client,
+          req.staff.user.id,
+          id,
+          action === 'archive' ? 'staff.removed' : 'staff.restored',
+          input.reason,
+        );
+        return staff;
+      }
+      if (staff.archived)
+        throw new ConflictException(
+          'Restore this removed account before using account actions',
+        );
       if (action === 'reset-mfa') {
         await client.query(
           'UPDATE "user" SET "twoFactorEnabled" = false, "updatedAt" = now() WHERE id = $1',

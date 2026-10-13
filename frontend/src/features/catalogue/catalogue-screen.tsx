@@ -19,6 +19,8 @@ import { ProductEditor } from "./product-editor"
 import { CategoryEditor } from "./category-editor"
 import { ProductHistory } from "./product-history"
 import { CatalogueImport } from "./catalogue-import"
+import { ProductImage } from "./product-image"
+import { Badge } from "@/components/ui/badge"
 
 type Panel =
   | { kind: "list" | "categories" | "import" }
@@ -186,13 +188,15 @@ export function CatalogueScreen({ manager }: { manager: boolean }) {
             </div>
             <Button type="submit">Search</Button>
           </form>
-          <CategoryPicker
-            id="filter-category"
-            categories={categories}
-            value={query.categoryId}
-            onChange={(categoryId) => filter({ categoryId, page: 0 })}
-            emptyLabel="All categories"
-          />
+          {categories.length > 0 && (
+            <CategoryPicker
+              id="filter-category"
+              categories={categories}
+              value={query.categoryId}
+              onChange={(categoryId) => filter({ categoryId, page: 0 })}
+              emptyLabel="All categories"
+            />
+          )}
           {manager && (
             <div
               className="flex flex-wrap gap-2"
@@ -226,17 +230,25 @@ export function CatalogueScreen({ manager }: { manager: boolean }) {
               </p>
             </div>
           ) : (
-            <ul className="space-y-3">
+            <ul className="grid gap-4 xl:grid-cols-2">
               {products.map((product) => (
-                <li key={product.id} className="rounded-lg border p-4">
+                <li
+                  key={product.id}
+                  className="rounded-2xl border bg-card p-4 shadow-xs sm:p-5"
+                >
                   <div className="flex flex-wrap items-start justify-between gap-3">
+                    <ProductImage product={product} />
                     <div className="min-w-0 flex-1">
                       <h3 className="font-semibold break-words">
                         {product.name}
                       </h3>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {product.sku} · {product.categoryName ?? "No category"}
-                        {!product.active && " · Archived"}
+                        {!product.active && (
+                          <Badge className="ml-2" variant="secondary">
+                            Archived
+                          </Badge>
+                        )}
                       </p>
                     </div>
                     <p className="font-semibold tabular-nums">
@@ -246,7 +258,7 @@ export function CatalogueScreen({ manager }: { manager: boolean }) {
                       </span>
                     </p>
                   </div>
-                  <p className="mt-2 text-xs break-all text-muted-foreground">
+                  <p className="mt-3 text-xs leading-5 break-words text-muted-foreground">
                     {product.barcodes.length
                       ? `Barcodes: ${product.barcodes.join(", ")}`
                       : "No barcode"}{" "}
@@ -254,9 +266,15 @@ export function CatalogueScreen({ manager }: { manager: boolean }) {
                     {product.unit === "kg" || product.unit === "l"
                       ? `Quantity step: 0.001 ${product.unit}`
                       : "Whole quantities"}
-                    {manager &&
-                      ` · Low-stock alert: ${product.lowStockThresholdMinor === null ? "Not set" : `${stockQuantityText(product.lowStockThresholdMinor, product.unit)} ${product.unit}`}`}
                   </p>
+                  {manager && (
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      Low-stock alert:{" "}
+                      {product.lowStockThresholdMinor === null
+                        ? "Not set"
+                        : `${stockQuantityText(product.lowStockThresholdMinor, product.unit)} ${product.unit}`}
+                    </p>
+                  )}
                   {manager && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Button

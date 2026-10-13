@@ -2,9 +2,9 @@
 
 **Status:** Local development active; isolated HostPinnacle/Aiven deployment proof pending
 
-**Version:** 0.10
+**Version:** 0.11
 
-**Last updated:** 2 October 2026
+**Last updated:** 13 October 2026
 
 **Budget objective:** Zero application licence fees and no additional hosting subscription for the first test shop, within the existing HostPinnacle package. Existing hosting/domain renewals still apply.
 
@@ -402,6 +402,10 @@ Use persistent PostgreSQL job records and a bounded, locking cron runner if avai
 
 Better Auth is the selected authentication library. Use the relevant installed Better Auth skills, documentation matching the resolved version, and tests of actual behavior. The official [NestJS integration guide](https://better-auth.com/docs/integrations/nestjs) identifies the NestJS wrapper as community-maintained. Local email/password authentication is implemented with Better Auth 1.7.4 and wrapper 2.8.0: database sessions, explicit SQL migrations, exact-origin checks, database rate limits, server-side manager/cashier roles, controlled local staff provisioning and shadcn login UI. A custom global guard keeps health probes independent of authentication/database availability. See [local auth setup](LOCAL_AUTH_SETUP.md). The login/security follow-up is implemented in source: required email verification, password recovery/change, authenticator MFA with per-session proof, controlled staff administration/suspension, session revocation, sanitized append-only security history and a 15-minute server/browser inactivity policy. Managers must complete MFA before business access. Branch/till permissions remain future business-module work. PostgreSQL, SMTP and connected-browser verification remain pending; this is not live readiness.
 
+Staff removal is an audited, reversible archive of the account identity. It disables sign-in, revokes sessions and recovery tokens, clears pending auth mail and hides the account from normal staff lists. Sales/audit references and the email identity remain reserved. Restoration leaves the account suspended until a manager explicitly activates it. Removed-account metadata is central-only. Removal reaches edge authentication when its disabled roster change is applied through the existing configuration transport; this does not provide instant revocation on a disconnected PC.
+
+Product photos are optional ancillary catalogue data stored as bounded raster bytes in PostgreSQL, served only to authenticated staff. Manager writes use existing catalogue replay receipts, product revision locking and history. Photos need no separate storage provider; database backup size includes their bytes. The current signed manual edge configuration transport carries product revisions but excludes photo bytes; products remain usable with icon/name/price fallback.
+
 The user selected Resend SMTP on 13 October 2026 after the original mailbox rejected authentication. Nodemailer 10.0.10 continues to send through certificate-verified TLS; no new SDK or dependency is needed. The user confirmed pos.sifulabs.co.ke is the verified sending domain; aligning the private sender address to it resolved the initial rejection. A direct local SMTP test passed TLS/authentication and sender acceptance, with user-confirmed Inbox arrival on 13 October. Receiving mail is not needed for outbound auth messages. Encrypted, expiring PostgreSQL outbox jobs separate request handling from SMTP, with bounded claims/retries. A timer processes local jobs while Node runs; real verification/recovery queue delivery passed on disposable PostgreSQL, including encrypted persistence, SMTP success audits, payload clearing and token completion/replay checks. Connected-browser, timer/restart and hosted scheduling/recycling checks remain. See [deferred security verification](SECURITY_VERIFICATION.md).
 
 Use individual accounts, server-side permissions, supervisor approval for sensitive actions, password hashing, protected server sessions, CSRF protection, server-side login throttling, automatic screen lock, and manager MFA with recovery codes.
@@ -566,5 +570,7 @@ These questions refine the pilot. Local PostgreSQL authentication, catalogue, in
 | ADR-024 | Use Aiven Free as the temporary external PostgreSQL service for the isolated HostPinnacle deployment proof while HostPinnacle's PostgreSQL service remains end-of-life                                                       | Aiven migrations and public health checks pass; production SLA, authenticated flows and recovery gates remain            | 2026-10-02 |
 | ADR-025 | Start offline continuity with one loopback-only shop-PC edge service and local PostgreSQL; keep cash checkout locally authoritative and atomically append versioned outbox events | Cash-sale, paid-refund, stock movement and supplier/count document events enter the durable outbox; signed delivery, hosted projections/reconciliation, source-filtered net/refund insights, combined delivered purchase totals and authoritative stock reporting are implemented. Physical setup/recovery remain | 2026-10-02 |
 | ADR-026 | One-way hosted-to-edge staff/catalogue bootstrap with a signed-off opening stock count, ordered configuration checkpoint and fenced PC generation | Guard/checkpoint, signed snapshot/change batches, witnessed manager and other rostered staff enrollment, opening signoff, roster freshness and disabled-by-default signed cutover/fence tickets implemented; full recovery and operational rehearsal remain | 2026-10-03 |
+| ADR-027 | Remove staff by reversible archive with disabled sign-in; preserve business/audit identities and restore as suspended | Implemented locally; no permanent deletion of staff business actors | 2026-10-13 |
+| ADR-028 | Optional bounded product photos in PostgreSQL; existing catalogue authorization/replay/revision rules; no-photo fallback | Implemented locally; photo bytes excluded from current manual edge transport | 2026-10-13 |
 
 Provider claims cited above were reviewed on 2 October 2026. Recheck plan terms when creating accounts or enabling live integrations.

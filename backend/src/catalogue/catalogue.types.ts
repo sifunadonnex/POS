@@ -14,10 +14,12 @@ export type Product = {
   active: boolean;
   revision: number;
   barcodes: string[];
+  hasImage?: boolean;
 };
 export const productColumns = `p.id, p.sku, p.name, p.category_id AS "categoryId", c.name AS "categoryName",
   p.unit, p.price_minor::text AS "priceMinor", p.low_stock_threshold_minor::text AS "lowStockThresholdMinor",
   p.tax_code AS "taxCode", p.active, p.revision,
+  EXISTS(SELECT 1 FROM catalogue_product_photo photo WHERE photo.product_id = p.id) AS "hasImage",
   ARRAY(SELECT b.code FROM catalogue_barcode b WHERE b.product_id = p.id ORDER BY b.code) AS barcodes`;
 export const productFrom =
   'catalogue_product p LEFT JOIN catalogue_category c ON c.id = p.category_id';

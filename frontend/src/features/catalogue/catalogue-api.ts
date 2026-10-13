@@ -13,6 +13,7 @@ export type Product = {
   active: boolean
   revision: number
   barcodes: string[]
+  hasImage?: boolean
 }
 export type HistoryEntry = {
   id: string
@@ -138,7 +139,8 @@ export function parseProduct(value: unknown): Product {
     !nullableText(v.taxCode) ||
     typeof v.active !== "boolean" ||
     !isRevision(v.revision) ||
-    !strings(v.barcodes)
+    !strings(v.barcodes) ||
+    (v.hasImage !== undefined && typeof v.hasImage !== "boolean")
   )
     throw new Error("Invalid product response")
   return {
@@ -154,6 +156,7 @@ export function parseProduct(value: unknown): Product {
     active: v.active,
     revision: v.revision,
     barcodes: v.barcodes,
+    hasImage: v.hasImage === true,
   }
 }
 export function savedProduct(value: unknown) {

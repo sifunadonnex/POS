@@ -2,6 +2,21 @@ import { useEffect, useRef, useState, type FormEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  UserPlus,
+  ShieldCheck,
+  UserRound,
+  Mail,
+  Trash2,
+  RotateCcw,
+} from "lucide-react"
 import { identityRequest } from "./identity-api"
 import { PasswordField } from "./security-fields"
 import { errorText, formText } from "./security-form"
@@ -16,6 +31,8 @@ export function StaffAdminScreen({ currentUserId }: { currentUserId: string }) {
   const [search, setSearch] = useState("")
   const [page, setPage] = useState(0)
   const [hasMore, setHasMore] = useState(false)
+  const [status, setStatus] = useState("all")
+  const [removalArmed, setRemovalArmed] = useState(false)
   const [revision, setRevision] = useState(0)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
@@ -29,7 +46,7 @@ export function StaffAdminScreen({ currentUserId }: { currentUserId: string }) {
   const busy = useRef(false)
   useEffect(() => {
     let current = true
-    void listStaff(search, page)
+    void listStaff(search, page, status)
       .then((result) => {
         if (current) {
           setRows(result.staff)
@@ -49,7 +66,7 @@ export function StaffAdminScreen({ currentUserId }: { currentUserId: string }) {
     return () => {
       current = false
     }
-  }, [search, page, revision])
+  }, [search, page, revision, status])
   function reload() {
     setLoading(true)
     setRevision((value) => value + 1)
@@ -59,6 +76,7 @@ export function StaffAdminScreen({ currentUserId }: { currentUserId: string }) {
     setRole(row?.role ?? "cashier")
     setDisabled(row?.disabled ?? false)
     setEditing(true)
+    setRemovalArmed(false)
     setError("")
     setMessage("")
   }
@@ -111,7 +129,12 @@ export function StaffAdminScreen({ currentUserId }: { currentUserId: string }) {
       } else if (selected) {
         const result = await identityRequest(
           `staff/${encodeURIComponent(selected.id)}/${action}`,
-          confirmation
+          {
+            ...confirmation,
+            ...(["archive", "restore"].includes(action)
+              ? { revision: selected.revision }
+              : {}),
+          }
         )
         if (
           !result ||
@@ -123,13 +146,17 @@ export function StaffAdminScreen({ currentUserId }: { currentUserId: string }) {
             "The action could not be confirmed. Reload before retrying."
           )
         setMessage(
-          action.startsWith("send-")
-            ? "Email link requested. Delivery is recorded in security history."
-            : action === "reset-mfa"
-              ? "Authenticator reset and sessions revoked. The staff member must enroll again."
-              : "Sessions revoked. The staff member must sign in again."
+          action === "archive"
+            ? "Staff account removed. Sign-in is disabled; sales and audit history are retained."
+            : action === "restore"
+              ? "Account restored as suspended. Review access before activating it."
+              : action.startsWith("send-")
+                ? "Email link requested. Delivery is recorded in security history."
+                : action === "reset-mfa"
+                  ? "Authenticator reset and sessions revoked. The staff member must enroll again."
+                  : "Sessions revoked. The staff member must sign in again."
         )
-        if (action === "reset-mfa") {
+        if (["reset-mfa", "archive", "restore"].includes(action)) {
           setEditing(false)
           setSelected(null)
         }
@@ -150,12 +177,14 @@ export function StaffAdminScreen({ currentUserId }: { currentUserId: string }) {
     <section className="space-y-5" aria-label="Staff administration">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Staff accounts</h2>
+          <h2 className="text-xl font-semibold tracking-tight">Your team</h2>
           <p className="text-sm text-muted-foreground">
-            Create individual accounts and manage their access.
+            Give each person the right access, and keep account recovery within
+            reach.
           </p>
         </div>
         <Button onClick={() => edit(null)} disabled={pending}>
+          <UserPlus className="size-4" aria-hidden="true" />
           New staff account
         </Button>
       </div>
@@ -178,6 +207,31 @@ export function StaffAdminScreen({ currentUserId }: { currentUserId: string }) {
           Search
         </Button>
       </form>
+      <nav aria-label="Staff account status" className="flex flex-wrap gap-2">
+        {(
+          [
+            ["all", "All staff"],
+            ["active", "Active"],
+            ["suspended", "Suspended"],
+            ["removed", "Removed"],
+          ] as const
+        ).map(([value, label]) => (
+          <Button
+            key={value}
+            variant={status === value ? "secondary" : "ghost"}
+            className="min-h-10 rounded-full px-4"
+            aria-pressed={status === value}
+            disabled={pending}
+            onClick={() => {
+              setLoading(true)
+              setStatus(value)
+              setPage(0)
+            }}
+          >
+            {label}
+          </Button>
+        ))}
+      </nav>
       {loading ? (
         <p role="status">Loading staff accounts…</p>
       ) : loadError ? (
@@ -188,15 +242,47 @@ export function StaffAdminScreen({ currentUserId }: { currentUserId: string }) {
           </Button>
         </div>
       ) : rows.length === 0 ? (
-        <p>No staff accounts match this search.</p>
+        <div className="rounded-2xl border border-dashed bg-muted/20 p-8 text-center">
+          <UserRound
+            className="mx-auto size-8 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <p className="mt-3 font-medium">
+            No staff accounts match this search.
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Try another name, email or account status.
+          </p>
+        </div>
       ) : (
-        <ul className="space-y-2">
+        <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {rows.map((row) => (
             <li
               key={row.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4"
+              className="flex flex-col gap-4 rounded-2xl border bg-card p-5 shadow-xs"
             >
               <div className="min-w-0">
+                <div className="mb-4 flex items-center justify-between gap-2">
+                  <div
+                    className="flex size-11 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary"
+                    aria-hidden="true"
+                  >
+                    {row.name
+                      .split(" ")
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .map((part) => part[0])
+                      .join("")
+                      .toUpperCase()}
+                  </div>
+                  <Badge variant={row.disabled ? "outline" : "secondary"}>
+                    {row.archived
+                      ? "Removed"
+                      : row.disabled
+                        ? "Suspended"
+                        : "Active"}
+                  </Badge>
+                </div>
                 <h3 className="font-medium">
                   {row.name}
                   {row.id === currentUserId ? " (you)" : ""}
@@ -204,16 +290,34 @@ export function StaffAdminScreen({ currentUserId }: { currentUserId: string }) {
                 <p className="text-sm break-all text-muted-foreground">
                   {row.email}
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {row.role} · {row.disabled ? "Suspended" : "Active"} ·{" "}
-                  {row.emailVerified
-                    ? "Email verified"
-                    : "Email verification needed"}{" "}
-                  · {row.twoFactorEnabled ? "MFA enabled" : "MFA not enabled"}
-                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Badge variant="secondary" className="capitalize">
+                    {row.role}
+                  </Badge>
+                  {row.id === currentUserId && (
+                    <Badge variant="outline">Your account</Badge>
+                  )}
+                </div>
+                <div className="mt-4 space-y-2 text-xs text-muted-foreground">
+                  <p className="flex items-center gap-2">
+                    <Mail className="size-3.5" aria-hidden="true" />
+                    {row.emailVerified
+                      ? "Email verified"
+                      : "Email verification needed"}
+                  </p>
+                  <p className="flex items-center gap-2">
+                    <ShieldCheck className="size-3.5" aria-hidden="true" />
+                    {row.twoFactorEnabled
+                      ? "Authenticator enabled"
+                      : row.role === "manager"
+                        ? "Authenticator required for manager access"
+                        : "Authenticator not enabled"}
+                  </p>
+                </div>
               </div>
               <Button
                 variant="outline"
+                className="mt-auto min-h-10 w-full"
                 onClick={() => edit(row)}
                 disabled={pending}
               >
@@ -248,173 +352,259 @@ export function StaffAdminScreen({ currentUserId }: { currentUserId: string }) {
           Next
         </Button>
       </div>
-      {editing && (
-        <form
-          key={selected?.id ?? "new"}
-          onSubmit={submit}
-          className="space-y-4 rounded-xl border bg-muted/20 p-4 sm:p-6"
-          aria-label={
-            selected ? "Manage staff account" : "Create staff account"
-          }
-          aria-busy={pending}
+      <Dialog
+        open={editing}
+        onOpenChange={(open) => {
+          if (!pending) setEditing(open)
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="max-h-[90svh] overflow-y-auto rounded-2xl p-5 motion-reduce:animate-none sm:max-w-2xl sm:p-6"
         >
-          <h3 className="font-semibold">
+          <DialogTitle className="text-xl font-semibold tracking-tight">
             {selected ? `Manage ${selected.name}` : "Create staff account"}
-          </h3>
-          <div className="space-y-2">
-            <Label htmlFor="staff-name">Full name</Label>
-            <Input
-              id="staff-name"
-              name="staff-name"
-              defaultValue={selected?.name ?? ""}
-              required
-              maxLength={100}
-              disabled={pending}
-            />
-          </div>
-          {selected ? (
-            <p className="text-sm break-all text-muted-foreground">
-              {selected.email}
-            </p>
-          ) : (
+          </DialogTitle>
+          <DialogDescription>
+            Review profile and access, then confirm changes with your password.
+            Every action is recorded.
+          </DialogDescription>
+          <form
+            key={selected?.id ?? "new"}
+            onSubmit={submit}
+            className="space-y-5"
+            aria-label={
+              selected ? "Manage staff account" : "Create staff account"
+            }
+            aria-busy={pending}
+          >
             <div className="space-y-2">
-              <Label htmlFor="staff-email">Staff email</Label>
+              <Label htmlFor="staff-name">Full name</Label>
               <Input
-                id="staff-email"
-                name="staff-email"
-                type="email"
-                autoComplete="off"
+                id="staff-name"
+                name="staff-name"
+                defaultValue={selected?.name ?? ""}
                 required
-                maxLength={254}
+                maxLength={100}
+                disabled={pending || selected?.archived}
+              />
+            </div>
+            {selected ? (
+              <p className="text-sm break-all text-muted-foreground">
+                {selected.email}
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="staff-email">Staff email</Label>
+                <Input
+                  id="staff-email"
+                  name="staff-email"
+                  type="email"
+                  autoComplete="off"
+                  required
+                  maxLength={254}
+                  disabled={pending}
+                />
+              </div>
+            )}
+            <fieldset className="space-y-2">
+              <legend className="mb-2 text-sm font-medium">Role</legend>
+              <div className="flex gap-2">
+                {(["cashier", "manager"] as const).map((value) => (
+                  <Button
+                    type="button"
+                    key={value}
+                    variant={role === value ? "secondary" : "outline"}
+                    aria-pressed={role === value}
+                    disabled={
+                      pending ||
+                      selected?.id === currentUserId ||
+                      selected?.archived
+                    }
+                    onClick={() => setRole(value)}
+                  >
+                    {value === "manager" ? "Manager" : "Cashier"}
+                  </Button>
+                ))}
+              </div>
+            </fieldset>
+            {selected && !selected.archived && (
+              <fieldset className="space-y-2">
+                <legend className="mb-2 text-sm font-medium">
+                  Account status
+                </legend>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={!disabled ? "secondary" : "outline"}
+                    aria-pressed={!disabled}
+                    disabled={pending}
+                    onClick={() => setDisabled(false)}
+                  >
+                    Active
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={disabled ? "secondary" : "outline"}
+                    aria-pressed={disabled}
+                    disabled={pending || selected.id === currentUserId}
+                    onClick={() => setDisabled(true)}
+                  >
+                    Suspended
+                  </Button>
+                </div>
+              </fieldset>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="reason">Reason for this action</Label>
+              <Input
+                id="reason"
+                name="reason"
+                required
+                minLength={3}
+                maxLength={200}
                 disabled={pending}
               />
             </div>
-          )}
-          <fieldset className="space-y-2">
-            <legend className="mb-2 text-sm font-medium">Role</legend>
-            <div className="flex gap-2">
-              {(["cashier", "manager"] as const).map((value) => (
-                <Button
-                  type="button"
-                  key={value}
-                  variant={role === value ? "secondary" : "outline"}
-                  aria-pressed={role === value}
-                  disabled={pending || selected?.id === currentUserId}
-                  onClick={() => setRole(value)}
-                >
-                  {value === "manager" ? "Manager" : "Cashier"}
-                </Button>
-              ))}
-            </div>
-          </fieldset>
-          {selected && (
-            <fieldset className="space-y-2">
-              <legend className="mb-2 text-sm font-medium">
-                Account status
-              </legend>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant={!disabled ? "secondary" : "outline"}
-                  aria-pressed={!disabled}
-                  disabled={pending}
-                  onClick={() => setDisabled(false)}
-                >
-                  Active
-                </Button>
-                <Button
-                  type="button"
-                  variant={disabled ? "secondary" : "outline"}
-                  aria-pressed={disabled}
-                  disabled={pending || selected.id === currentUserId}
-                  onClick={() => setDisabled(true)}
-                >
-                  Suspended
-                </Button>
-              </div>
-            </fieldset>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="reason">Reason for this action</Label>
-            <Input
-              id="reason"
-              name="reason"
-              required
-              minLength={3}
-              maxLength={200}
+            <PasswordField
+              id="admin-password"
+              label="Your current password"
               disabled={pending}
             />
-          </div>
-          <PasswordField
-            id="admin-password"
-            label="Your current password"
-            disabled={pending}
-          />
-          <p className="text-sm text-muted-foreground">
-            Every action is recorded. Role changes and suspensions revoke the
-            affected account’s sessions.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" data-action="save" disabled={pending}>
-              {pending
-                ? "Working…"
-                : selected
-                  ? "Save account"
-                  : "Create account"}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              disabled={pending}
-              onClick={() => setEditing(false)}
-            >
-              Close
-            </Button>
-          </div>
-          {selected && (
-            <div className="flex flex-wrap gap-2 border-t pt-4">
+            <p className="text-sm text-muted-foreground">
+              Every action is recorded. Role changes and suspensions revoke the
+              affected account’s sessions.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {!selected?.archived && (
+                <Button type="submit" data-action="save" disabled={pending}>
+                  {pending
+                    ? "Working…"
+                    : selected
+                      ? "Save account"
+                      : "Create account"}
+                </Button>
+              )}
+              {selected?.archived && (
+                <Button type="submit" data-action="restore" disabled={pending}>
+                  <RotateCcw className="size-4" aria-hidden="true" />
+                  Restore as suspended
+                </Button>
+              )}
               <Button
-                type="submit"
-                data-action="send-verification"
-                variant="outline"
-                disabled={pending || selected.emailVerified}
-              >
-                Request verification link
-              </Button>
-              <Button
-                type="submit"
-                data-action="send-reset"
-                variant="outline"
+                type="button"
+                variant="ghost"
                 disabled={pending}
+                onClick={() => setEditing(false)}
               >
-                Request password-setup link
-              </Button>
-              <Button
-                type="submit"
-                data-action="revoke-sessions"
-                variant="outline"
-                disabled={pending}
-              >
-                Revoke sessions
-              </Button>
-              <Button
-                type="submit"
-                data-action="reset-mfa"
-                variant="destructive"
-                disabled={pending || selected.id === currentUserId}
-              >
-                Reset authenticator
+                Close
               </Button>
             </div>
-          )}
-        </form>
-      )}
-      {error && (
+            {selected && !selected.archived && (
+              <div className="flex flex-wrap gap-2 border-t pt-4">
+                <div className="mb-1 w-full">
+                  <h4 className="font-medium">Recovery and sessions</h4>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Send a link to the staff member, or end access on their
+                    signed-in devices.
+                  </p>
+                </div>
+                <Button
+                  type="submit"
+                  data-action="send-verification"
+                  variant="outline"
+                  disabled={pending || selected.emailVerified}
+                >
+                  Request verification link
+                </Button>
+                <Button
+                  type="submit"
+                  data-action="send-reset"
+                  variant="outline"
+                  disabled={pending}
+                >
+                  Request password-setup link
+                </Button>
+                <Button
+                  type="submit"
+                  data-action="revoke-sessions"
+                  variant="outline"
+                  disabled={pending}
+                >
+                  Revoke sessions
+                </Button>
+                <Button
+                  type="submit"
+                  data-action="reset-mfa"
+                  variant="destructive"
+                  disabled={pending || selected.id === currentUserId}
+                >
+                  Reset authenticator
+                </Button>
+              </div>
+            )}
+            {selected &&
+              !selected.archived &&
+              selected.id !== currentUserId && (
+                <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4">
+                  <h4 className="font-medium">Remove from your team</h4>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    Removal disables sign-in and keeps sales, audit history and
+                    the email identity. You can restore the account from Removed
+                    staff.
+                  </p>
+                  {removalArmed ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        type="submit"
+                        data-action="archive"
+                        variant="destructive"
+                        disabled={pending}
+                      >
+                        Confirm removal
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        disabled={pending}
+                        onClick={() => setRemovalArmed(false)}
+                      >
+                        Cancel removal
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      className="mt-3"
+                      type="button"
+                      variant="destructive"
+                      disabled={pending}
+                      onClick={() => setRemovalArmed(true)}
+                    >
+                      <Trash2 className="size-4" aria-hidden="true" />
+                      Remove staff account
+                    </Button>
+                  )}
+                </div>
+              )}
+            {error && (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
+            {message && (
+              <p role="status" className="rounded-xl bg-muted/40 p-3 text-sm">
+                {message}
+              </p>
+            )}
+          </form>
+        </DialogContent>
+      </Dialog>
+      {!editing && error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
-      {message && (
+      {!editing && message && (
         <p role="status" className="text-sm">
           {message}
         </p>

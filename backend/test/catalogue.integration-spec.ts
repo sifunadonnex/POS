@@ -9,10 +9,12 @@ import { DatabaseService } from '../src/database/database.service.js';
 import { CatalogueService } from '../src/catalogue/catalogue.service.js';
 import { CatalogueWrites } from '../src/catalogue/catalogue-writes.js';
 import { CatalogueImportService } from '../src/catalogue/catalogue-import.service.js';
+import { ProductPhotoService } from '../src/catalogue/product-photo.service.js';
 
 // Uses only a disposable schema in an explicit _test database.
 describe('catalogue PostgreSQL transactions', () => {
   let pool: Pool, catalogue: CatalogueService, importer: CatalogueImportService;
+  let photos: ProductPhotoService;
   const schema = `catalogue_${randomUUID().replaceAll('-', '')}`;
   const actor = { userId: randomUUID(), sessionId: randomUUID() };
   const base = {
@@ -73,12 +75,15 @@ describe('catalogue PostgreSQL transactions', () => {
         CatalogueService,
         CatalogueWrites,
         CatalogueImportService,
+        ProductPhotoService,
         { provide: DatabaseService, useValue: { connectionPool: pool } },
       ],
     }).compile();
     catalogue = fixture.get(CatalogueService);
     importer = fixture.get(CatalogueImportService);
+    photos = fixture.get(ProductPhotoService);
   });
+
   afterAll(async () => {
     if (pool) {
       try {
@@ -222,6 +227,92 @@ describe('catalogue PostgreSQL transactions', () => {
     ).rejects.toThrow('already in use');
   });
 
+  it('stores optional photos with replay, revision, history and archive-read protection', async () => {
+    const created = await catalogue.createProduct(actor, {
+      ...base,
+      sku: 'PHOTO',
+      barcodes: [],
+      requestId: randomUUID(),
+    });
+    if (!created || typeof created !== 'object' || !('product' in created))
+      throw new Error('Missing product');
+    const product = created.product;
+    if (
+      !product ||
+      typeof product !== 'object' ||
+      !('id' in product) ||
+      typeof product.id !== 'string'
+    )
+      throw new Error('Missing product ID');
+    const id = product.id;
+    const data =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=';
+    const body = {
+      revision: 1,
+      requestId: randomUUID(),
+      reason: 'Identify product photo',
+      photo: { data },
+    };
+    const result = await photos.save(actor, id, body);
+    expect(await photos.save(actor, id, body)).toEqual(result);
+    const image = await photos.read(id, false);
+    expect(image.content.toString('base64')).toBe(data);
+    expect(image.mime_type).toBe('image/png');
+    expect(
+      (
+        await pool.query(
+          'SELECT count(*)::int AS count FROM catalogue_product_photo WHERE product_id=$1',
+          [id],
+        )
+      ).rows[0].count,
+    ).toBe(1);
+    await expect(
+      photos.save(actor, id, { ...body, requestId: randomUUID() }),
+    ).rejects.toThrow('product changed');
+    await pool.query('UPDATE session SET "mfaVerified"=false WHERE id=$1', [
+      actor.sessionId,
+    ]);
+    try {
+      await expect(
+        photos.save(actor, id, {
+          ...body,
+          revision: 2,
+          requestId: randomUUID(),
+        }),
+      ).rejects.toThrow('manager access');
+    } finally {
+      await pool.query('UPDATE session SET "mfaVerified"=true WHERE id=$1', [
+        actor.sessionId,
+      ]);
+    }
+    await catalogue.updateProduct(actor, id, {
+      ...base,
+      sku: 'PHOTO',
+      barcodes: [],
+      active: false,
+      revision: 2,
+      requestId: randomUUID(),
+    });
+    await expect(photos.read(id, false)).rejects.toThrow('not found');
+    expect((await photos.read(id, true)).mime_type).toBe('image/png');
+    await photos.save(actor, id, {
+      photo: null,
+      revision: 3,
+      requestId: randomUUID(),
+      reason: 'Remove old photo',
+    });
+    await expect(photos.read(id, true)).rejects.toThrow('not found');
+    const history = await pool.query(
+      "SELECT snapshot->>'hasImage' AS image FROM catalogue_history WHERE entity_id=$1 ORDER BY revision",
+      [id],
+    );
+    expect(history.rows.map((row) => row.image)).toEqual([
+      'false',
+      'true',
+      'true',
+      'false',
+    ]);
+  });
   it('checks current session assurance inside each write transaction', async () => {
     await pool.query('UPDATE session SET "mfaVerified" = false WHERE id = $1', [
       actor.sessionId,
