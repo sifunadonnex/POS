@@ -84,8 +84,8 @@ export function RecoveryScreen({
   const reset = recovery.purpose === "reset"
   return (
     <section className="space-y-5" aria-label="Account recovery">
-      <div className="flex items-start gap-3">
-        <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+      <div className="text-center">
+        <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl border bg-muted/40 text-foreground shadow-xs">
           {reset ? (
             <KeyRound className="size-5" aria-hidden="true" />
           ) : (
@@ -96,7 +96,7 @@ export function RecoveryScreen({
           <p className="text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">
             {reset ? "Account recovery" : "Email confirmation"}
           </p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight">
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight">
             {reset
               ? hasToken
                 ? "Choose a new password"
@@ -115,10 +115,10 @@ export function RecoveryScreen({
       {done ? (
         <div
           role="status"
-          className="flex gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-4"
+          className="space-y-3 rounded-xl border bg-muted/30 p-6 text-center"
         >
           <CheckCircle2
-            className="mt-0.5 size-5 shrink-0 text-emerald-600 dark:text-emerald-400"
+            className="mx-auto size-9 text-emerald-600 dark:text-emerald-400"
             aria-hidden="true"
           />
           <div>
@@ -213,7 +213,7 @@ export function RecoveryScreen({
       <Button
         type="button"
         variant="ghost"
-        className="gap-2 px-0"
+        className="w-full gap-2"
         onClick={onBack}
         disabled={pending}
       >

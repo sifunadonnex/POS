@@ -1,11 +1,18 @@
-import type { SalesInsights } from "./reports-api"
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts"
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart"
 import { formatKes } from "@/lib/format"
+import type { SalesInsights } from "./reports-api"
 
 type SalesDay = SalesInsights["daily"][number]
-
-function money(minor: number) {
-  return formatKes(minor)
-}
+const chartConfig = {
+  grossSalesMinor: { label: "Gross sales", color: "var(--chart-1)" },
+  refundMinor: { label: "Refunds", color: "var(--chart-2)" },
+} satisfies ChartConfig
 
 function shortDay(value: string) {
   return new Intl.DateTimeFormat("en-KE", {
@@ -28,96 +35,86 @@ export function DailySalesBars({
       </div>
     )
   }
-
-  const maximum = Math.max(
-    1,
-    ...daily.flatMap((day) => [day.grossSalesMinor, day.refundMinor])
-  )
-  const anchorIndexes = Array.from(
-    new Set([0, Math.floor((daily.length - 1) / 2), daily.length - 1])
-  )
-
   return (
-    <figure>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-        <div className="flex flex-wrap gap-4">
-          <span className="flex items-center gap-2">
-            <span className="size-2 rounded-full bg-primary" /> Gross sales
-          </span>
-          <span className="flex items-center gap-2">
-            <span className="size-2 rounded-full bg-amber-500" /> Refunds
-          </span>
-        </div>
-        <span className="tabular-nums">Scale {money(maximum)}</span>
+    <figure aria-label="Daily gross sales and refunds">
+      <div className="mb-4 flex flex-wrap gap-4 text-xs text-muted-foreground">
+        <span className="flex items-center gap-2">
+          <span className="size-2 rounded-full bg-chart-1" /> Gross sales
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="size-2 rounded-full bg-chart-2" /> Refunds
+        </span>
+        <span className="ml-auto">KES</span>
       </div>
-
-      <div className="relative border-b">
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 border-t border-dashed border-border/70"
-          aria-hidden="true"
-        />
-        <div
-          className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed border-border/70"
-          aria-hidden="true"
-        />
-        <div
-          className={`grid items-end gap-px px-1 sm:gap-1 ${compact ? "h-36" : "h-48"}`}
-          style={{
-            gridTemplateColumns: `repeat(${daily.length}, minmax(0, 1fr))`,
-          }}
-          aria-hidden="true"
+      <ChartContainer
+        config={chartConfig}
+        className={`aspect-auto w-full ${compact ? "h-48" : "h-64"}`}
+      >
+        <BarChart
+          accessibilityLayer
+          data={daily}
+          margin={{ top: 8, right: 8, left: 0 }}
         >
-          {daily.map((day) => {
-            const grossHeight = Math.round(
-              (day.grossSalesMinor / maximum) * 100
-            )
-            const refundHeight = Math.round((day.refundMinor / maximum) * 100)
-            return (
-              <div
-                key={day.day}
-                className="flex h-full min-w-0 items-end justify-center gap-px"
-                title={`${shortDay(day.day)}: ${money(day.grossSalesMinor)} gross, ${money(day.refundMinor)} refunded`}
-              >
-                <div
-                  className="w-[55%] max-w-4 rounded-t-sm bg-primary transition-[height]"
-                  style={{
-                    height: `${day.grossSalesMinor ? Math.max(grossHeight, 2) : 0}%`,
-                  }}
-                />
-                <div
-                  className="w-[30%] max-w-2 rounded-t-sm bg-amber-500 transition-[height]"
-                  style={{
-                    height: `${day.refundMinor ? Math.max(refundHeight, 2) : 0}%`,
-                  }}
-                />
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      <div className="relative mt-2 h-4 text-[10px] text-muted-foreground">
-        {anchorIndexes.map((index, position) => (
-          <span
-            key={daily[index].day}
-            className={`absolute tabular-nums ${
-              position === 0
-                ? "left-0"
-                : position === anchorIndexes.length - 1
-                  ? "right-0"
-                  : "left-1/2 -translate-x-1/2"
-            }`}
-          >
-            {shortDay(daily[index].day)}
-          </span>
-        ))}
-      </div>
-
+          <CartesianGrid vertical={false} strokeDasharray="3 3" />
+          <XAxis
+            dataKey="day"
+            tickFormatter={shortDay}
+            tickLine={false}
+            axisLine={false}
+            tickMargin={10}
+            minTickGap={32}
+          />
+          <YAxis
+            tickFormatter={(minor: number) =>
+              new Intl.NumberFormat("en-KE", {
+                notation: "compact",
+                maximumFractionDigits: 1,
+              }).format(minor / 100)
+            }
+            tickLine={false}
+            axisLine={false}
+            width={48}
+          />
+          <ChartTooltip
+            content={
+              <ChartTooltipContent
+                labelFormatter={(value) =>
+                  typeof value === "string" ? shortDay(value) : value
+                }
+                formatter={(value, name) => (
+                  <div className="flex w-full items-center justify-between gap-6">
+                    <span className="text-muted-foreground">
+                      {name === "grossSalesMinor" ? "Gross sales" : "Refunds"}
+                    </span>
+                    <span className="font-medium tabular-nums">
+                      {typeof value === "number" ? formatKes(value) : "—"}
+                    </span>
+                  </div>
+                )}
+              />
+            }
+          />
+          <Bar
+            dataKey="grossSalesMinor"
+            fill="var(--color-grossSalesMinor)"
+            radius={[4, 4, 0, 0]}
+            maxBarSize={28}
+            isAnimationActive={false}
+          />
+          <Bar
+            dataKey="refundMinor"
+            fill="var(--color-refundMinor)"
+            radius={[4, 4, 0, 0]}
+            maxBarSize={18}
+            isAnimationActive={false}
+          />
+        </BarChart>
+      </ChartContainer>
       <ul className="sr-only">
         {daily.map((day) => (
           <li key={day.day}>
-            {day.day}: {money(day.grossSalesMinor)} gross sales from{" "}
-            {day.saleCount} sales, {money(day.refundMinor)} refunded
+            {day.day}: {formatKes(day.grossSalesMinor)} gross sales from{" "}
+            {day.saleCount} sales, {formatKes(day.refundMinor)} refunded
           </li>
         ))}
       </ul>

@@ -1,5 +1,14 @@
 import { useRef, useState, type FormEvent } from "react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Clock3, KeyRound, ShieldCheck } from "lucide-react"
 import { authClient } from "./auth-client"
 import { PasswordField } from "./security-fields"
 import { formText } from "./security-form"
@@ -77,80 +86,143 @@ export function AccountSecurity({
   }
   if (enrolling)
     return (
-      <MfaScreen
-        enrollment
-        onVerified={() => {
-          setEnrolling(false)
-          onChanged()
-        }}
-      />
+      <Card>
+        <CardContent className="mx-auto w-full max-w-lg py-4">
+          <MfaScreen
+            enrollment
+            onCancel={() => setEnrolling(false)}
+            cancelLabel="Back to security"
+            onVerified={() => {
+              setEnrolling(false)
+              onChanged()
+            }}
+          />
+        </CardContent>
+      </Card>
     )
   return (
-    <div className="space-y-6">
-      <div className="rounded-lg border p-4">
-        <h2 className="font-semibold">Account protection</h2>
-        <p className="mt-2 text-sm">
-          Email verified ·{" "}
-          {staff.twoFactorEnabled
-            ? "Authenticator enabled"
-            : "Authenticator not yet enabled"}
-        </p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Your screen locks after {staff.idleSeconds / 60} minutes without
-          activity.
-        </p>
-        {!staff.twoFactorEnabled && (
-          <Button
-            className="mt-3"
-            variant="outline"
-            onClick={() => setEnrolling(true)}
+    <div className="space-y-5">
+      <Card>
+        <CardHeader className="border-b">
+          <CardTitle>Account protection</CardTitle>
+          <CardDescription>
+            Keep access to your staff account secure.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex gap-3">
+              <ShieldCheck
+                className="mt-0.5 size-5 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <div>
+                <h3 className="text-sm font-medium">
+                  Two-factor authentication
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  An authenticator code adds a second check when you sign in.
+                </p>
+              </div>
+            </div>
+            <Badge variant={staff.twoFactorEnabled ? "secondary" : "outline"}>
+              {staff.twoFactorEnabled ? "Enabled" : "Not enabled"}
+            </Badge>
+          </div>
+          {!staff.twoFactorEnabled && (
+            <Button
+              className="mt-3"
+              variant="outline"
+              onClick={() => setEnrolling(true)}
+            >
+              Set up an authenticator
+            </Button>
+          )}
+          <div className="flex gap-3 border-t pt-4">
+            <Clock3
+              className="mt-0.5 size-5 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <div>
+              <h3 className="text-sm font-medium">Automatic screen lock</h3>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Your screen locks after {staff.idleSeconds / 60} minutes without
+                activity. This policy is managed by the account service.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="border-b">
+          <CardTitle>Change password</CardTitle>
+          <CardDescription>
+            Use 12–128 characters. Updating your password signs out other
+            sessions.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form
+            onSubmit={(event) => {
+              void submit(event, "password")
+            }}
+            className="space-y-4"
+            aria-label="Change password"
+            aria-busy={pending}
           >
-            Set up an authenticator
-          </Button>
-        )}
-      </div>
-      <form
-        onSubmit={(event) => {
-          void submit(event, "password")
-        }}
-        className="space-y-4"
-        aria-label="Change password"
-      >
-        <h2 className="font-semibold">Change password</h2>
-        <PasswordField disabled={pending} />
-        <PasswordField
-          id="new-password"
-          label="New password"
-          newPassword
-          disabled={pending}
-        />
-        <PasswordField
-          id="confirm-password"
-          label="Confirm new password"
-          newPassword
-          disabled={pending}
-        />
-        <Button type="submit" disabled={pending}>
-          {pending ? "Working…" : "Change password"}
-        </Button>
-      </form>
+            <div className="max-w-md space-y-4">
+              <PasswordField disabled={pending} />
+              <PasswordField
+                id="new-password"
+                label="New password"
+                newPassword
+                disabled={pending}
+              />
+              <PasswordField
+                id="confirm-password"
+                label="Confirm new password"
+                newPassword
+                disabled={pending}
+              />
+            </div>
+            <div className="flex justify-end border-t pt-4">
+              <Button type="submit" disabled={pending} className="gap-2">
+                <KeyRound className="size-4" aria-hidden="true" />
+                {pending ? "Working…" : "Change password"}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
       {staff.twoFactorEnabled && (
-        <form
-          onSubmit={(event) => {
-            void submit(event, "codes")
-          }}
-          className="space-y-4 border-t pt-5"
-          aria-label="New recovery codes"
-        >
-          <h2 className="font-semibold">Recovery codes</h2>
-          <p className="text-sm text-muted-foreground">
-            Generating new codes invalidates your previous recovery codes.
-          </p>
-          <PasswordField id="backup-password" disabled={pending} />
-          <Button type="submit" variant="outline" disabled={pending}>
-            Generate new recovery codes
-          </Button>
-        </form>
+        <Card>
+          <CardHeader className="border-b">
+            <CardTitle>Recovery codes</CardTitle>
+            <CardDescription>
+              Use a recovery code if you lose access to your authenticator.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form
+              onSubmit={(event) => {
+                void submit(event, "codes")
+              }}
+              className="space-y-4"
+              aria-label="New recovery codes"
+              aria-busy={pending}
+            >
+              <p className="text-sm text-muted-foreground">
+                Generating new codes invalidates your previous recovery codes.
+              </p>
+              <div className="max-w-md">
+                <PasswordField id="backup-password" disabled={pending} />
+              </div>
+              <Button type="submit" variant="outline" disabled={pending}>
+                Generate new recovery codes
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       )}
       {codes.length > 0 && (
         <div className="space-y-3 rounded-lg border p-4">
@@ -159,7 +231,12 @@ export function AccountSecurity({
           </p>
           <ul className="grid grid-cols-2 gap-2 font-mono text-sm">
             {codes.map((code) => (
-              <li key={code}>{code}</li>
+              <li
+                key={code}
+                className="rounded-lg border bg-card p-3 text-center"
+              >
+                {code}
+              </li>
             ))}
           </ul>
           <Button variant="outline" onClick={() => setCodes([])}>
@@ -168,12 +245,15 @@ export function AccountSecurity({
         </div>
       )}
       {error && (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          role="alert"
+          className="rounded-xl border border-destructive/25 bg-destructive/5 p-4 text-sm text-destructive"
+        >
           {error}
         </p>
       )}
       {message && (
-        <p role="status" className="text-sm">
+        <p role="status" className="rounded-xl border bg-card p-4 text-sm">
           {message}
         </p>
       )}

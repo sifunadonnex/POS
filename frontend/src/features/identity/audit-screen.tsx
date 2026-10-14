@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { RefreshCw, ShieldCheck } from "lucide-react"
 import { formatNairobiDateTime } from "@/lib/format"
 import { listAudit, type AuditEntry } from "./staff-admin-api"
 import { errorText } from "./security-form"
@@ -41,37 +43,61 @@ export function AuditScreen() {
   }
   return (
     <section className="space-y-5" aria-label="Security history">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 rounded-xl border bg-card p-5">
         <div>
           <h2 className="text-lg font-semibold">Security history</h2>
           <p className="text-sm text-muted-foreground">
             Account changes, authentication events, and email delivery attempts.
           </p>
         </div>
-        <Button variant="outline" onClick={refresh} disabled={loading}>
+        <Button
+          variant="outline"
+          onClick={refresh}
+          disabled={loading}
+          className="gap-2"
+        >
+          <RefreshCw className="size-4" aria-hidden="true" />
           Refresh
         </Button>
       </div>
       {loading ? (
-        <p role="status">Loading security history…</p>
+        <p
+          role="status"
+          className="rounded-xl border bg-card p-8 text-center text-sm text-muted-foreground"
+        >
+          Loading security history…
+        </p>
       ) : error ? (
-        <div className="space-y-3">
-          <p role="alert">{error}</p>
+        <div className="space-y-3 rounded-xl border bg-card p-6">
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
           <Button variant="outline" onClick={refresh}>
             Retry
           </Button>
         </div>
       ) : events.length === 0 ? (
-        <p>No security events found.</p>
+        <div className="rounded-xl border border-dashed bg-card p-10 text-center">
+          <ShieldCheck
+            className="mx-auto mb-3 size-8 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <p className="text-sm text-muted-foreground">
+            No security events found.
+          </p>
+        </div>
       ) : (
-        <ol className="space-y-2">
+        <ol className="space-y-3">
           {events.map((event) => (
-            <li key={event.id} className="space-y-1 rounded-lg border p-4">
+            <li
+              key={event.id}
+              className="space-y-2 rounded-xl border bg-card p-5 shadow-xs"
+            >
               <div className="flex flex-wrap justify-between gap-2">
                 <span className="font-medium break-all">
                   {event.action.replaceAll(".", " / ").replaceAll("-", " ")}
                 </span>
-                <span className="text-sm">{event.outcome}</span>
+                <Badge variant="outline">{event.outcome}</Badge>
               </div>
               <p className="text-xs text-muted-foreground">
                 {formatNairobiDateTime(event.createdAt)} · Nairobi time · Event{" "}

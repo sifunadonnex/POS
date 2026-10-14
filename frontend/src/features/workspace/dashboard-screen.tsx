@@ -105,11 +105,11 @@ function StatCard({
   tone?: "default" | "attention"
 }) {
   return (
-    <Card className="min-w-0 overflow-hidden">
+    <Card className="min-w-0 overflow-hidden shadow-xs">
       <CardHeader className="flex flex-row items-start justify-between gap-4 pb-3">
         <div className="min-w-0">
           <CardDescription>{title}</CardDescription>
-          <CardTitle className="mt-2 truncate text-2xl tabular-nums">
+          <CardTitle className="mt-2 truncate text-3xl font-semibold tracking-tight tabular-nums">
             {value}
           </CardTitle>
         </div>
@@ -119,7 +119,7 @@ function StatCard({
           <Icon className="size-5" aria-hidden="true" />
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="border-t pt-3">
         <p className="text-xs leading-5 text-muted-foreground">{description}</p>
       </CardContent>
     </Card>
@@ -642,7 +642,7 @@ export function DashboardScreen({
             ) : (
               <WorkArea
                 icon={ShieldCheck}
-                title="My security"
+                title="Account settings"
                 description="Review your password, MFA and active sessions."
                 action="Open security"
                 label="Account"
@@ -761,7 +761,7 @@ export function DashboardScreen({
               </Button>
             )}
             <Button variant="ghost" onClick={() => onNavigate("account")}>
-              My security
+              Account settings
             </Button>
           </div>
         </CardContent>

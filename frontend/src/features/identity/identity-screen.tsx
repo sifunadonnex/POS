@@ -8,7 +8,6 @@ import {
   ShoppingCart,
   WifiOff,
 } from "lucide-react"
-import authRetailBackground from "@/assets/auth-retail-bg.png"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -37,10 +36,29 @@ export function IdentityScreen() {
   }
 
   const ready = access.status === "ready" && !recovery && !mfaChallenge
+  const verifying =
+    mfaChallenge || (access.status === "ready" && access.staff.mfaRequired)
+  const authHeading = recovery
+    ? recovery.purpose === "reset"
+      ? "A fresh start for your account."
+      : "One step closer to your workspace."
+    : verifying
+      ? "A little extra protection for your shop."
+      : "Every shift starts with a clear view."
+  const authDescription = recovery
+    ? recovery.purpose === "reset"
+      ? "Recover access to your staff account and return to the work that matters."
+      : "Confirm your email address to keep your staff account and recovery links connected to you."
+    : verifying
+      ? "Your authenticator helps keep sales, stock and staff controls in the right hands."
+      : "Sell, receive stock and keep the day reconciled from one protected workspace designed for your team."
 
   if (ready && !access.staff.mfaRequired) {
     return (
-      <main className="min-h-svh bg-background" aria-label="Staff access">
+      <main
+        className="fixed inset-0 overflow-hidden bg-background"
+        aria-label="Staff access"
+      >
         <StaffWorkspace
           key={access.staff.id}
           staff={access.staff}
@@ -142,45 +160,41 @@ export function IdentityScreen() {
   }
 
   return (
-    <main className="relative min-h-svh overflow-hidden bg-slate-950">
-      <img
-        src={authRetailBackground}
-        alt=""
-        className="absolute inset-0 size-full object-cover object-center"
-      />
+    <main className="relative min-h-svh overflow-hidden bg-background">
       <div
-        className="absolute inset-0 bg-slate-950/55 lg:bg-gradient-to-r lg:from-slate-950/30 lg:via-slate-950/50 lg:to-slate-950/90"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(var(--border)_1px,transparent_1px)] mask-[radial-gradient(ellipse_at_center,black,transparent_75%)] bg-size-[20px_20px]"
         aria-hidden="true"
       />
       <div
-        className="absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,transparent_0%,rgba(2,6,23,0.22)_46%,rgba(2,6,23,0.72)_100%)]"
+        className="pointer-events-none absolute inset-0 bg-linear-to-b from-transparent to-muted/40"
         aria-hidden="true"
       />
 
       <section
-        className="relative z-10 mx-auto grid min-h-svh w-full max-w-[92rem] items-center gap-10 px-4 py-6 sm:px-8 sm:py-10 lg:grid-cols-[minmax(0,1fr)_30rem] lg:px-12 xl:gap-20"
+        className="relative z-10 mx-auto grid min-h-svh w-full max-w-6xl items-center gap-10 px-4 py-6 sm:px-8 sm:py-10 lg:grid-cols-[minmax(0,1fr)_26rem] lg:px-12 xl:gap-20"
         aria-label="Staff access"
       >
-        <div className="hidden max-w-2xl text-white lg:block">
+        <div className="hidden max-w-2xl lg:block">
           <div className="flex items-center gap-3">
-            <div className="flex size-11 items-center justify-center rounded-xl border border-white/15 bg-white/10 backdrop-blur-md">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
               <ReceiptText className="size-6" aria-hidden="true" />
             </div>
             <div>
               <p className="text-lg font-semibold">Pay &amp; Go</p>
-              <p className="text-sm text-white/65">Commerce workspace</p>
+              <p className="text-sm text-muted-foreground">
+                Commerce workspace
+              </p>
             </div>
           </div>
 
-          <Badge className="mt-14 border-white/15 bg-white/10 text-white backdrop-blur-md">
+          <Badge variant="outline" className="mt-14 rounded-full bg-background">
             Built for the rhythm of retail
           </Badge>
-          <h1 className="mt-5 max-w-xl text-5xl leading-[1.05] font-semibold tracking-tight xl:text-6xl">
-            Every shift starts with a clear view.
+          <h1 className="mt-5 max-w-xl text-4xl leading-tight font-semibold tracking-tight xl:text-5xl">
+            {authHeading}
           </h1>
-          <p className="mt-5 max-w-lg text-base leading-7 text-white/75">
-            Sell, receive stock and keep the day reconciled from one protected
-            workspace designed for your team.
+          <p className="mt-5 max-w-lg text-base leading-7 text-muted-foreground">
+            {authDescription}
           </p>
 
           <div className="mt-10 grid max-w-xl gap-3 sm:grid-cols-3">
@@ -191,17 +205,19 @@ export function IdentityScreen() {
         </div>
 
         <div className="mx-auto w-full max-w-lg lg:mx-0">
-          <div className="mb-5 flex items-center gap-3 text-white lg:hidden">
-            <div className="flex size-10 items-center justify-center rounded-xl border border-white/15 bg-white/10 backdrop-blur-md">
+          <div className="mb-5 flex items-center gap-3 lg:hidden">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
               <ReceiptText className="size-5" aria-hidden="true" />
             </div>
             <div>
               <p className="font-semibold">Pay &amp; Go</p>
-              <p className="text-xs text-white/65">Your connected workspace</p>
+              <p className="text-xs text-muted-foreground">
+                Your connected workspace
+              </p>
             </div>
           </div>
 
-          <Card className="overflow-hidden border-white/20 bg-background/95 shadow-2xl shadow-black/30 backdrop-blur-xl">
+          <Card className="overflow-hidden rounded-2xl bg-card shadow-xl shadow-foreground/5">
             <CardHeader className="border-b bg-muted/25 px-5 py-4 sm:px-7">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
@@ -232,7 +248,7 @@ export function IdentityScreen() {
               )}
             </CardContent>
           </Card>
-          <p className="mt-4 text-center text-xs text-white/60">
+          <p className="mt-4 text-center text-xs leading-5 text-muted-foreground">
             Authorized staff only · Sessions lock automatically when inactive
           </p>
         </div>
@@ -249,8 +265,11 @@ function HeroPoint({
   label: string
 }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-black/15 px-3 py-3 text-sm backdrop-blur-sm">
-      <Icon className="size-4 text-amber-300" aria-hidden="true" />
+    <div className="flex items-center gap-2.5 rounded-xl border bg-card px-3 py-3 text-sm">
+      <Icon
+        className="size-4 shrink-0 text-muted-foreground"
+        aria-hidden="true"
+      />
       <span>{label}</span>
     </div>
   )

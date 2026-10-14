@@ -175,6 +175,46 @@ it("hides manager tools until the server confirms MFA", async () => {
   expect(screen.queryByRole("button", { name: "Security history" })).toBeNull()
 })
 
+it("requires six digits and clears authenticator input when switching to a recovery code", async () => {
+  mocks.verifyBackupCode.mockResolvedValue({ error: null })
+  const verified = vi.fn()
+  render(<MfaScreen onVerified={verified} />)
+  const input = screen.getByLabelText("Authenticator code")
+  fireEvent.change(input, { target: { value: "123" } })
+  expect(
+    screen.getByRole("button", { name: "Verify code" }).hasAttribute("disabled")
+  ).toBe(true)
+  fireEvent.submit(input.closest("form")!)
+  expect(mocks.verifyTotp).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole("button", { name: "Use a recovery code" }))
+  fireEvent.change(screen.getByLabelText("Recovery code"), {
+    target: { value: "test-recovery-code" },
+  })
+  fireEvent.click(screen.getByRole("button", { name: "Verify code" }))
+  await waitFor(() => expect(verified).toHaveBeenCalledOnce())
+  expect(mocks.verifyBackupCode).toHaveBeenCalledWith({
+    code: "test-recovery-code",
+    trustDevice: false,
+  })
+})
+
+it("accepts a pasted six-digit code and prevents repeated verification submissions", async () => {
+  mocks.verifyTotp.mockResolvedValue({ error: null })
+  const verified = vi.fn()
+  render(<MfaScreen onVerified={verified} />)
+  const input = screen.getByLabelText("Authenticator code")
+  fireEvent.paste(input, { clipboardData: { getData: () => "123 456" } })
+  const form = input.closest("form")!
+  fireEvent.submit(form)
+  fireEvent.submit(form)
+  await waitFor(() => expect(verified).toHaveBeenCalledOnce())
+  expect(mocks.verifyTotp).toHaveBeenCalledOnce()
+  expect(mocks.verifyTotp).toHaveBeenCalledWith({
+    code: "123456",
+    trustDevice: false,
+  })
+})
+
 it("locks idle content even when logout cannot reach the server", async () => {
   vi.useFakeTimers()
   mocks.getStaff.mockResolvedValue({

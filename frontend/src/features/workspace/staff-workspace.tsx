@@ -22,7 +22,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CatalogueScreen } from "../catalogue/catalogue-screen"
-import { AccountSecurity } from "../identity/account-security"
+import { AccountSettingsScreen } from "../identity/account-settings-screen"
 import { AuditScreen } from "../identity/audit-screen"
 import { StaffAdminScreen } from "../identity/staff-admin-screen"
 import type { Staff } from "../identity/identity-api"
@@ -160,8 +160,8 @@ const navigationSections: Array<{
       },
       {
         id: "account",
-        label: "My security",
-        description: "Password, MFA and sessions",
+        label: "Account settings",
+        description: "Profile, security and appearance",
         icon: Shield,
       },
     ],
@@ -194,8 +194,8 @@ const pageDetails: Record<
   },
   account: {
     section: "Administration",
-    title: "My security",
-    description: "Keep your account and sign-in protection up to date.",
+    title: "Account settings",
+    description: "Manage your profile, protection and workspace appearance.",
   },
   staff: {
     section: "Administration",
@@ -287,9 +287,9 @@ export function StaffWorkspace({
   }
 
   return (
-    <div className="flex h-svh w-full overflow-hidden bg-background">
+    <div className="flex h-full min-h-0 w-full overflow-hidden bg-sidebar lg:p-2 lg:pl-0">
       <aside
-        className={`hidden border-r bg-sidebar text-sidebar-foreground lg:flex lg:flex-col ${sidebarCollapsed ? "w-[4.5rem]" : "w-64"} transition-[width] duration-200 motion-reduce:transition-none`}
+        className={`hidden shrink-0 bg-sidebar text-sidebar-foreground lg:flex lg:flex-col ${sidebarCollapsed ? "w-[5.5rem]" : "w-64"} transition-[width] duration-200 motion-reduce:transition-none`}
         aria-label="Primary navigation"
       >
         <div className="flex items-center justify-between border-b px-3 py-3">
@@ -348,7 +348,7 @@ export function StaffWorkspace({
           </div>
         )}
 
-        <nav className="min-h-0 flex-1 space-y-5 overflow-y-auto px-2 py-4">
+        <nav className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-2 py-4">
           {visibleSections.map((section) => (
             <div key={section.label}>
               {!sidebarCollapsed && (
@@ -419,30 +419,19 @@ export function StaffWorkspace({
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="workspace-chrome border-b bg-background/95 px-4 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/85 sm:px-6">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-3 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background lg:rounded-xl lg:border lg:shadow-xs">
+        <header className="workspace-chrome shrink-0 border-b bg-background/95 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/85 sm:px-6">
+          <div className="flex min-h-10 items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">
-                {currentPage.section}
-              </p>
-              <h2 className="mt-1 truncate text-2xl leading-tight font-semibold tracking-tight sm:text-3xl">
+              <h2
+                className="truncate text-base leading-tight font-semibold tracking-tight"
+                title={currentPage.description}
+              >
                 {currentPage.title}
               </h2>
-              <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
-                {currentPage.description}
-              </p>
             </div>
-            <div className="col-span-2 row-start-2 sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:pt-1">
+            <div className="flex shrink-0 items-center gap-2">
               <RuntimeBadge state={runtime} />
-            </div>
-            <div className="col-start-2 row-start-1 flex shrink-0 items-center gap-2 sm:col-start-3 sm:pt-1">
-              <Badge
-                variant="secondary"
-                className="hidden capitalize sm:inline-flex"
-              >
-                {staff.role}
-              </Badge>
               {tab !== "sales" && (
                 <Button
                   aria-label="Open register"
@@ -477,7 +466,7 @@ export function StaffWorkspace({
           </nav>
         </div>
 
-        <main className="min-w-0 flex-1 overflow-auto p-4 sm:p-6">
+        <main className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain bg-muted/20 p-4 sm:p-6">
           {tab === "dashboard" ? (
             <DashboardScreen
               manager={manager}
@@ -505,7 +494,10 @@ export function StaffWorkspace({
           ) : tab === "audit" && manager ? (
             <AuditScreen />
           ) : tab === "account" ? (
-            <AccountSecurity staff={staff} onChanged={onSecurityChanged} />
+            <AccountSettingsScreen
+              staff={staff}
+              onChanged={onSecurityChanged}
+            />
           ) : (
             <PlannedModule tab={tab} />
           )}
@@ -592,7 +584,7 @@ function NavButton({
     size: "default",
     className: mobile
       ? `min-h-11 shrink-0 gap-2 rounded-full px-3 ${active ? "font-semibold shadow-xs" : ""}`
-      : `min-h-10 w-full gap-2 px-2.5 ${collapsed ? "justify-center px-0" : "justify-start"} ${active ? "font-semibold shadow-xs" : ""}`,
+      : `min-h-10 w-full gap-2 border border-transparent px-2.5 ${collapsed ? "justify-center px-0" : "justify-start"} ${active ? "border-border bg-card font-semibold text-foreground shadow-xs hover:bg-card" : "text-muted-foreground hover:border-border hover:bg-card hover:text-foreground"}`,
     disabled: item.available === false,
     title: collapsed ? item.label : item.description,
     "aria-current": active ? "page" : undefined,

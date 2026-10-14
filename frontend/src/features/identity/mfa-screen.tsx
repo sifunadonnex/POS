@@ -1,15 +1,14 @@
 import { useRef, useState, type FormEvent } from "react"
-import {
-  ArrowLeft,
-  Check,
-  CircleAlert,
-  KeyRound,
-  ShieldCheck,
-  Smartphone,
-} from "lucide-react"
+import { ArrowLeft, Check, CircleAlert, ShieldCheck } from "lucide-react"
+import { REGEXP_ONLY_DIGITS } from "input-otp"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp"
 import { authClient } from "./auth-client"
 import { PasswordField } from "./security-fields"
 import { formText } from "./security-form"
@@ -20,14 +19,17 @@ export function MfaScreen({
   enrollment = false,
   onVerified,
   onCancel,
+  cancelLabel = "Back to sign in",
 }: {
   enrollment?: boolean
   onVerified: () => void
   onCancel?: () => void
+  cancelLabel?: string
 }) {
   const [setup, setSetup] = useState<Setup | null>(null)
   const [saved, setSaved] = useState(false)
   const [backup, setBackup] = useState(false)
+  const [code, setCode] = useState("")
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
   const submitting = useRef(false)
@@ -63,13 +65,20 @@ export function MfaScreen({
         setSetup({ secret, backupCodes: result.data.backupCodes })
         form.reset()
       } else {
-        const code = formText(data, "mfa-code").trim()
+        const verificationCode = backup
+          ? formText(data, "mfa-code").trim()
+          : code
+        if (!backup && !/^[0-9]{6}$/.test(verificationCode))
+          throw new Error("Enter all six digits from your authenticator app.")
         const result = backup
           ? await authClient.twoFactor.verifyBackupCode({
-              code,
+              code: verificationCode,
               trustDevice: false,
             })
-          : await authClient.twoFactor.verifyTotp({ code, trustDevice: false })
+          : await authClient.twoFactor.verifyTotp({
+              code: verificationCode,
+              trustDevice: false,
+            })
         if (result.error)
           throw new Error(
             result.error.status === 429
@@ -77,6 +86,7 @@ export function MfaScreen({
               : "The code could not be verified. Try a fresh code or sign in again."
           )
         form.reset()
+        setCode("")
         setSetup(null)
         onVerified()
       }
@@ -93,8 +103,8 @@ export function MfaScreen({
   }
   return (
     <section className="space-y-5" aria-label="Two-factor authentication">
-      <div className="flex items-start gap-3">
-        <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+      <div className="text-center">
+        <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl border bg-muted/40 text-foreground shadow-xs">
           <ShieldCheck className="size-5" aria-hidden="true" />
         </div>
         <div>
@@ -105,7 +115,7 @@ export function MfaScreen({
                 : "Step 1 of 2"
               : "Security check"}
           </p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight">
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight">
             {enrollment ? "Set up your authenticator" : "Confirm it’s you"}
           </h2>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">
@@ -176,35 +186,57 @@ export function MfaScreen({
         {enrollment && !setup ? (
           <PasswordField disabled={pending} />
         ) : (
-          <div className="space-y-2 rounded-xl border bg-background p-4">
-            <div className="flex items-center gap-2">
-              {backup ? (
-                <KeyRound
-                  className="size-4 text-muted-foreground"
-                  aria-hidden="true"
-                />
-              ) : (
-                <Smartphone
-                  className="size-4 text-muted-foreground"
-                  aria-hidden="true"
-                />
-              )}
-              <Label htmlFor="mfa-code">
-                {backup ? "Recovery code" : "Authenticator code"}
-              </Label>
-            </div>
-            <Input
-              id="mfa-code"
-              name="mfa-code"
-              autoComplete="one-time-code"
-              inputMode={backup ? "text" : "numeric"}
-              pattern={backup ? undefined : "[0-9]{6}"}
-              maxLength={backup ? 32 : 6}
-              placeholder={backup ? "Enter one saved code" : "000000"}
-              required
-              disabled={pending || (enrollment && !saved)}
-              className="h-12 text-center font-mono text-lg tracking-[0.35em]"
-            />
+          <div className="space-y-3 py-2">
+            <Label htmlFor="mfa-code" className="justify-center">
+              {backup ? "Recovery code" : "Authenticator code"}
+            </Label>
+            {backup ? (
+              <Input
+                id="mfa-code"
+                name="mfa-code"
+                autoComplete="one-time-code"
+                maxLength={32}
+                placeholder="Enter one saved code"
+                required
+                disabled={pending || (enrollment && !saved)}
+                className="h-12 text-center font-mono"
+              />
+            ) : (
+              <InputOTP
+                id="mfa-code"
+                name="mfa-code"
+                value={code}
+                onChange={(value) => {
+                  setCode(value)
+                  setError("")
+                }}
+                maxLength={6}
+                pattern={REGEXP_ONLY_DIGITS}
+                pasteTransformer={(value) => value.replace(/[\s-]/g, "")}
+                autoComplete="one-time-code"
+                inputMode="numeric"
+                required
+                disabled={pending || (enrollment && !saved)}
+                aria-invalid={!!error}
+                containerClassName="justify-center"
+              >
+                <InputOTPGroup className="gap-1.5 sm:gap-2">
+                  {[0, 1, 2, 3, 4, 5].map((index) => (
+                    <InputOTPSlot
+                      key={index}
+                      index={index}
+                      aria-invalid={!!error}
+                      className="h-12 w-8 rounded-lg! border-l! text-lg sm:h-14 sm:w-11"
+                    />
+                  ))}
+                </InputOTPGroup>
+              </InputOTP>
+            )}
+            <p className="text-center text-xs leading-5 text-muted-foreground">
+              {backup
+                ? "Each recovery code can only be used once."
+                : "Enter the six-digit code. You can also paste it."}
+            </p>
             {enrollment && setup && !saved && (
               <p className="text-xs text-muted-foreground">
                 Confirm that you saved the recovery codes before continuing.
@@ -227,7 +259,11 @@ export function MfaScreen({
         <Button
           type="submit"
           className="h-11 w-full"
-          disabled={pending || (enrollment && !!setup && !saved)}
+          disabled={
+            pending ||
+            (enrollment && !!setup && !saved) ||
+            (!(enrollment && !setup) && !backup && code.length !== 6)
+          }
         >
           {pending
             ? "Checking…"
@@ -244,6 +280,7 @@ export function MfaScreen({
           disabled={pending}
           onClick={() => {
             setBackup(!backup)
+            setCode("")
             setError("")
           }}
         >
@@ -259,7 +296,7 @@ export function MfaScreen({
           onClick={onCancel}
         >
           <ArrowLeft className="size-4" aria-hidden="true" />
-          Back to sign in
+          {cancelLabel}
         </Button>
       )}
     </section>
