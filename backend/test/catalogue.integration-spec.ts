@@ -313,6 +313,129 @@ describe('catalogue PostgreSQL transactions', () => {
       'false',
     ]);
   });
+  it('permits cashier creates with audit/idempotency but rejects changes and revoked assurance', async () => {
+    const cashier = { userId: randomUUID(), sessionId: randomUUID() };
+    await pool.query(
+      'INSERT INTO "user" (id,name,email,role,"emailVerified","twoFactorEnabled") VALUES ($1,$2,$3,$4,true,false)',
+      [
+        cashier.userId,
+        'Create-only cashier',
+        'create-only@example.test',
+        'cashier',
+      ],
+    );
+    await pool.query(
+      'INSERT INTO session (id,"userId",token,"expiresAt","mfaVerified") VALUES ($1,$2,$3,now()+interval \'1 hour\',false)',
+      [cashier.sessionId, cashier.userId, randomUUID()],
+    );
+    const input = {
+      ...base,
+      sku: 'CASHIER-NEW',
+      barcodes: ['cashier-unique'],
+      requestId: randomUUID(),
+    };
+    const created = await catalogue.createProduct(cashier, input);
+    expect(await catalogue.createProduct(cashier, input)).toEqual(created);
+    const result = await pool.query<{ id: string }>(
+      'SELECT id FROM catalogue_product WHERE sku=$1',
+      [input.sku],
+    );
+    expect(result.rowCount).toBe(1);
+    const id = result.rows[0].id;
+    expect(
+      (
+        await pool.query(
+          'SELECT actor_id FROM catalogue_history WHERE entity_id=$1',
+          [id],
+        )
+      ).rows,
+    ).toEqual([{ actor_id: cashier.userId }]);
+    await expect(
+      catalogue.updateProduct(cashier, id, {
+        ...input,
+        active: false,
+        revision: 1,
+        requestId: randomUUID(),
+      }),
+    ).rejects.toThrow('manager access');
+    await expect(
+      catalogue.saveCategory(cashier, null, {
+        name: 'Not allowed',
+        reason: 'Test denial',
+        requestId: randomUUID(),
+      }),
+    ).rejects.toThrow('manager access');
+    await expect(
+      importer.import(cashier, {
+        csv: 'sku,name,category,unit,price,barcodes,tax_code\nFORBIDDEN,No,,each,1,,',
+        reason: 'Test denial',
+        requestId: randomUUID(),
+      }),
+    ).rejects.toThrow('manager access');
+    await pool.query('UPDATE "user" SET "twoFactorEnabled"=true WHERE id=$1', [
+      cashier.userId,
+    ]);
+    await expect(catalogue.createProduct(cashier, input)).rejects.toThrow(
+      'product creation access',
+    );
+    // Enabling MFA revokes existing sessions via the security trigger. A new
+    // session still cannot write until its second factor has been verified.
+    await pool.query(
+      'INSERT INTO session (id,"userId",token,"expiresAt","mfaVerified") VALUES ($1,$2,$3,now()+interval \'1 hour\',false)',
+      [cashier.sessionId, cashier.userId, randomUUID()],
+    );
+    await expect(catalogue.createProduct(cashier, input)).rejects.toThrow(
+      'product creation access',
+    );
+    await pool.query('UPDATE session SET "mfaVerified"=true WHERE id=$1', [
+      cashier.sessionId,
+    ]);
+    expect(await catalogue.createProduct(cashier, input)).toEqual(created);
+    await pool.query('UPDATE "user" SET disabled=true WHERE id=$1', [
+      cashier.userId,
+    ]);
+    await expect(catalogue.createProduct(cashier, input)).rejects.toThrow(
+      'product creation access',
+    );
+    expect(
+      (
+        await pool.query(
+          'SELECT active,revision FROM catalogue_product WHERE id=$1',
+          [id],
+        )
+      ).rows,
+    ).toEqual([{ active: true, revision: 1 }]);
+  });
+
+  it('returns live stock for product lookup including zero for products without balances', async () => {
+    await catalogue.createProduct(actor, {
+      ...base,
+      sku: 'STOCK-LOOKUP',
+      barcodes: ['stock-lookup-test'],
+      requestId: randomUUID(),
+    });
+    const { product } = await catalogue.barcode('stock-lookup-test');
+    expect(
+      (await catalogue.barcode('stock-lookup-test')).product
+        .availableQuantityMinor,
+    ).toBe('0');
+    await pool.query(
+      "INSERT INTO inventory_stock (product_id, unit, quantity_minor) VALUES ($1, 'kg', $2)",
+      [product.id, 1250],
+    );
+    expect(
+      (await catalogue.barcode('stock-lookup-test')).product
+        .availableQuantityMinor,
+    ).toBe('1250');
+    const result = await catalogue.products({ search: 'STOCK-LOOKUP' }, false);
+    expect(result.products).toEqual([
+      expect.objectContaining({
+        id: product.id,
+        availableQuantityMinor: '1250',
+      }),
+    ]);
+  });
+
   it('checks current session assurance inside each write transaction', async () => {
     await pool.query('UPDATE session SET "mfaVerified" = false WHERE id = $1', [
       actor.sessionId,
@@ -324,7 +447,7 @@ describe('catalogue PostgreSQL transactions', () => {
         barcodes: [],
         requestId: randomUUID(),
       }),
-    ).rejects.toThrow('manager access');
+    ).rejects.toThrow('product creation access');
     expect(
       (
         await pool.query(

@@ -110,7 +110,7 @@ export class DarajaMpesaGateway implements PaymentGateway {
       TransactionType: this.config.transactionType,
       Amount: input.amountMinor / 100,
       PartyA: input.payerPhone,
-      PartyB: this.config.shortCode,
+      PartyB: this.config.partyB,
       PhoneNumber: input.payerPhone,
       CallBackURL: this.callbackUrl(),
       AccountReference: input.attemptId.replaceAll('-', '').slice(0, 12),

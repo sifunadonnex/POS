@@ -9,8 +9,19 @@ export class ReportsController {
     @Inject(ReportsService) private readonly reports: ReportsService,
   ) {}
 
-  @Get('summary/:day')
+  @Get('departments/:day')
   @StaffRoles('manager')
+  departments(@Param('day') day: string) {
+    return this.reports.departmentSales(day);
+  }
+
+  @Get('expiry')
+  expiry() {
+    return this.reports.expiryAlerts();
+  }
+
+  @Get('summary/:day')
+  @StaffRoles('manager', 'supervisor')
   summary(@Req() _req: StaffRequest, @Param('day') day: string) {
     return this.reports.summary(day);
   }

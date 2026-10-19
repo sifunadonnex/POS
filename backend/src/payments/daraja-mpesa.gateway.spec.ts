@@ -6,6 +6,7 @@ const config = {
   consumerKey: 'consumer-key',
   consumerSecret: 'consumer-secret',
   shortCode: '174379',
+  partyB: '174379',
   passkey: 'sandbox-online-passkey',
   transactionType: 'CustomerPayBillOnline',
   callbackUrl:
@@ -21,6 +22,46 @@ function jsonResponse(value: unknown, status = 200): Response {
 }
 
 describe('DarajaMpesaGateway', () => {
+  it('routes BuyGoods to the receiving Till while using the business shortcode for the STK password', async () => {
+    const bodies: unknown[] = [];
+    const gateway = new DarajaMpesaGateway(
+      {
+        ...config,
+        shortCode: '600000',
+        partyB: '500000',
+        transactionType: 'CustomerBuyGoodsOnline',
+      },
+      async (_input, init) => {
+        if (!init?.body)
+          return jsonResponse({
+            access_token: 'access-token',
+            expires_in: '3599',
+          });
+        bodies.push(JSON.parse(String(init.body)) as unknown);
+        return jsonResponse({
+          ResponseCode: '0',
+          CheckoutRequestID: 'till-checkout',
+          MerchantRequestID: 'till-merchant',
+        });
+      },
+      () => new Date('2026-09-28T10:20:30.000Z'),
+    );
+    await gateway.initiate({
+      attemptId: '11111111-1111-4111-8111-111111111111',
+      saleId: '22222222-2222-4222-8222-222222222222',
+      kind: 'mpesa',
+      amountMinor: 10000,
+      payerPhone: '254712345678',
+    });
+    expect(bodies[0]).toMatchObject({
+      BusinessShortCode: '600000',
+      PartyB: '500000',
+      TransactionType: 'CustomerBuyGoodsOnline',
+      Password: Buffer.from(
+        '600000sandbox-online-passkey20260928132030',
+      ).toString('base64'),
+    });
+  });
   it('uses OAuth and starts an STK Push with a protected callback URL', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const responses = [

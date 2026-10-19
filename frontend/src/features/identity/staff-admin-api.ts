@@ -4,7 +4,7 @@ export type StaffAccount = {
   id: string
   name: string
   email: string
-  role: "manager" | "cashier"
+  role: "manager" | "supervisor" | "cashier"
   disabled: boolean
   emailVerified: boolean
   twoFactorEnabled: boolean
@@ -29,7 +29,7 @@ export function parseStaffAccount(value: unknown): StaffAccount {
     typeof v.id !== "string" ||
     typeof v.name !== "string" ||
     typeof v.email !== "string" ||
-    (v.role !== "manager" && v.role !== "cashier") ||
+    (v.role !== "manager" && v.role !== "supervisor" && v.role !== "cashier") ||
     typeof v.disabled !== "boolean" ||
     typeof v.emailVerified !== "boolean" ||
     typeof v.twoFactorEnabled !== "boolean" ||

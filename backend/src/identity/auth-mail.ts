@@ -45,12 +45,12 @@ export function createAuthMailer(
       const url = `${origin}/#${message.purpose}=${encodeURIComponent(message.token)}`;
       try {
         const result = await transport.sendMail({
-          from: { name: 'Pay & Go', address: config.from },
+          from: { name: 'POP N’ GO', address: config.from },
           to: { address: message.to, name: '' },
           subject:
             message.purpose === 'reset'
-              ? 'Reset your Pay & Go password'
-              : 'Verify your Pay & Go email',
+              ? 'Reset your POP N’ GO password'
+              : 'Verify your POP N’ GO email',
           text: `${message.purpose === 'reset' ? 'Choose a new password' : 'Verify your email address'} using this link:\n\n${url}\n\nThis link expires in 30 minutes. If you did not request this, ignore this email.`,
         });
         if (result.accepted.length !== 1 || result.rejected.length > 0)

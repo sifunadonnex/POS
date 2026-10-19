@@ -587,7 +587,7 @@ describe('PostgreSQL register and purchase business flows', () => {
     const returnQuantities = [333, 333, 333, 1];
     const expectedRefunds = [333, 334, 333, 1];
     for (const [index, quantityMinor] of returnQuantities.entries()) {
-      const result = await returns.createReturn(manager, {
+      const result = await returns.createReturn(cashier, {
         requestId: randomUUID(),
         saleId: sale.saleId,
         reason: `Fractional return ${index + 1}`,

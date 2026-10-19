@@ -16,19 +16,19 @@ export class ShiftsController {
   constructor(@Inject(ShiftsService) private readonly shifts: ShiftsService) {}
 
   @Get('current')
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   current(@Req() req: StaffRequest) {
     return this.shifts.currentShift(req.staff.user.id);
   }
 
   @Post('open')
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   open(@Req() req: StaffRequest, @Body() body: unknown) {
     return this.shifts.openShift(actor(req), body);
   }
 
   @Post(':shiftId/close')
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   close(@Req() req: StaffRequest, @Body() body: unknown) {
     return this.shifts.closeShift(actor(req), {
       ...(body && typeof body === 'object'

@@ -1,3 +1,4 @@
+import { departmentPredicate } from '../business/business-scope.js';
 import {
   ConflictException,
   Inject,
@@ -31,7 +32,7 @@ export class ProductPhotoService {
         content: Buffer;
         mime_type: string;
       }>(
-        'SELECT photo.content, photo.mime_type FROM catalogue_product_photo photo JOIN catalogue_product p ON p.id=photo.product_id WHERE p.id=$1 AND (p.active OR $2)',
+        `SELECT photo.content, photo.mime_type FROM catalogue_product_photo photo JOIN catalogue_product p ON p.id=photo.product_id WHERE ${departmentPredicate('p')} AND p.id=$1 AND (p.active OR $2)`,
         [id, manager],
       );
       row = result.rows[0];
@@ -57,7 +58,7 @@ export class ProductPhotoService {
       async (client) => {
         const row = (
           await client.query<{ revision: number }>(
-            'SELECT revision FROM catalogue_product WHERE id=$1 FOR UPDATE',
+            `SELECT revision FROM catalogue_product WHERE ${departmentPredicate('catalogue_product')} AND id=$1 FOR UPDATE`,
             [id],
           )
         ).rows[0];

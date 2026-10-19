@@ -69,7 +69,7 @@ it("uses a full application shell with contextual actions and session controls",
   expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy()
   expect(screen.getByRole("button", { name: "Open register" })).toBeTruthy()
   expect(screen.getByText("Hosted", { exact: true })).toBeTruthy()
-  expect(document.title).toBe("Dashboard — Pay & Go")
+  expect(document.title).toBe("Dashboard — POP N’ GO")
 
   fireEvent.click(screen.getAllByRole("button", { name: "Sales register" })[0])
 
@@ -80,7 +80,7 @@ it("uses a full application shell with contextual actions and session controls",
       .getAttribute("aria-current")
   ).toBe("page")
   expect(screen.queryByRole("button", { name: "Open register" })).toBeNull()
-  expect(document.title).toBe("Sales register — Pay & Go")
+  expect(document.title).toBe("Sales register — POP N’ GO")
   fireEvent.click(screen.getByRole("button", { name: "Sign out" }))
   expect(signOut).toHaveBeenCalledOnce()
 })

@@ -1,3 +1,5 @@
+import { RegisterBasketService } from './register-basket.service.js';
+import { CartApprovalService } from './cart-approval.service.js';
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../database/database.module.js';
 import { EdgeSyncModule } from '../sync/edge-sync.module.js';
@@ -12,6 +14,8 @@ import { SuspendedOrdersService } from './suspended-orders.service.js';
   controllers: [SalesController],
   providers: [
     SalesService,
+    RegisterBasketService,
+    CartApprovalService,
     SalesLookupService,
     SalesWrites,
     SuspendedOrdersService,

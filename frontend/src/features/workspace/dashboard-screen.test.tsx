@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { DashboardScreen } from "./dashboard-screen"
+vi.mock("../inventory/valuation-api", () => ({
+  getValuation: async () => ({ products: [], departments: [] }),
+}))
 
 const mocks = vi.hoisted(() => ({
   getDailySummary: vi.fn(),

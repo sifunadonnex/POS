@@ -1,4 +1,8 @@
 import {
+  requireDepartment,
+  departmentPredicate,
+} from '../business/business-scope.js';
+import {
   BadRequestException,
   HttpException,
   Inject,
@@ -26,11 +30,11 @@ export class CatalogueImportService {
       [rows.map((row) => row.categoryName.toLowerCase()).filter(Boolean)],
     );
     const skus = await client.query<{ sku: string }>(
-      'SELECT sku FROM catalogue_product WHERE sku = ANY($1::text[])',
+      `SELECT sku FROM catalogue_product WHERE ${departmentPredicate('catalogue_product')} AND sku = ANY($1::text[])`,
       [rows.flatMap((row) => (row.input ? [row.input.sku] : []))],
     );
     const barcodes = await client.query<{ code: string }>(
-      'SELECT code FROM catalogue_barcode WHERE code = ANY($1::text[])',
+      `SELECT code FROM catalogue_barcode WHERE code = ANY($1::text[]) AND EXISTS (SELECT 1 FROM catalogue_product scoped WHERE scoped.id = catalogue_barcode.product_id AND ${departmentPredicate('scoped')})`,
       [rows.flatMap((row) => row.input?.barcodes ?? [])],
     );
     const categoryMap = new Map(
@@ -79,6 +83,7 @@ export class CatalogueImportService {
   }
 
   import(actor: CatalogueActor, value: unknown) {
+    requireDepartment();
     const csv = csvText(objectInput(value).csv),
       command = commandInput(value);
     return this.writes.execute(

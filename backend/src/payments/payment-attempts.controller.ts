@@ -27,7 +27,7 @@ export class PaymentAttemptsController {
   ) {}
 
   @Get('capabilities')
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   capabilities() {
     return this.attempts.capabilities();
   }
@@ -40,19 +40,19 @@ export class PaymentAttemptsController {
   }
 
   @Post()
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   start(@Req() req: StaffRequest, @Body() body: unknown) {
     return this.attempts.start(actor(req), body);
   }
 
   @Get(':attemptId')
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   get(@Req() req: StaffRequest, @Param('attemptId') attemptId: string) {
     return this.attempts.get(actor(req), attemptId);
   }
 
   @Post(':attemptId/reconcile')
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   reconcile(@Req() req: StaffRequest, @Param('attemptId') attemptId: string) {
     return this.attempts.reconcile(actor(req), attemptId);
   }

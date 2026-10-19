@@ -469,8 +469,9 @@ export function ReturnsScreen() {
                   />
                 </div>
                 <p className="rounded-lg bg-muted/50 p-3 text-sm">
-                  Refund is recorded as paid by the server and stock is returned
-                  to the product balance.
+                  Confirm the cash payout from your selected till. Your open
+                  shift records the cash out and the returned stock. Only fully
+                  cash-paid sales are supported here.
                 </p>
                 {pending?.uncertain && (
                   <p

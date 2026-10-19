@@ -123,3 +123,20 @@ it('rejects embedded newlines in product fields even when valid CSV quoting perm
     parseCatalogueCsv(header + 'x,"Line\nbreak",,each,1,,')[0].errors,
   ).toContain('Invalid product name');
 });
+
+it('validates optional next-expiry dates without accepting invalid calendar days', () => {
+  expect(
+    productInput({ ...product, expiryDate: '2028-02-29' }).expiryDate,
+  ).toBe('2028-02-29');
+  expect(productInput({ ...product, expiryDate: '' }).expiryDate).toBeNull();
+  for (const expiryDate of [
+    '2026-02-29',
+    '2026-04-31',
+    '2026-1-1',
+    'bad',
+    20261016,
+  ])
+    expect(() => productInput({ ...product, expiryDate })).toThrow(
+      'expiry date',
+    );
+});

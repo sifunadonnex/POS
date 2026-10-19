@@ -46,7 +46,7 @@ it("renders a compact itemized supermarket receipt from server values", () => {
 
   const printable = screen.getByLabelText("Printable receipt")
   expect(printable.hasAttribute("data-print-receipt")).toBe(true)
-  expect(screen.getByText("PAY & GO")).toBeTruthy()
+  expect(screen.getByText("POP N’ GO")).toBeTruthy()
   expect(screen.getByText("TEST — NOT A TAX INVOICE")).toBeTruthy()
   expect(screen.getByText("Kenyan Premium Rice 10kg")).toBeTruthy()
   expect(screen.getByText("SKU RICE-10KG")).toBeTruthy()

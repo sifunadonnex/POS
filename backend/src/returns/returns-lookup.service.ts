@@ -1,3 +1,4 @@
+import { departmentPredicate } from '../business/business-scope.js';
 import {
   BadRequestException,
   Inject,
@@ -68,7 +69,7 @@ export class ReturnsLookupService {
         COALESCE(SUM(r.amount_minor) FILTER (WHERE r.status = 'paid'), 0) AS "refundedMinor",
         s.created_at AS "createdAt"
         FROM sale s LEFT JOIN sale_refund r ON r.sale_id = s.id
-        WHERE s.status = 'completed'
+        WHERE ${departmentPredicate('s')} AND s.status = 'completed'
           AND ($1 = '' OR s.id::text = $1)
         GROUP BY s.id ORDER BY s.created_at DESC LIMIT 21 OFFSET $2`,
         [query, pageNumber * 20],
@@ -106,7 +107,7 @@ export class ReturnsLookupService {
         COALESCE(SUM(r.amount_minor) FILTER (WHERE r.status = 'paid'), 0) AS "refundedMinor",
         s.created_at AS "createdAt"
         FROM sale s LEFT JOIN sale_refund r ON r.sale_id = s.id
-        WHERE s.id = $1 GROUP BY s.id`,
+        WHERE ${departmentPredicate('s')} AND s.id = $1 GROUP BY s.id`,
         [saleId],
       );
       const source = saleResult.rows[0];

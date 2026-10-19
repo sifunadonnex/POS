@@ -2,7 +2,7 @@ export type Staff = {
   id: string
   name: string
   email: string
-  role: "manager" | "cashier"
+  role: "manager" | "supervisor" | "cashier"
   emailVerified: boolean
   twoFactorEnabled: boolean
   mfaRequired: boolean
@@ -32,7 +32,9 @@ export async function getStaff(signal: AbortSignal): Promise<Staff | null> {
     !("email" in user) ||
     typeof user.email !== "string" ||
     !("role" in user) ||
-    (user.role !== "manager" && user.role !== "cashier") ||
+    (user.role !== "manager" &&
+      user.role !== "supervisor" &&
+      user.role !== "cashier") ||
     !("emailVerified" in user) ||
     typeof user.emailVerified !== "boolean" ||
     !("twoFactorEnabled" in user) ||

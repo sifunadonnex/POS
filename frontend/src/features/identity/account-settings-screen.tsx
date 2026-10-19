@@ -1,3 +1,4 @@
+import { BusinessSettings } from "../business/business-settings"
 import { useState } from "react"
 import {
   Check,
@@ -27,6 +28,7 @@ const sections = [
   { id: "profile", label: "Profile", icon: UserRound },
   { id: "security", label: "Security", icon: ShieldCheck },
   { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "business", label: "Business", icon: Monitor },
 ] as const
 const themes = [
   {
@@ -97,22 +99,26 @@ export function AccountSettingsScreen({
             aria-label="Settings sections"
             className="flex gap-1 rounded-xl border bg-card p-2 lg:flex-col"
           >
-            {sections.map(({ id, label, icon: Icon }) => (
-              <Button
-                key={id}
-                variant={section === id ? "secondary" : "ghost"}
-                className="min-h-11 flex-1 justify-start gap-2 px-2 text-xs sm:px-3 sm:text-sm lg:flex-none"
-                aria-current={section === id ? "page" : undefined}
-                onClick={() => setSection(id)}
-              >
-                <Icon className="size-4 shrink-0" aria-hidden="true" />
-                {label}
-                <ChevronRight
-                  className="ml-auto hidden size-3.5 lg:block"
-                  aria-hidden="true"
-                />
-              </Button>
-            ))}
+            {sections
+              .filter(
+                (item) => item.id !== "business" || staff.role === "manager"
+              )
+              .map(({ id, label, icon: Icon }) => (
+                <Button
+                  key={id}
+                  variant={section === id ? "secondary" : "ghost"}
+                  className="min-h-11 flex-1 justify-start gap-2 px-2 text-xs sm:px-3 sm:text-sm lg:flex-none"
+                  aria-current={section === id ? "page" : undefined}
+                  onClick={() => setSection(id)}
+                >
+                  <Icon className="size-4 shrink-0" aria-hidden="true" />
+                  {label}
+                  <ChevronRight
+                    className="ml-auto hidden size-3.5 lg:block"
+                    aria-hidden="true"
+                  />
+                </Button>
+              ))}
           </nav>
         </aside>
         <div className="min-w-0">
@@ -120,6 +126,8 @@ export function AccountSettingsScreen({
             <ProfileSettings staff={staff} />
           ) : section === "security" ? (
             <AccountSecurity staff={staff} onChanged={onChanged} />
+          ) : section === "business" && staff.role === "manager" ? (
+            <BusinessSettings />
           ) : (
             <AppearanceSettings />
           )}
@@ -145,7 +153,13 @@ function ProfileSettings({ staff }: { staff: Staff }) {
             <ProfileRow label="Email address" value={staff.email} />
             <ProfileRow
               label="Role"
-              value={staff.role === "manager" ? "Manager" : "Cashier"}
+              value={
+                staff.role === "manager"
+                  ? "Manager"
+                  : staff.role === "supervisor"
+                    ? "Supervisor"
+                    : "Cashier"
+              }
             />
           </dl>
           <p className="mt-4 rounded-lg bg-muted/40 p-3 text-xs leading-5 text-muted-foreground">
@@ -205,7 +219,7 @@ function AppearanceSettings() {
       <CardHeader className="border-b">
         <CardTitle>Appearance</CardTitle>
         <CardDescription>
-          Choose how Pay &amp; Go looks on this device.
+          Choose how POP N’ GO looks on this device.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">

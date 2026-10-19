@@ -44,8 +44,12 @@ export function staffInput(value: unknown, update = false) {
     : ['name', 'email', 'role', 'password', 'reason'];
   if (Object.keys(body).some((key) => !allowed.includes(key)))
     throw new BadRequestException('Unexpected staff field');
-  if (body.role !== 'manager' && body.role !== 'cashier')
-    throw new BadRequestException('Choose manager or cashier');
+  if (
+    body.role !== 'manager' &&
+    body.role !== 'supervisor' &&
+    body.role !== 'cashier'
+  )
+    throw new BadRequestException('Choose manager, supervisor or cashier');
   const role = body.role;
   const name = textInput(body.name, 'name', 100);
   return { ...confirmInput(value), name, role };

@@ -55,7 +55,7 @@ export function createAuth(
 ): Auth<IdentityOptions> {
   const logger = new Logger('Identity');
   return betterAuth<IdentityOptions>({
-    appName: 'Pay & Go',
+    appName: 'POP N’ GO',
     baseURL: config.baseURL,
     basePath: '/api/auth',
     secret: config.secret,
@@ -175,7 +175,7 @@ export function createAuth(
       ipAddress: { ipAddressHeaders: ['x-paygo-client-ip'] },
     },
     plugins: [
-      twoFactor({ issuer: 'Pay & Go', twoFactorCookieMaxAge: 300 }),
+      twoFactor({ issuer: 'POP N’ GO', twoFactorCookieMaxAge: 300 }),
       securityPlugin(pool, config),
     ],
     // Do not log passwords, session tokens, database URLs or raw adapter errors.

@@ -1,3 +1,4 @@
+import { businessHeaders } from "../business/business-api"
 import type { InventoryUnit } from "@/features/inventory/inventory-api"
 
 export type StocktakeResult = {
@@ -60,7 +61,7 @@ export async function stocktakeRequest(body: unknown): Promise<unknown> {
       credentials: "same-origin",
       cache: "no-store",
       signal: controller.signal,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...businessHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
     if (response.status === 401) {

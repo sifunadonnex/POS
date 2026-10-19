@@ -33,6 +33,7 @@ export function isIdle(session: SecuritySession, now = Date.now()): boolean {
 export function needsMfa(session: SecuritySession): boolean {
   return (
     (session.user.role === 'manager' ||
+      session.user.role === 'supervisor' ||
       session.user.twoFactorEnabled === true) &&
     (session.user.twoFactorEnabled !== true ||
       session.session.mfaVerified !== true)

@@ -132,7 +132,7 @@ export function MfaScreen({
               1
             </div>
             <div className="min-w-0 flex-1">
-              <p className="font-medium">Add Pay &amp; Go to your app</p>
+              <p className="font-medium">Add POP N’ GO to your app</p>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
                 Create a time-based account in your authenticator app, then
                 enter this setup key.

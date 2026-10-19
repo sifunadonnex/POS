@@ -9,6 +9,12 @@ describe('ReturnsService', () => {
       if (sql.includes('SELECT pg_advisory_xact_lock')) {
         return { rows: [] };
       }
+      if (sql.includes('AS cash_minor')) {
+        return { rows: [{ cash_minor: '3200', other_count: '0' }] };
+      }
+      if (sql.includes('SELECT s.id FROM cash_shift s')) {
+        return { rowCount: 1, rows: [{ id: 'shift-1' }] };
+      }
       if (sql.includes('SELECT u.id FROM "user" u JOIN session s')) {
         return { rowCount: 1, rows: [{ id: 'manager' }] };
       }
@@ -114,5 +120,10 @@ describe('ReturnsService', () => {
     expect(result.returnId).toBe('return-1');
     expect(result.amountMinor).toBe(1600);
     expect(result.refundId).toBe('refund-1');
+    expect(result.shiftId).toBe('shift-1');
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO cash_movement'),
+      [result.movementId, 'shift-1', 'refund-1', 1600, 'Customer return'],
+    );
   });
 });

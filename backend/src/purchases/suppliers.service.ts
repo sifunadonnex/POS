@@ -1,3 +1,4 @@
+import { departmentPredicate } from '../business/business-scope.js';
 import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
@@ -190,7 +191,7 @@ export class SuppliersService {
         `SELECT receipt.id AS entry_id, 'receipt'::text AS kind, receipt.id AS receipt_id,
           receipt.total_minor AS amount_minor, receipt.reason, receipt.created_at
         FROM purchase_receipt receipt
-        WHERE receipt.supplier_id = $1 AND receipt.status = 'received'
+        WHERE ${departmentPredicate('receipt')} AND receipt.supplier_id = $1 AND receipt.status = 'received'
           AND receipt.created_at >= $2::date AND receipt.created_at < ($3::date + interval '1 day')
         UNION ALL
         SELECT purchase_return.id AS entry_id, 'return'::text AS kind,
@@ -198,7 +199,7 @@ export class SuppliersService {
           purchase_return.reason, purchase_return.created_at
         FROM purchase_return
         JOIN purchase_receipt receipt ON receipt.id = purchase_return.receipt_id
-        WHERE receipt.supplier_id = $1 AND purchase_return.status = 'returned'
+        WHERE ${departmentPredicate('receipt')} AND receipt.supplier_id = $1 AND purchase_return.status = 'returned'
           AND purchase_return.created_at >= $2::date AND purchase_return.created_at < ($3::date + interval '1 day')
         ORDER BY created_at DESC, entry_id DESC
         LIMIT 51 OFFSET $4`,

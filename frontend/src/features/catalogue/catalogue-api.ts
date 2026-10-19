@@ -1,3 +1,4 @@
+import { businessHeaders } from "../business/business-api"
 export type SaleUnit = "each" | "pack" | "kg" | "l"
 export type Category = { id: string; name: string; revision: number }
 export type Product = {
@@ -9,11 +10,15 @@ export type Product = {
   unit: SaleUnit
   priceMinor: string
   lowStockThresholdMinor: string | null
+  expiryDate?: string | null
+  departmentId?: string | null
+  departmentLabel?: string | null
   taxCode: string | null
   active: boolean
   revision: number
   barcodes: string[]
   hasImage?: boolean
+  availableQuantityMinor?: string
 }
 export type HistoryEntry = {
   id: string
@@ -54,12 +59,16 @@ export async function catalogueRequest(
     const response = await fetch(`/api/catalogue/${path}`, {
       method: body === undefined ? "GET" : method,
       credentials: "same-origin",
+      headers: businessHeaders(),
       cache: "no-store",
       signal: controller.signal,
       ...(body === undefined
         ? {}
         : {
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              ...businessHeaders(),
+              "Content-Type": "application/json",
+            },
             body: JSON.stringify(body),
           }),
     })
@@ -134,9 +143,15 @@ export function parseProduct(value: unknown): Product {
     !nullableText(v.categoryId) ||
     !nullableText(v.categoryName) ||
     !isUnit(v.unit) ||
+    (v.availableQuantityMinor !== undefined &&
+      (typeof v.availableQuantityMinor !== "string" ||
+        !/^-?(0|[1-9]\d{0,14})$/.test(v.availableQuantityMinor))) ||
     !isPrice(v.priceMinor) ||
     !isStockQuantity(v.lowStockThresholdMinor) ||
     !nullableText(v.taxCode) ||
+    (v.expiryDate !== undefined && !nullableText(v.expiryDate)) ||
+    (v.departmentId !== undefined && !nullableText(v.departmentId)) ||
+    (v.departmentLabel !== undefined && !nullableText(v.departmentLabel)) ||
     typeof v.active !== "boolean" ||
     !isRevision(v.revision) ||
     !strings(v.barcodes) ||
@@ -152,11 +167,29 @@ export function parseProduct(value: unknown): Product {
     unit: v.unit,
     priceMinor: v.priceMinor,
     lowStockThresholdMinor: v.lowStockThresholdMinor,
+    ...(v.expiryDate === undefined
+      ? {}
+      : { expiryDate: typeof v.expiryDate === "string" ? v.expiryDate : null }),
+    ...(v.departmentId === undefined
+      ? {}
+      : {
+          departmentId:
+            typeof v.departmentId === "string" ? v.departmentId : null,
+        }),
     taxCode: v.taxCode,
     active: v.active,
     revision: v.revision,
     barcodes: v.barcodes,
+    ...(v.departmentLabel === undefined
+      ? {}
+      : {
+          departmentLabel:
+            typeof v.departmentLabel === "string" ? v.departmentLabel : null,
+        }),
     hasImage: v.hasImage === true,
+    ...(typeof v.availableQuantityMinor === "string"
+      ? { availableQuantityMinor: v.availableQuantityMinor }
+      : {}),
   }
 }
 export function savedProduct(value: unknown) {

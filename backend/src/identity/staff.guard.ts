@@ -65,13 +65,18 @@ export class StaffGuard implements CanActivate {
     }
     if (!session) throw new UnauthorizedException();
     const role = session.user.role;
-    if (role !== 'manager' && role !== 'cashier')
+    if (role !== 'manager' && role !== 'supervisor' && role !== 'cashier')
       throw new ForbiddenException();
     const required = this.reflector.getAllAndOverride<StaffRole[]>(
       ROLES,
       targets,
     );
-    const validatedRole: StaffRole = role === 'manager' ? 'manager' : 'cashier';
+    const validatedRole: StaffRole =
+      role === 'manager'
+        ? 'manager'
+        : role === 'supervisor'
+          ? 'supervisor'
+          : 'cashier';
     if (required && !required.includes(validatedRole))
       throw new ForbiddenException();
     if (

@@ -104,6 +104,82 @@ describe('environment configuration', () => {
     });
   });
 
+  it('derives the hosted callback and stable protected token without extra manual settings', () => {
+    const env = {
+      ...base,
+      DARAJA_ENABLED: 'true',
+      DARAJA_CONSUMER_KEY: 'consumer-key',
+      DARAJA_CONSUMER_SECRET: 'consumer-secret',
+      DARAJA_SHORTCODE: '600000',
+      DARAJA_PASSKEY: 'secure-online-passkey',
+      BETTER_AUTH_URL: 'https://pos.example.test',
+    };
+    const first = parseEnvironment(env).daraja;
+    expect(first?.callbackUrl).toBe(
+      'https://pos.example.test/api/payment-attempts/mpesa/callback',
+    );
+    expect(first?.callbackToken).toMatch(/^[a-f0-9]{64}$/);
+    expect(first?.callbackToken).not.toBe(env.DARAJA_CONSUMER_SECRET);
+    expect(parseEnvironment(env).daraja?.callbackToken).toBe(
+      first?.callbackToken,
+    );
+    expect(
+      parseEnvironment({
+        ...env,
+        DARAJA_CONSUMER_SECRET: 'rotated-consumer-secret',
+      }).daraja?.callbackToken,
+    ).not.toBe(first?.callbackToken);
+    expect(
+      parseEnvironment({ ...env, DARAJA_CALLBACK_TOKEN: 'explicit-'.repeat(8) })
+        .daraja?.callbackToken,
+    ).toBe('explicit-'.repeat(8));
+    expect(() =>
+      parseEnvironment({ ...env, DARAJA_CALLBACK_TOKEN: 'short' }),
+    ).toThrow('DARAJA_CALLBACK_TOKEN');
+    expect(() =>
+      parseEnvironment({ ...env, BETTER_AUTH_URL: 'http://localhost:5173' }),
+    ).toThrow('public HTTPS');
+  });
+
+  it('supports a separate receiving Till while preserving PayBill routing', () => {
+    const env = {
+      ...base,
+      DARAJA_ENABLED: 'true',
+      DARAJA_CONSUMER_KEY: 'consumer-key',
+      DARAJA_CONSUMER_SECRET: 'consumer-secret',
+      DARAJA_SHORTCODE: '600000',
+      DARAJA_PASSKEY: 'secure-online-passkey',
+      BETTER_AUTH_URL: 'https://pos.example.test',
+    };
+    expect(parseEnvironment(env).daraja).toMatchObject({
+      partyB: '600000',
+      transactionType: 'CustomerPayBillOnline',
+    });
+    expect(
+      parseEnvironment({ ...env, DARAJA_TILL_NUMBER: '500000' }).daraja,
+    ).toMatchObject({
+      shortCode: '600000',
+      partyB: '500000',
+      transactionType: 'CustomerBuyGoodsOnline',
+    });
+    expect(() =>
+      parseEnvironment({ ...env, DARAJA_TILL_NUMBER: 'abcde' }),
+    ).toThrow('DARAJA_TILL_NUMBER');
+    expect(() =>
+      parseEnvironment({
+        ...env,
+        DARAJA_TRANSACTION_TYPE: 'CustomerBuyGoodsOnline',
+      }),
+    ).toThrow('DARAJA_TILL_NUMBER is required');
+    expect(() =>
+      parseEnvironment({
+        ...env,
+        DARAJA_TILL_NUMBER: '500000',
+        DARAJA_TRANSACTION_TYPE: 'CustomerPayBillOnline',
+      }),
+    ).toThrow('For PayBill');
+  });
+
   it('rejects incomplete or unsafe Daraja configuration', () => {
     expect(() => parseEnvironment({ ...base, DARAJA_ENABLED: 'yes' })).toThrow(
       'DARAJA_ENABLED',

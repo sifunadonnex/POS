@@ -1,3 +1,4 @@
+import { businessHeaders } from "../business/business-api"
 import {
   parseProduct,
   type Product,
@@ -120,12 +121,16 @@ async function salesRequest(
     const response = await fetch(`/api/sales${path}`, {
       method,
       credentials: "same-origin",
+      headers: businessHeaders(),
       cache: "no-store",
       signal: controller.signal,
       ...(body === undefined
         ? {}
         : {
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              ...businessHeaders(),
+              "Content-Type": "application/json",
+            },
             body: JSON.stringify(body),
           }),
     })
@@ -529,12 +534,52 @@ export async function resumeHeldOrder(
 export async function cancelHeldOrder(
   id: string,
   revision: number,
-  requestId: string
+  requestId: string,
+  approval?: CartApproval
 ): Promise<HeldOrder> {
   return heldOrder(
     await salesRequest(`/held-orders/${encodeURIComponent(id)}/cancel`, {
       revision,
       requestId,
+      approval,
     })
   )
+}
+
+export type CartApproval = { email: string; password: string; reason: string }
+export async function getRegisterBasket() {
+  const row = object(await salesRequest("/basket", undefined, "GET"))
+  if (!Number.isSafeInteger(row.revision) || !Array.isArray(row.lines))
+    throw new Error("Invalid saved basket")
+  return {
+    revision: integer(row.revision, "basket revision"),
+    lines: row.lines.map((value) => {
+      const line = object(value)
+      if (
+        typeof line.quantity !== "number" ||
+        !Number.isFinite(line.quantity) ||
+        line.quantity <= 0
+      )
+        throw new Error("Invalid saved basket")
+      return { product: parseProduct(line.product), quantity: line.quantity }
+    }),
+  }
+}
+export async function saveRegisterBasket(
+  lines: RegisterLine[],
+  revision: number,
+  approval?: CartApproval
+) {
+  const row = object(
+    await salesRequest("/basket", {
+      lines,
+      revision,
+      requestId: crypto.randomUUID(),
+      approval,
+    })
+  )
+  return {
+    revision: integer(row.revision, "basket revision"),
+    quote: quote(row.quote),
+  }
 }

@@ -83,7 +83,7 @@ it("shows an outage with retry instead of protected content", async () => {
   expect(screen.queryByText("Test Manager", { exact: true })).toBeNull()
   fireEvent.click(screen.getByRole("button", { name: "Retry" }))
   expect(await screen.findByText("Test Manager", { exact: true })).toBeTruthy()
-  expect(document.title).toBe("Dashboard — Pay & Go")
+  await waitFor(() => expect(document.title).toBe("Dashboard — POP N’ GO"))
 })
 
 it("removes protected content when the session expires", async () => {

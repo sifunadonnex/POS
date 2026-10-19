@@ -1,3 +1,4 @@
+import { BusinessSelector } from "../business/business-selector"
 import { useEffect, useMemo, useState, type ComponentProps } from "react"
 import {
   Archive,
@@ -10,7 +11,6 @@ import {
   LayoutDashboard,
   LogOut,
   PackageCheck,
-  ReceiptText,
   RotateCcw,
   Shield,
   ShieldCheck,
@@ -258,6 +258,8 @@ export function StaffWorkspace({
   onSignOut: () => void
   onSecurityChanged: () => void
 }) {
+  const [scopeKey, setScopeKey] = useState("")
+  const [workspaceOpen, setWorkspaceOpen] = useState(false)
   const [tab, setTab] = useState<WorkspaceTab>("dashboard")
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const manager = staff.role === "manager"
@@ -276,9 +278,9 @@ export function StaffWorkspace({
   const currentPage = pageDetails[tab]
 
   useEffect(() => {
-    document.title = `${currentPage.title} — Pay & Go`
+    document.title = `${currentPage.title} — POP N’ GO`
     return () => {
-      document.title = "Pay & Go — Staff access"
+      document.title = "POP N’ GO — Staff access"
     }
   }, [currentPage.title])
 
@@ -297,11 +299,15 @@ export function StaffWorkspace({
             className={`flex items-center gap-3 ${sidebarCollapsed ? "justify-center" : ""}`}
           >
             <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-              <ReceiptText className="size-5" aria-hidden="true" />
+              <img
+                src="/pop-n-go-logo.png"
+                alt="POP N GO Mini Mart"
+                className="size-full rounded-lg bg-white object-contain"
+              />
             </div>
             {!sidebarCollapsed && (
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">Pay &amp; Go</p>
+                <p className="truncate text-sm font-semibold">POP N’ GO</p>
                 <p className="truncate text-xs text-sidebar-foreground/60">
                   Commerce workspace
                 </p>
@@ -332,7 +338,7 @@ export function StaffWorkspace({
               <p className="text-[10px] font-semibold tracking-[0.16em] text-sidebar-foreground/55 uppercase">
                 Current workspace
               </p>
-              <p className="mt-1 text-sm font-medium">Main shop</p>
+              <p className="mt-1 text-sm font-medium">POP N’ GO</p>
               <p className="mt-0.5 text-xs text-sidebar-foreground/60">
                 {runtime.status === "ready" && runtime.value.mode === "edge"
                   ? runtime.value.syncConfigured
@@ -431,6 +437,13 @@ export function StaffWorkspace({
               </h2>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              <BusinessSelector
+                userId={staff.id}
+                manager={manager}
+                onChange={setScopeKey}
+                open={workspaceOpen}
+                onOpenChange={setWorkspaceOpen}
+              />
               <RuntimeBadge state={runtime} />
               {tab !== "sales" && (
                 <Button
@@ -466,15 +479,22 @@ export function StaffWorkspace({
           </nav>
         </div>
 
-        <main className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain bg-muted/20 p-4 sm:p-6">
+        <main
+          key={scopeKey}
+          className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain bg-muted/20 p-4 sm:p-6"
+        >
           {tab === "dashboard" ? (
             <DashboardScreen
               manager={manager}
+              supervisor={staff.role === "supervisor"}
               staffName={staff.name}
               onNavigate={navigate}
             />
           ) : tab === "sales" ? (
-            <SalesScreen />
+            <SalesScreen
+              staffRole={staff.role}
+              onSelectWorkspace={() => setWorkspaceOpen(true)}
+            />
           ) : tab === "history" ? (
             <SalesHistoryScreen />
           ) : tab === "returns" ? (
@@ -516,7 +536,8 @@ function RuntimeBadge({
     return (
       <Badge variant="destructive" className="gap-1.5">
         <WifiOff className="size-3" aria-hidden="true" />
-        Service unavailable
+        <span className="hidden sm:inline">Service unavailable</span>
+        <span className="sm:hidden">Offline</span>
       </Badge>
     )
   }
@@ -533,7 +554,10 @@ function RuntimeBadge({
             : "Cash checkout is using this computer. Cloud delivery is not enabled yet."
         }
       >
-        Local · {state.value.pendingEvents} queued
+        <span className="hidden sm:inline">
+          Local · {state.value.pendingEvents} queued
+        </span>
+        <span className="sm:hidden">Local</span>
       </Badge>
     )
   }
@@ -543,7 +567,12 @@ function RuntimeBadge({
         variant="destructive"
         title={`${state.value.unprojectedEvents} received edge sale${state.value.unprojectedEvents === 1 ? " is" : "s are"} missing from hosted reporting.`}
       >
-        Sync needs attention · {state.value.unprojectedEvents}
+        <span className="hidden sm:inline">
+          Sync needs attention · {state.value.unprojectedEvents}
+        </span>
+        <span className="sm:hidden">
+          Sync · {state.value.unprojectedEvents}
+        </span>
       </Badge>
     )
   }

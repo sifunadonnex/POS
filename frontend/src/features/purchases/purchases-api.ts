@@ -1,3 +1,4 @@
+import { businessHeaders } from "../business/business-api"
 import type { Product } from "@/features/catalogue/catalogue-api"
 
 export type Supplier = {
@@ -142,12 +143,16 @@ export async function purchaseRequest(
     const response = await fetch(`/api/purchases/${path}`, {
       method: body === undefined ? "GET" : "POST",
       credentials: "same-origin",
+      headers: businessHeaders(),
       cache: "no-store",
       signal: controller.signal,
       ...(body === undefined
         ? {}
         : {
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              ...businessHeaders(),
+              "Content-Type": "application/json",
+            },
             body: JSON.stringify(body),
           }),
     })

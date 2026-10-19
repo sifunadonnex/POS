@@ -10,7 +10,8 @@ export function ProductImage({
   large?: boolean
 }) {
   const [failedSource, setFailedSource] = useState("")
-  const src = `/api/catalogue/products/${encodeURIComponent(product.id)}/photo?v=${product.revision}`
+  const department = sessionStorage.getItem("paygo-department")
+  const src = `/api/catalogue/products/${encodeURIComponent(product.id)}/photo?v=${product.revision}${department ? `&departmentId=${encodeURIComponent(department)}` : ""}`
   return (
     <div
       className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-muted/40 ${large ? "size-32" : "size-16"}`}

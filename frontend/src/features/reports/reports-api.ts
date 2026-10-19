@@ -1,3 +1,4 @@
+import { businessHeaders } from "../business/business-api"
 export type DailySummary = {
   day: string
   saleCount: number
@@ -290,6 +291,7 @@ export async function getDailySummary(
     `/api/reports/summary/${encodeURIComponent(day)}`,
     {
       credentials: "same-origin",
+      headers: businessHeaders(),
       cache: "no-store",
       signal,
     }
@@ -463,7 +465,12 @@ export async function getPurchaseReconciliation(
 ): Promise<PurchaseReconciliation> {
   const response = await fetch(
     `/api/reports/purchases?${new URLSearchParams({ from, to })}`,
-    { credentials: "same-origin", cache: "no-store", signal }
+    {
+      credentials: "same-origin",
+      headers: businessHeaders(),
+      cache: "no-store",
+      signal,
+    }
   )
   if (response.status === 401) {
     window.dispatchEvent(new Event("paygo-session-expired"))
@@ -732,6 +739,7 @@ export async function getSalesInsights(
   }
   const response = await fetch(`/api/reports/sales?${parameters}`, {
     credentials: "same-origin",
+    headers: businessHeaders(),
     cache: "no-store",
     signal,
   })
@@ -758,6 +766,7 @@ export async function getStockPosition(
 ): Promise<StockPosition> {
   const response = await fetch("/api/reports/stock", {
     credentials: "same-origin",
+    headers: businessHeaders(),
     cache: "no-store",
     signal,
   })
@@ -849,7 +858,12 @@ export async function getOperationDocuments(
 ): Promise<OperationDocuments> {
   const response = await fetch(
     `/api/reports/operation-documents?${new URLSearchParams({ from, to, page: String(page) })}`,
-    { credentials: "same-origin", cache: "no-store", signal }
+    {
+      credentials: "same-origin",
+      headers: businessHeaders(),
+      cache: "no-store",
+      signal,
+    }
   )
   if (response.status === 401) {
     window.dispatchEvent(new Event("paygo-session-expired"))

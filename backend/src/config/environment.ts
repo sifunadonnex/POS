@@ -1,4 +1,5 @@
 import { loadEnvFile } from 'node:process';
+import { createHmac } from 'node:crypto';
 
 export const APP_CONFIG = Symbol('APP_CONFIG');
 
@@ -65,7 +66,10 @@ function darajaConfiguration(env: NodeJS.ProcessEnv) {
     throw new Error('DARAJA_ENVIRONMENT must be sandbox or production');
   }
   const transactionType =
-    env.DARAJA_TRANSACTION_TYPE ?? 'CustomerPayBillOnline';
+    env.DARAJA_TRANSACTION_TYPE ??
+    (env.DARAJA_TILL_NUMBER?.trim()
+      ? 'CustomerBuyGoodsOnline'
+      : 'CustomerPayBillOnline');
   if (
     transactionType !== 'CustomerPayBillOnline' &&
     transactionType !== 'CustomerBuyGoodsOnline'
@@ -78,10 +82,28 @@ function darajaConfiguration(env: NodeJS.ProcessEnv) {
   if (!/^\d+$/.test(shortCode)) {
     throw new Error('DARAJA_SHORTCODE must contain only digits');
   }
+  const partyB = env.DARAJA_TILL_NUMBER?.trim() || shortCode;
+  if (
+    transactionType === 'CustomerBuyGoodsOnline' &&
+    !env.DARAJA_TILL_NUMBER?.trim()
+  )
+    throw new Error(
+      'DARAJA_TILL_NUMBER is required for Buy Goods; enter the receiving Till number',
+    );
+  if (!/^\d{5,12}$/.test(partyB))
+    throw new Error('DARAJA_TILL_NUMBER must contain 5-12 digits');
+  if (transactionType === 'CustomerPayBillOnline' && partyB !== shortCode)
+    throw new Error(
+      'For PayBill, DARAJA_TILL_NUMBER must be omitted or match DARAJA_SHORTCODE',
+    );
   let callbackUrl: URL;
   try {
     callbackUrl = new URL(
-      required(env.DARAJA_CALLBACK_URL, 'DARAJA_CALLBACK_URL', 12, 500),
+      env.DARAJA_CALLBACK_URL?.trim() ||
+        new URL(
+          '/api/payment-attempts/mpesa/callback',
+          env.BETTER_AUTH_URL,
+        ).toString(),
     );
     if (
       callbackUrl.protocol !== 'https:' ||
@@ -94,9 +116,22 @@ function darajaConfiguration(env: NodeJS.ProcessEnv) {
     }
   } catch {
     throw new Error(
-      'DARAJA_CALLBACK_URL must be an HTTPS URL without credentials, query parameters or fragments',
+      'Use a public HTTPS BETTER_AUTH_URL or set DARAJA_CALLBACK_URL to an HTTPS URL without credentials, query parameters or fragments',
     );
   }
+  const consumerSecret = required(
+    env.DARAJA_CONSUMER_SECRET,
+    'DARAJA_CONSUMER_SECRET',
+    8,
+    200,
+  );
+  // A stable, domain-separated callback secret avoids another mandatory manual
+  // credential. Explicit tokens remain supported for independent rotation.
+  const callbackToken = env.DARAJA_CALLBACK_TOKEN?.trim()
+    ? required(env.DARAJA_CALLBACK_TOKEN, 'DARAJA_CALLBACK_TOKEN', 32, 200)
+    : createHmac('sha256', consumerSecret)
+        .update(`paygo:daraja-callback:v1:${shortCode}`)
+        .digest('hex');
   return {
     environment,
     consumerKey: required(
@@ -105,22 +140,13 @@ function darajaConfiguration(env: NodeJS.ProcessEnv) {
       8,
       200,
     ),
-    consumerSecret: required(
-      env.DARAJA_CONSUMER_SECRET,
-      'DARAJA_CONSUMER_SECRET',
-      8,
-      200,
-    ),
+    consumerSecret,
     shortCode,
+    partyB,
     passkey: required(env.DARAJA_PASSKEY, 'DARAJA_PASSKEY', 16, 500),
     transactionType,
     callbackUrl: callbackUrl.toString(),
-    callbackToken: required(
-      env.DARAJA_CALLBACK_TOKEN,
-      'DARAJA_CALLBACK_TOKEN',
-      32,
-      200,
-    ),
+    callbackToken,
   } as const;
 }
 

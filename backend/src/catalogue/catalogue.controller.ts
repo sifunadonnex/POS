@@ -70,7 +70,7 @@ export class CatalogueController {
     return this.photos.save(actor(req), id, body);
   }
   @Post('products')
-  @StaffRoles('manager')
+  @StaffRoles('manager', 'supervisor', 'cashier')
   createProduct(@Req() req: StaffRequest, @Body() body: unknown) {
     return this.catalogue.createProduct(actor(req), body);
   }

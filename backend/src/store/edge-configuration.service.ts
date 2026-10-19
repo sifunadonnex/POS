@@ -188,7 +188,7 @@ async function applyEvent(
     }
     await client.query(
       `INSERT INTO catalogue_barcode (code,product_id) VALUES ($1,$2)
-      ON CONFLICT (code) DO UPDATE SET product_id=EXCLUDED.product_id`,
+      ON CONFLICT (code) WHERE department_id IS NULL DO UPDATE SET product_id=EXCLUDED.product_id`,
       [code, productId],
     );
   }

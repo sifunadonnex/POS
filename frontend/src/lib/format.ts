@@ -20,3 +20,18 @@ export function formatNairobiDateTime(value: string | Date) {
     typeof value === "string" ? new Date(value) : value
   )
 }
+
+export function nairobiDay() {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date())
+  const part = (type: "year" | "month" | "day") => {
+    const value = parts.find((part) => part.type === type)?.value
+    if (!value) throw new Error("Unable to determine the trading date")
+    return value
+  }
+  return `${part("year")}-${part("month")}-${part("day")}`
+}

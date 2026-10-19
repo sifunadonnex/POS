@@ -1,3 +1,10 @@
+import {
+  departmentPredicate,
+  departmentValue,
+  tillValue,
+  requireDepartment,
+  businessScope,
+} from '../business/business-scope.js';
 import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
@@ -39,7 +46,7 @@ export class ShiftsService {
       opened_at: string;
     }>(
       `SELECT id, opening_cash_minor::text, status, opened_at
-       FROM cash_shift WHERE cashier_id = $1 AND status = 'open'
+       FROM cash_shift WHERE ${departmentPredicate('cash_shift')} AND cashier_id = $1 AND status = 'open'
        ORDER BY opened_at DESC LIMIT 1`,
       [userId],
     );
@@ -57,6 +64,9 @@ export class ShiftsService {
   }
 
   async openShift(actor: ShiftActor, value: unknown) {
+    requireDepartment();
+    if (businessScope.getStore() && !businessScope.getStore()?.tillId)
+      throw new ConflictException('Select a till before opening a shift');
     const body =
       value && typeof value === 'object' ? (value as ShiftInput) : {};
     const requestId =
@@ -77,7 +87,7 @@ export class ShiftsService {
     if (
       !Number.isFinite(openingCashMinor) ||
       openingCashMinor < 0 ||
-      !Number.isInteger(openingCashMinor)
+      !Number.isSafeInteger(openingCashMinor)
     ) {
       throw new BadRequestException(
         'Opening cash must be a non-negative integer minor amount',
@@ -91,8 +101,8 @@ export class ShiftsService {
       async (client) => {
         const shiftId = randomUUID();
         const shift = await client.query<{ id: string; opened_at: string }>(
-          `INSERT INTO cash_shift (id, cashier_id, opening_cash_minor, status, reason, opened_at)
-          VALUES ($1, $2, $3, 'open', $4, now()) RETURNING id, opened_at`,
+          `INSERT INTO cash_shift (id, cashier_id, opening_cash_minor, status, reason, opened_at, department_id, till_id)
+          VALUES ($1, $2, $3, 'open', $4, now(), ${departmentValue()}, ${tillValue()}) RETURNING id, opened_at`,
           [shiftId, actor.userId, openingCashMinor, reason],
         );
 
@@ -139,7 +149,7 @@ export class ShiftsService {
     if (
       !Number.isFinite(closingCashMinor) ||
       closingCashMinor < 0 ||
-      !Number.isInteger(closingCashMinor)
+      !Number.isSafeInteger(closingCashMinor)
     ) {
       throw new BadRequestException(
         'Closing cash must be a non-negative integer minor amount',

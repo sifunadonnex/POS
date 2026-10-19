@@ -1,3 +1,4 @@
+import { businessHeaders } from "../business/business-api"
 export type InventoryUnit = "each" | "pack" | "kg" | "l"
 
 export type StockRow = {
@@ -145,12 +146,16 @@ export async function inventoryRequest(
     const response = await fetch(`/api/inventory/${path}`, {
       method: body === undefined ? "GET" : "POST",
       credentials: "same-origin",
+      headers: businessHeaders(),
       cache: "no-store",
       signal: controller.signal,
       ...(body === undefined
         ? {}
         : {
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              ...businessHeaders(),
+              "Content-Type": "application/json",
+            },
             body: JSON.stringify(body),
           }),
     })

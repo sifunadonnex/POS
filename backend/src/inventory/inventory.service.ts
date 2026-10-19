@@ -1,3 +1,4 @@
+import { departmentPredicate } from '../business/business-scope.js';
 import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
@@ -97,7 +98,7 @@ export class InventoryService {
         p.low_stock_threshold_minor AS "lowStockThresholdMinor", p.active
         FROM catalogue_product p
         LEFT JOIN inventory_stock s ON s.product_id = p.id
-        WHERE ($1 = '' OR strpos(lower(p.name || ' ' || p.sku), lower($1)) > 0)
+        WHERE ${departmentPredicate('p')} AND ($1 = '' OR strpos(lower(p.name || ' ' || p.sku), lower($1)) > 0)
         ORDER BY lower(p.name), p.id LIMIT 51 OFFSET $2`,
         [query, pageNumber * 50],
       );
@@ -143,7 +144,7 @@ export class InventoryService {
           `SELECT m.id, m.kind, m.delta_minor AS "deltaMinor", m.quantity_after_minor AS "quantityAfterMinor",
         m.reason, m.created_at AS "createdAt", u.name AS "actorName"
         FROM inventory_movement m JOIN "user" u ON u.id = m.actor_id
-        WHERE m.product_id = $1 ORDER BY m.created_at DESC LIMIT 51 OFFSET $2`,
+        WHERE EXISTS (SELECT 1 FROM catalogue_product p WHERE p.id = m.product_id AND ${departmentPredicate('p')}) AND m.product_id = $1 ORDER BY m.created_at DESC LIMIT 51 OFFSET $2`,
           [id, pageNumber * 50],
         );
       return {
@@ -174,7 +175,7 @@ export class InventoryService {
       `SELECT p.id, p.unit, p.active, COALESCE(s.quantity_minor, 0) AS quantity_minor
       FROM catalogue_product p
       LEFT JOIN inventory_stock s ON s.product_id = p.id
-      WHERE p.id = $1 FOR UPDATE OF p`,
+      WHERE ${departmentPredicate('p')} AND p.id = $1 FOR UPDATE OF p`,
       [productId],
     );
     const row = result.rows[0];
@@ -215,9 +216,9 @@ export class InventoryService {
           VALUES ($1, $2, $3, now())
           ON CONFLICT (product_id) DO UPDATE SET
           unit = EXCLUDED.unit,
-          quantity_minor = inventory_stock.quantity_minor + EXCLUDED.quantity_minor,
+          quantity_minor = EXCLUDED.quantity_minor,
           updated_at = now()`,
-          [productId, product.unit, delta],
+          [productId, product.unit, after],
         );
 
         const movement = await client.query<{ id: string }>(

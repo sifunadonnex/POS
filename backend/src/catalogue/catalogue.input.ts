@@ -8,6 +8,7 @@ export type ProductInput = {
   unit: SaleUnit;
   priceMinor: string;
   lowStockThresholdMinor: string | null;
+  expiryDate?: string | null;
   taxCode: string | null;
   barcodes: string[];
   active: boolean;
@@ -115,6 +116,7 @@ export function productInput(value: unknown): ProductInput {
     unit,
     priceMinor: priceInput(body.price),
     lowStockThresholdMinor: stockThresholdInput(body.lowStockThreshold, unit),
+    expiryDate: expiryDateInput(body.expiryDate),
     taxCode:
       body.taxCode === null || body.taxCode === ''
         ? null
@@ -141,4 +143,19 @@ export function pageInput(value: unknown): number {
   )
     throw new BadRequestException('Invalid page');
   return Number(value);
+}
+
+export function expiryDateInput(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (
+    typeof value !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+    value.startsWith('0000-') ||
+    !Number.isFinite(Date.parse(`${value}T00:00:00Z`)) ||
+    new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) !== value
+  )
+    throw new BadRequestException(
+      'Provide an expiry date in YYYY-MM-DD format',
+    );
+  return value;
 }

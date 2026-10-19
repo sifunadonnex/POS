@@ -38,7 +38,9 @@ export function StaffAdminScreen({ currentUserId }: { currentUserId: string }) {
   const [loadError, setLoadError] = useState("")
   const [selected, setSelected] = useState<StaffAccount | null>(null)
   const [editing, setEditing] = useState(false)
-  const [role, setRole] = useState<"manager" | "cashier">("cashier")
+  const [role, setRole] = useState<"manager" | "supervisor" | "cashier">(
+    "cashier"
+  )
   const [disabled, setDisabled] = useState(false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
@@ -410,22 +412,28 @@ export function StaffAdminScreen({ currentUserId }: { currentUserId: string }) {
             <fieldset className="space-y-2">
               <legend className="mb-2 text-sm font-medium">Role</legend>
               <div className="flex gap-2">
-                {(["cashier", "manager"] as const).map((value) => (
-                  <Button
-                    type="button"
-                    key={value}
-                    variant={role === value ? "secondary" : "outline"}
-                    aria-pressed={role === value}
-                    disabled={
-                      pending ||
-                      selected?.id === currentUserId ||
-                      selected?.archived
-                    }
-                    onClick={() => setRole(value)}
-                  >
-                    {value === "manager" ? "Manager" : "Cashier"}
-                  </Button>
-                ))}
+                {(["cashier", "supervisor", "manager"] as const).map(
+                  (value) => (
+                    <Button
+                      type="button"
+                      key={value}
+                      variant={role === value ? "secondary" : "outline"}
+                      aria-pressed={role === value}
+                      disabled={
+                        pending ||
+                        selected?.id === currentUserId ||
+                        selected?.archived
+                      }
+                      onClick={() => setRole(value)}
+                    >
+                      {value === "manager"
+                        ? "Manager"
+                        : value === "supervisor"
+                          ? "Supervisor"
+                          : "Cashier"}
+                    </Button>
+                  )
+                )}
               </div>
             </fieldset>
             {selected && !selected.archived && (

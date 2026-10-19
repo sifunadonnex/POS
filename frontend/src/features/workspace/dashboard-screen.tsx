@@ -1,3 +1,8 @@
+import { DepartmentSales } from "../business/department-sales"
+import { ValuationPanel } from "../inventory/valuation-panel"
+import { ExpiryAlerts } from "../business/expiry-alerts"
+import { nairobiDay } from "@/lib/format"
+import { DailySummaryDialog } from "./daily-summary-dialog"
 import { useEffect, useState, type ReactNode } from "react"
 import {
   ArrowDownRight,
@@ -54,15 +59,9 @@ type DashboardTarget =
 
 type DashboardScreenProps = {
   manager: boolean
+  supervisor?: boolean
   staffName: string
   onNavigate: (target: DashboardTarget) => void
-}
-
-function today() {
-  const date = new Date()
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  const day = String(date.getDate()).padStart(2, "0")
-  return `${date.getFullYear()}-${month}-${day}`
 }
 
 function daysBefore(value: string, amount: number) {
@@ -192,6 +191,7 @@ function SummaryState({
 
 export function DashboardScreen({
   manager,
+  supervisor = false,
   staffName,
   onNavigate,
 }: DashboardScreenProps) {
@@ -202,7 +202,7 @@ export function DashboardScreen({
   const [error, setError] = useState("")
   const [trendError, setTrendError] = useState("")
   const [reloadKey, setReloadKey] = useState(0)
-  const reportDay = today()
+  const reportDay = nairobiDay()
   const trendStart = daysBefore(reportDay, 6)
 
   useEffect(() => {
@@ -261,6 +261,7 @@ export function DashboardScreen({
   }, [manager, reloadKey, reportDay, trendStart])
 
   const dateLabel = new Intl.DateTimeFormat("en-KE", {
+    timeZone: "Africa/Nairobi",
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -279,7 +280,7 @@ export function DashboardScreen({
             <div className="max-w-2xl">
               <div className="flex items-center gap-2 text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">
                 <LayoutDashboard className="size-3.5" aria-hidden="true" />
-                Main shop · Command centre
+                POP N’ GO · Command centre
               </div>
               <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
                 {greetingForHour(new Date().getHours())},{" "}
@@ -292,6 +293,7 @@ export function DashboardScreen({
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              {(manager || supervisor) && <DailySummaryDialog />}
               <Button onClick={() => onNavigate("sales")} className="gap-2">
                 <ShoppingCart className="size-4" aria-hidden="true" />
                 New sale
@@ -348,6 +350,9 @@ export function DashboardScreen({
           </div>
         </div>
       </section>
+      <ExpiryAlerts />
+      {manager && <DepartmentSales />}
+      {manager && <ValuationPanel />}
 
       {manager && loading ? (
         <SummaryState>Loading today&apos;s operational summary…</SummaryState>

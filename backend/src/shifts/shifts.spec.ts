@@ -6,7 +6,7 @@ import { ShiftsWrites } from './shifts-writes.js';
 describe('ShiftsService', () => {
   it('returns the active shift for a register refresh', async () => {
     const query = vi.fn(async (sql: string) => {
-      if (sql.includes('FROM cash_shift WHERE cashier_id')) {
+      if (sql.includes('FROM cash_shift') && sql.includes('cashier_id = $1')) {
         return {
           rows: [
             {

@@ -1,3 +1,4 @@
+import { BusinessModule } from './business/business.module.js';
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
@@ -21,6 +22,7 @@ import { StoreAuthorityModule } from './store/store-authority.module.js';
     ConfigModule,
     DatabaseModule,
     IdentityModule,
+    BusinessModule,
     StoreAuthorityModule,
     CatalogueModule,
     InventoryModule,

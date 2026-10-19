@@ -1,3 +1,4 @@
+import { RegisterBasketService } from './register-basket.service.js';
 import {
   Body,
   Controller,
@@ -22,7 +23,12 @@ function actor(req: StaffRequest) {
 function lookupActor(req: StaffRequest) {
   return {
     userId: req.staff.user.id,
-    role: req.staff.user.role === 'manager' ? 'manager' : 'cashier',
+    role:
+      req.staff.user.role === 'manager'
+        ? 'manager'
+        : req.staff.user.role === 'supervisor'
+          ? 'supervisor'
+          : 'cashier',
   } as const;
 }
 
@@ -30,20 +36,34 @@ function lookupActor(req: StaffRequest) {
 @StoreWrites('operational')
 export class SalesController {
   constructor(
+    @Inject(RegisterBasketService)
+    private readonly basket: RegisterBasketService,
     @Inject(SalesService) private readonly sales: SalesService,
     @Inject(SalesLookupService) private readonly lookup: SalesLookupService,
     @Inject(SuspendedOrdersService)
     private readonly suspendedOrders: SuspendedOrdersService,
   ) {}
 
+  @Get('basket')
+  @StaffRoles('cashier', 'supervisor', 'manager')
+  basketRead(@Req() req: StaffRequest) {
+    return this.basket.read(actor(req));
+  }
+
+  @Post('basket')
+  @StaffRoles('cashier', 'supervisor', 'manager')
+  basketSave(@Req() req: StaffRequest, @Body() body: unknown) {
+    return this.basket.save(actor(req), body);
+  }
+
   @Get('held-orders')
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   heldOrders(@Req() req: StaffRequest) {
     return this.suspendedOrders.list({ ...actor(req), ...lookupActor(req) });
   }
 
   @Post('held-orders')
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   holdOrder(@Req() req: StaffRequest, @Body() body: unknown) {
     return this.suspendedOrders.create(
       { ...actor(req), ...lookupActor(req) },
@@ -52,7 +72,7 @@ export class SalesController {
   }
 
   @Post('held-orders/:id/resume')
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   resumeHeldOrder(
     @Req() req: StaffRequest,
     @Param('id') id: string,
@@ -66,7 +86,7 @@ export class SalesController {
   }
 
   @Post('held-orders/:id/cancel')
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   cancelHeldOrder(
     @Req() req: StaffRequest,
     @Param('id') id: string,
@@ -80,7 +100,7 @@ export class SalesController {
   }
 
   @Get()
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   list(
     @Req() req: StaffRequest,
     @Query('search') search: unknown,
@@ -92,19 +112,19 @@ export class SalesController {
   }
 
   @Get(':saleId')
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   detail(@Req() req: StaffRequest, @Param('saleId') saleId: string) {
     return this.lookup.detail(lookupActor(req), saleId);
   }
 
   @Get(':saleId/receipt')
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   receipt(@Param('saleId') saleId: string) {
     return this.lookup.receipt(saleId);
   }
 
   @Post('quote')
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   quote(@Body() body: unknown) {
     const lines = Array.isArray(body)
       ? body
@@ -118,19 +138,19 @@ export class SalesController {
   }
 
   @Post()
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   finalize(@Req() req: StaffRequest, @Body() body: unknown) {
     return this.sales.finalize(actor(req), body);
   }
 
   @Post('checkout')
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   checkout(@Req() req: StaffRequest, @Body() body: unknown) {
     return this.sales.checkout(actor(req), body);
   }
 
   @Post(':saleId/payments')
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   recordPayment(@Req() req: StaffRequest, @Body() body: unknown) {
     return this.sales.recordPayment(actor(req), {
       ...(body && typeof body === 'object'

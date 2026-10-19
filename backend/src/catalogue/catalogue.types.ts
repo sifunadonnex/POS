@@ -10,14 +10,21 @@ export type Product = {
   unit: SaleUnit;
   priceMinor: string;
   lowStockThresholdMinor: string | null;
+  expiryDate?: string | null;
+  departmentId?: string | null;
+  departmentLabel?: string | null;
   taxCode: string | null;
   active: boolean;
   revision: number;
   barcodes: string[];
   hasImage?: boolean;
+  availableQuantityMinor?: string;
 };
 export const productColumns = `p.id, p.sku, p.name, p.category_id AS "categoryId", c.name AS "categoryName",
+  COALESCE((SELECT stock.quantity_minor FROM inventory_stock stock WHERE stock.product_id = p.id), 0)::text AS "availableQuantityMinor",
   p.unit, p.price_minor::text AS "priceMinor", p.low_stock_threshold_minor::text AS "lowStockThresholdMinor",
+  (SELECT branch.name || ' · ' || department.name FROM business_department department JOIN business_branch branch ON branch.id = department.branch_id WHERE department.id = p.department_id) AS "departmentLabel",
+  p.expiry_date::text AS "expiryDate", p.department_id AS "departmentId",
   p.tax_code AS "taxCode", p.active, p.revision,
   EXISTS(SELECT 1 FROM catalogue_product_photo photo WHERE photo.product_id = p.id) AS "hasImage",
   ARRAY(SELECT b.code FROM catalogue_barcode b WHERE b.product_id = p.id ORDER BY b.code) AS barcodes`;

@@ -31,7 +31,7 @@ type StaffRow = {
   id: string;
   name: string;
   email: string;
-  role: 'manager' | 'cashier';
+  role: 'manager' | 'supervisor' | 'cashier';
   disabled: boolean;
   emailVerified: boolean;
   twoFactorEnabled: boolean;

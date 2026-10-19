@@ -22,6 +22,14 @@ it("rejects malformed price and unit responses", () => {
     revision: 1,
     barcodes: [],
   }
+  expect(
+    parseProduct({ ...product, availableQuantityMinor: "1250" })
+      .availableQuantityMinor
+  ).toBe("1250")
+  for (const quantity of [-1, "0.5", "9007199254740992"])
+    expect(() =>
+      parseProduct({ ...product, availableQuantityMinor: quantity })
+    ).toThrow()
   expect(() => parseProduct({ ...product, priceMinor: 100 })).toThrow()
   expect(() => parseProduct({ ...product, unit: "tonne" })).toThrow()
   expect(() =>

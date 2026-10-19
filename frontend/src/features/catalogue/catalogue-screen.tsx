@@ -87,49 +87,55 @@ export function CatalogueScreen({ manager }: { manager: boolean }) {
   }
   return (
     <section className="space-y-5" aria-label="Product catalogue">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-semibold">Product catalogue</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Find products and their current selling prices.
-          </p>
-        </div>
-        {manager && panel.kind === "list" && (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              disabled={loading || !!error}
-              onClick={() => open({ kind: "edit", product: null })}
-            >
-              New product
-            </Button>
-            <Button
-              variant="outline"
-              disabled={loading || !!error}
-              onClick={() => open({ kind: "categories" })}
-            >
-              Categories
-            </Button>
-            <Button
-              variant="outline"
-              disabled={loading || !!error}
-              onClick={() => open({ kind: "import" })}
-            >
-              Import CSV
-            </Button>
+      {panel.kind !== "edit" && (
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">Product catalogue</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Find products and their current selling prices.
+            </p>
           </div>
-        )}
-        {panel.kind !== "list" && (
-          <Button
-            variant="outline"
-            onClick={() => {
-              setPanel({ kind: "list" })
-              reload()
-            }}
-          >
-            Back to products
-          </Button>
-        )}
-      </div>
+          {panel.kind === "list" && (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                disabled={loading || !!error}
+                onClick={() => open({ kind: "edit", product: null })}
+              >
+                New product
+              </Button>
+              {manager && (
+                <>
+                  <Button
+                    variant="outline"
+                    disabled={loading || !!error}
+                    onClick={() => open({ kind: "categories" })}
+                  >
+                    Categories
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={loading || !!error}
+                    onClick={() => open({ kind: "import" })}
+                  >
+                    Import CSV
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+          {panel.kind !== "list" && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setPanel({ kind: "list" })
+                reload()
+              }}
+            >
+              Back to products
+            </Button>
+          )}
+        </div>
+      )}
       {message && (
         <p role="status" className="rounded-lg border bg-muted/30 p-3 text-sm">
           {message}
@@ -142,11 +148,16 @@ export function CatalogueScreen({ manager }: { manager: boolean }) {
           <p role="alert">{error}</p>
           <Button onClick={reload}>Retry catalogue</Button>
         </div>
-      ) : manager && panel.kind === "edit" ? (
+      ) : panel.kind === "edit" && (manager || panel.product === null) ? (
         <ProductEditor
           key={panel.product?.id ?? "new"}
           product={panel.product}
           categories={categories}
+          canManagePhotos={manager}
+          onCancel={() => {
+            setPanel({ kind: "list" })
+            reload()
+          }}
           onSaved={(product) => {
             setPanel({ kind: "list" })
             setMessage(`${product.name} saved.`)
@@ -226,7 +237,7 @@ export function CatalogueScreen({ manager }: { manager: boolean }) {
                   ? "Try a different search or category."
                   : manager
                     ? "Create a product or import a CSV file to start your catalogue."
-                    : "A manager can add products to the catalogue."}
+                    : "Create a product to start your catalogue."}
               </p>
             </div>
           ) : (
@@ -242,6 +253,11 @@ export function CatalogueScreen({ manager }: { manager: boolean }) {
                       <h3 className="font-semibold break-words">
                         {product.name}
                       </h3>
+                      {product.departmentLabel && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {product.departmentLabel}
+                        </p>
+                      )}
                       <p className="mt-1 text-sm text-muted-foreground">
                         {product.sku} · {product.categoryName ?? "No category"}
                         {!product.active && (

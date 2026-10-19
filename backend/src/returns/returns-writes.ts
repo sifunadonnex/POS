@@ -1,3 +1,8 @@
+import {
+  verifyBusinessScope,
+  verifyResourceScope,
+  businessScope,
+} from '../business/business-scope.js';
 import { createHash } from 'node:crypto';
 import {
   ConflictException,
@@ -28,13 +33,25 @@ export class ReturnsWrites {
     work: (client: PoolClient) => Promise<T>,
   ): Promise<T> {
     const fingerprint = createHash('sha256')
-      .update(JSON.stringify(payload))
+      .update(
+        JSON.stringify(
+          businessScope.getStore()
+            ? {
+                payload,
+                departmentId: businessScope.getStore()?.departmentId,
+                tillId: businessScope.getStore()?.tillId,
+              }
+            : payload,
+        ),
+      )
       .digest('hex');
 
     let client: PoolClient | undefined;
     try {
       client = await this.database.connectionPool.connect();
       await client.query('BEGIN');
+      await verifyBusinessScope(client, actor.userId);
+      await verifyResourceScope(client, payload);
       await client.query("SET LOCAL statement_timeout = '10s'");
       await client.query(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 20260920))',
@@ -43,7 +60,7 @@ export class ReturnsWrites {
 
       const allowed = await client.query(
         `SELECT u.id FROM "user" u JOIN session s ON s."userId" = u.id
-        WHERE u.id = $1 AND s.id = $2 AND u.role IN ('manager', 'cashier') AND NOT u.disabled
+        WHERE u.id = $1 AND s.id = $2 AND u.role IN ('manager', 'supervisor', 'cashier') AND NOT u.disabled
         AND u."emailVerified"
         AND ((u.role = 'cashier' AND NOT u."twoFactorEnabled")
           OR (u."twoFactorEnabled" AND s."mfaVerified"))

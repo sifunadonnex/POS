@@ -59,13 +59,37 @@ try {
         throw 'Required frontend entrypoint missing.'
     }
     Copy-Item -LiteralPath (Join-Path $workspace 'docs\HOSTPINNACLE_DEPLOYMENT.md') -Destination (Join-Path $stage 'DEPLOYMENT.md')
+    Copy-Item -LiteralPath (Join-Path $workspace 'docs\DEPARTMENT_REQUIREMENTS.md') -Destination (Join-Path $stage 'BUSINESS-SETUP.md')
+    Copy-Item -LiteralPath (Join-Path $workspace 'docs\MPESA_DARAJA_SETUP.md') -Destination (Join-Path $stage 'MPESA-SETUP.md')
+    $payloadFiles = @($files + $frontendFiles + 'DEPLOYMENT.md' + 'BUSINESS-SETUP.md' + 'MPESA-SETUP.md')
+    $manifestEntries = @(foreach ($relative in $payloadFiles) {
+        $payloadStream = [System.IO.File]::OpenRead((Join-Path $stage $relative))
+        $payloadHasher = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $payloadHash = [System.BitConverter]::ToString($payloadHasher.ComputeHash($payloadStream)).Replace('-', '')
+        } finally {
+            $payloadHasher.Dispose()
+            $payloadStream.Dispose()
+        }
+        [ordered]@{
+            path = $relative.Replace('\', '/')
+            sha256 = $payloadHash
+        }
+    })
+    $manifest = [ordered]@{
+        application = 'Pay & Go'
+        schemaVersion = 1
+        builtAtUtc = [DateTime]::UtcNow.ToString('o')
+        files = $manifestEntries
+    }
+    [System.IO.File]::WriteAllText((Join-Path $stage 'RELEASE-MANIFEST.json'), ($manifest | ConvertTo-Json -Depth 5), [System.Text.UTF8Encoding]::new($false))
     $archive = Join-Path $output 'pay-and-go-backend.zip'
     Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [System.IO.Compression.ZipFile]::OpenRead($archive)
     try {
         $actual = @($zip.Entries | ForEach-Object { $_.FullName.Replace('\', '/') } | Sort-Object)
-        $expected = @(@($files + $frontendFiles | ForEach-Object { $_.Replace('\', '/') }) + 'DEPLOYMENT.md' | Sort-Object)
+        $expected = @(@($payloadFiles | ForEach-Object { $_.Replace('\', '/') }) + 'RELEASE-MANIFEST.json' | Sort-Object)
         if (Compare-Object $actual $expected) { throw 'Archive differs from the release allowlist.' }
         Write-Output ('Verified archive file count: ' + $actual.Count)
     } finally { $zip.Dispose() }

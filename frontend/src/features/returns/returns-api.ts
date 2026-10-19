@@ -1,3 +1,4 @@
+import { businessHeaders } from "../business/business-api"
 import type { SaleUnit } from "@/features/catalogue/catalogue-api"
 
 export type SaleSummary = {
@@ -129,12 +130,16 @@ export async function returnsRequest(
     const response = await fetch(`/api/returns${path}`, {
       method: body === undefined ? "GET" : "POST",
       credentials: "same-origin",
+      headers: businessHeaders(),
       cache: "no-store",
       signal: controller.signal,
       ...(body === undefined
         ? {}
         : {
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              ...businessHeaders(),
+              "Content-Type": "application/json",
+            },
             body: JSON.stringify(body),
           }),
     })

@@ -1,3 +1,9 @@
+import {
+  departmentPredicate,
+  tillValue,
+  requireDepartment,
+  businessScope,
+} from '../business/business-scope.js';
 import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
@@ -86,6 +92,11 @@ export class ReturnsService {
   }
 
   async createReturn(actor: ReturnActor, value: unknown) {
+    requireDepartment();
+    if (businessScope.getStore() && !businessScope.getStore()?.tillId)
+      throw new ConflictException(
+        'Select a till before recording a cash refund',
+      );
     const body =
       value && typeof value === 'object' ? (value as ReturnCreateInput) : {};
     const requestId =
@@ -132,6 +143,39 @@ export class ReturnsService {
         }
         if (sale.rows[0].status !== 'completed')
           throw new ConflictException('Only completed sales can be returned');
+
+        // This operation records a physical cash payout. External-provider
+        // refunds need their own verified confirmation flow before being paid.
+        const payments = await client.query<{
+          cash_minor: string;
+          other_count: string;
+        }>(
+          `SELECT COALESCE(SUM(amount_minor) FILTER (WHERE kind = 'cash'), 0)::text AS cash_minor,
+           COUNT(*) FILTER (WHERE kind <> 'cash')::text AS other_count
+           FROM sale_payment WHERE sale_id = $1 AND status = 'paid'`,
+          [saleId],
+        );
+        const paid = payments.rows[0];
+        if (
+          !paid ||
+          Number(paid.cash_minor) !== Number(sale.rows[0].total_minor) ||
+          Number(paid.other_count) !== 0
+        )
+          throw new ConflictException(
+            'Cash refunds require a fully cash-paid sale. External payment refunds are not available.',
+          );
+
+        const shift = await client.query<{ id: string }>(
+          `SELECT s.id FROM cash_shift s
+           WHERE ${departmentPredicate('s')} AND (${tillValue()} IS NULL OR s.till_id = ${tillValue()})
+           AND s.cashier_id = $1 AND s.status = 'open'
+           ORDER BY s.opened_at DESC LIMIT 1 FOR UPDATE OF s`,
+          [actor.userId],
+        );
+        if (!shift.rowCount)
+          throw new ConflictException(
+            'Open your shift on the selected till before recording a cash refund',
+          );
 
         const previousRefunds = await client.query<{ refund_minor: string }>(
           `SELECT COALESCE(SUM(amount_minor) FILTER (WHERE status = 'paid'), 0)::text AS refund_minor
@@ -242,7 +286,7 @@ export class ReturnsService {
             `SELECT p.id, p.unit, p.active, COALESCE(s.quantity_minor, 0) AS quantity_minor
             FROM catalogue_product p
             LEFT JOIN inventory_stock s ON s.product_id = p.id
-            WHERE p.id = $1 FOR UPDATE OF p`,
+            WHERE ${departmentPredicate('p')} AND p.id = $1 FOR UPDATE OF p`,
             [line.productId],
           );
           const row = product.rows[0];
@@ -272,11 +316,12 @@ export class ReturnsService {
         );
 
         for (const resolved of resolvedLines) {
+          const returnLineId = randomUUID();
           await client.query(
             `INSERT INTO sale_return_line (id, return_id, sale_line_id, product_id, quantity_minor, unit_price_minor, created_at)
             VALUES ($1, $2, $3, $4, $5, $6, now())`,
             [
-              randomUUID(),
+              returnLineId,
               returnResult.rows[0].id,
               resolved.source.id,
               resolved.line.productId,
@@ -298,8 +343,8 @@ export class ReturnsService {
             ],
           );
           await client.query(
-            `INSERT INTO inventory_movement (id, product_id, kind, delta_minor, quantity_after_minor, actor_id, reason)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            `INSERT INTO inventory_movement (id, product_id, kind, delta_minor, quantity_after_minor, actor_id, reason, return_line_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
             [
               randomUUID(),
               resolved.line.productId,
@@ -308,6 +353,7 @@ export class ReturnsService {
               resolved.after,
               actor.userId,
               reason,
+              returnLineId,
             ],
           );
         }
@@ -318,11 +364,26 @@ export class ReturnsService {
           [randomUUID(), saleId, returnResult.rows[0].id, amountMinor, reason],
         );
 
+        const movementId = randomUUID();
+        await client.query(
+          `INSERT INTO cash_movement (id, shift_id, refund_id, kind, amount_minor, reason)
+           VALUES ($1, $2, $3, 'cash_out', $4, $5)`,
+          [
+            movementId,
+            shift.rows[0].id,
+            refundResult.rows[0].id,
+            amountMinor,
+            reason,
+          ],
+        );
+
         return {
           returnId: returnResult.rows[0].id,
           saleId,
           amountMinor,
           refundId: refundResult.rows[0].id,
+          shiftId: shift.rows[0].id,
+          movementId,
         };
       },
     );

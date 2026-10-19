@@ -15,12 +15,12 @@ export function parseStaffInput(env: NodeJS.ProcessEnv) {
     name.length > 100 ||
     password.length < 12 ||
     password.length > 128 ||
-    (role !== 'manager' && role !== 'cashier') ||
+    (role !== 'manager' && role !== 'supervisor' && role !== 'cashier') ||
     !actor ||
     actor.length > 100
   ) {
     throw new Error(
-      'Provide valid STAFF_EMAIL, STAFF_NAME, STAFF_PASSWORD (12-128 characters), STAFF_ROLE (manager/cashier), and STAFF_PROVISIONED_BY',
+      'Provide valid STAFF_EMAIL, STAFF_NAME, STAFF_PASSWORD (12-128 characters), STAFF_ROLE (manager/supervisor/cashier), and STAFF_PROVISIONED_BY',
     );
   }
   return { email, name, password, role, actor };

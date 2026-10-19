@@ -37,7 +37,12 @@ export function SaleReceiptView({ receipt }: SaleReceiptViewProps) {
       className="receipt-paper mx-auto w-full max-w-[21rem] bg-background px-5 py-6 text-foreground shadow-sm ring-1 ring-border"
     >
       <header className="text-center">
-        <p className="text-xl font-black tracking-[0.16em]">PAY &amp; GO</p>
+        <img
+          src="/pop-n-go-logo.png"
+          alt="POP N GO Mini Mart"
+          className="mx-auto mb-2 size-20 object-contain"
+        />
+        <p className="text-xl font-black tracking-[0.16em]">POP N’ GO</p>
         <p className="mt-1 text-xs font-semibold tracking-[0.22em] uppercase">
           Sales receipt
         </p>

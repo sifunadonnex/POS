@@ -1,3 +1,4 @@
+import { departmentPredicate } from '../business/business-scope.js';
 import {
   BadRequestException,
   ConflictException,
@@ -10,7 +11,10 @@ import { DatabaseService } from '../database/database.service.js';
 
 type SaleUnit = 'each' | 'pack' | 'kg' | 'l';
 type PaymentKind = 'cash' | 'card' | 'mpesa';
-type LookupActor = { userId: string; role: 'manager' | 'cashier' };
+type LookupActor = {
+  userId: string;
+  role: 'manager' | 'supervisor' | 'cashier';
+};
 
 export type SaleLedgerItem = {
   saleId: string;
@@ -177,7 +181,7 @@ export class SalesLookupService {
         LEFT JOIN line_totals lines ON lines.sale_id = sale.id
         LEFT JOIN payment_totals payments ON payments.sale_id = sale.id
         LEFT JOIN refund_totals refunds ON refunds.sale_id = sale.id
-        WHERE sale.status = 'completed'
+        WHERE ${departmentPredicate('sale')} AND sale.status = 'completed'
           AND ($1 = '' OR strpos(lower(sale.id::text), lower($1)) > 0
             OR strpos(lower(staff.name), lower($1)) > 0)
           AND sale.created_at >= ($2::date::timestamp AT TIME ZONE 'Africa/Nairobi')
@@ -246,7 +250,7 @@ export class SalesLookupService {
             WHERE sale_id = sale.id AND status = 'paid'), 0)::text AS "refundedMinor",
           sale.created_at AS "createdAt"
         FROM sale JOIN "user" staff ON staff.id = sale.actor_id
-        WHERE sale.id = $1 AND ($2::boolean OR sale.actor_id = $3)`,
+        WHERE ${departmentPredicate('sale')} AND sale.id = $1 AND ($2::boolean OR sale.actor_id = $3)`,
         [saleId, actor.role === 'manager', actor.userId],
       );
       const sale = saleResult.rows[0];
@@ -364,7 +368,7 @@ export class SalesLookupService {
       }>(
         `SELECT id AS "saleId", total_minor::text AS "totalMinor", status,
         created_at AS "createdAt"
-        FROM sale WHERE id = $1`,
+        FROM sale WHERE ${departmentPredicate('sale')} AND id = $1`,
         [saleId],
       );
       const sale = saleResult.rows[0];

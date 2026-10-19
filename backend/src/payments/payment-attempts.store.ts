@@ -1,3 +1,9 @@
+import {
+  verifyBusinessScope,
+  verifyResourceScope,
+  departmentPredicate,
+  tillValue,
+} from '../business/business-scope.js';
 import { randomUUID } from 'node:crypto';
 import {
   ConflictException,
@@ -97,7 +103,9 @@ export class PaymentAttemptsStore {
         [requestId],
       );
       await this.requireActor(client, actor);
+      await verifyBusinessScope(client, actor.userId);
 
+      await verifyResourceScope(client, payload);
       const previous = await this.selectAttempt(
         client,
         'pa.request_id = $1',
@@ -156,7 +164,7 @@ export class PaymentAttemptsStore {
 
       const shift = await client.query<{ id: string }>(
         `SELECT id FROM cash_shift
-        WHERE cashier_id = $1 AND status = 'open'
+        WHERE ${departmentPredicate('cash_shift')} AND (${tillValue()} IS NULL OR till_id = ${tillValue()}) AND cashier_id = $1 AND status = 'open'
         ORDER BY opened_at DESC LIMIT 1 FOR UPDATE`,
         [actor.userId],
       );
@@ -310,10 +318,10 @@ export class PaymentAttemptsStore {
       const result =
         await this.database.connectionPool.query<PaymentAttemptRecord>(
           `${this.attemptSelect()}
-        WHERE pa.id = $1 AND EXISTS (
+        WHERE pa.id = $1 AND EXISTS (SELECT 1 FROM sale scoped WHERE scoped.id = pa.sale_id AND ${departmentPredicate('scoped')}) AND EXISTS (
           SELECT 1 FROM "user" u JOIN session s ON s."userId" = u.id
           WHERE u.id = $2 AND s.id = $3 AND NOT u.disabled AND u."emailVerified"
-          AND u.role IN ('cashier', 'manager')
+          AND u.role IN ('cashier', 'supervisor', 'manager')
           AND ((u.role = 'cashier' AND NOT u."twoFactorEnabled")
             OR (u."twoFactorEnabled" AND s."mfaVerified"))
           AND s."expiresAt" > now()
@@ -417,7 +425,7 @@ export class PaymentAttemptsStore {
   ): Promise<void> {
     const allowed = await client.query(
       `SELECT u.id FROM "user" u JOIN session s ON s."userId" = u.id
-      WHERE u.id = $1 AND s.id = $2 AND u.role IN ('cashier', 'manager') AND NOT u.disabled
+      WHERE u.id = $1 AND s.id = $2 AND u.role IN ('cashier', 'supervisor', 'manager') AND NOT u.disabled
       AND u."emailVerified"
       AND ((u.role = 'cashier' AND NOT u."twoFactorEnabled")
         OR (u."twoFactorEnabled" AND s."mfaVerified"))
@@ -436,7 +444,7 @@ export class PaymentAttemptsStore {
     lock: boolean,
   ): Promise<PaymentAttemptRecord | undefined> {
     const result = await client.query<PaymentAttemptRecord>(
-      `${this.attemptSelect()} WHERE ${predicate}${lock ? ' FOR UPDATE OF pa' : ''}`,
+      `${this.attemptSelect()} WHERE EXISTS (SELECT 1 FROM sale scoped WHERE scoped.id = pa.sale_id AND ${departmentPredicate('scoped')}) AND ${predicate}${lock ? ' FOR UPDATE OF pa' : ''}`,
       params,
     );
     return result.rows[0];

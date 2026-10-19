@@ -27,19 +27,19 @@ export class ReturnsController {
   ) {}
 
   @Get('sales')
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   sales(@Query('search') search: unknown, @Query('page') page: unknown) {
     return this.lookup.listSales(search, page);
   }
 
   @Get('sales/:saleId')
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   sale(@Param('saleId') saleId: string) {
     return this.lookup.sale(saleId);
   }
 
   @Post()
-  @StaffRoles('cashier', 'manager')
+  @StaffRoles('cashier', 'supervisor', 'manager')
   create(@Req() req: StaffRequest, @Body() body: unknown) {
     return this.returns.createReturn(actor(req), body);
   }

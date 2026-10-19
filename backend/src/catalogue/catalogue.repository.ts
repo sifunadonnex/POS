@@ -1,3 +1,7 @@
+import {
+  departmentPredicate,
+  departmentValue,
+} from '../business/business-scope.js';
 import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import type { ProductInput } from './catalogue.input.js';
@@ -13,7 +17,7 @@ export async function readProduct(
   id: string,
 ): Promise<Product> {
   const result = await client.query<Product>(
-    `SELECT ${productColumns} FROM ${productFrom} WHERE p.id = $1`,
+    `SELECT ${productColumns} FROM ${productFrom} WHERE ${departmentPredicate('p')} AND p.id = $1`,
     [id],
   );
   if (!result.rows[0])
@@ -62,8 +66,8 @@ export async function insertProduct(
   const id = randomUUID();
   await client.query(
     `INSERT INTO catalogue_product (id, sku, name, category_id, unit, price_minor,
-      low_stock_threshold_minor, tax_code, active)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      low_stock_threshold_minor, tax_code, active, expiry_date, department_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, ${departmentValue()})`,
     [
       id,
       input.sku,
@@ -74,6 +78,7 @@ export async function insertProduct(
       input.lowStockThresholdMinor,
       input.taxCode,
       input.active,
+      input.expiryDate ?? null,
     ],
   );
   await replaceBarcodes(client, id, input.barcodes);

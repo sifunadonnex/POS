@@ -1,3 +1,8 @@
+import {
+  verifyBusinessScope,
+  verifyResourceScope,
+  businessScope,
+} from '../business/business-scope.js';
 import { createHash } from 'node:crypto';
 import {
   ConflictException,
@@ -29,13 +34,25 @@ export class InventoryWrites {
     work: (client: PoolClient) => Promise<T>,
   ): Promise<T> {
     const fingerprint = createHash('sha256')
-      .update(JSON.stringify(payload))
+      .update(
+        JSON.stringify(
+          businessScope.getStore()
+            ? {
+                payload,
+                departmentId: businessScope.getStore()?.departmentId,
+                tillId: businessScope.getStore()?.tillId,
+              }
+            : payload,
+        ),
+      )
       .digest('hex');
 
     let client: PoolClient | undefined;
     try {
       client = await this.database.connectionPool.connect();
       await client.query('BEGIN');
+      await verifyBusinessScope(client, actor.userId);
+      await verifyResourceScope(client, payload);
       await client.query("SET LOCAL statement_timeout = '10s'");
       await client.query(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 20260918))',
@@ -53,14 +70,23 @@ export class InventoryWrites {
         throw new ForbiddenException('Verify manager access again');
       }
 
-      const previous = await client.query<{ actor_id: string; fingerprint: string; response: unknown }>(
+      const previous = await client.query<{
+        actor_id: string;
+        fingerprint: string;
+        response: unknown;
+      }>(
         'SELECT actor_id, fingerprint, response FROM inventory_request WHERE id = $1',
         [requestId],
       );
       const receipt = previous.rows[0];
       if (receipt) {
-        if (receipt.actor_id !== actor.userId || receipt.fingerprint !== fingerprint) {
-          throw new ConflictException('This request ID was already used for a different stock change');
+        if (
+          receipt.actor_id !== actor.userId ||
+          receipt.fingerprint !== fingerprint
+        ) {
+          throw new ConflictException(
+            'This request ID was already used for a different stock change',
+          );
         }
         await client.query('COMMIT');
         return receipt.response as T;
@@ -84,10 +110,14 @@ export class InventoryWrites {
       if (error instanceof HttpException) throw error;
       if (error && typeof error === 'object' && 'code' in error) {
         if (error.code === '23505') {
-          throw new ConflictException('This stock change is already committed. Reload and retry.');
+          throw new ConflictException(
+            'This stock change is already committed. Reload and retry.',
+          );
         }
       }
-      throw new ServiceUnavailableException('The stock change could not be confirmed. Retry the same request to check its outcome.');
+      throw new ServiceUnavailableException(
+        'The stock change could not be confirmed. Retry the same request to check its outcome.',
+      );
     } finally {
       client?.release();
     }

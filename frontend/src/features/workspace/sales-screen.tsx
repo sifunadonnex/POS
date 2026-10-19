@@ -1,3 +1,9 @@
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import {
   AlertCircle,
@@ -32,6 +38,9 @@ import { getProductByBarcode, getProducts } from "../catalogue/catalogue-api"
 import { displayPrice, errorMessage } from "../catalogue/catalogue-format"
 import {
   cancelHeldOrder,
+  getRegisterBasket,
+  saveRegisterBasket,
+  type CartApproval,
   checkoutCashSale,
   createHeldOrder,
   finalizeSale,
@@ -168,7 +177,13 @@ function increment(unit: SaleUnit) {
   return unit === "each" || unit === "pack" ? 1 : 0.001
 }
 
-export function SalesScreen() {
+export function SalesScreen({
+  staffRole = "cashier",
+  onSelectWorkspace,
+}: {
+  staffRole?: "manager" | "supervisor" | "cashier"
+  onSelectWorkspace?: () => void
+}) {
   const [shift, setShift] = useState<CurrentShift | null>(null)
   const [shiftLoading, setShiftLoading] = useState(true)
   const [shiftError, setShiftError] = useState("")
@@ -190,7 +205,7 @@ export function SalesScreen() {
   const [heldAction, setHeldAction] = useState<string | null>(null)
   const [holdNote, setHoldNote] = useState("")
   const [quote, setQuote] = useState<BasketQuote | null>(null)
-  const [quoteLoading, setQuoteLoading] = useState(false)
+  const [quoteLoading, setQuoteLoading] = useState(true)
   const [quoteError, setQuoteError] = useState("")
   const [externalPayment, setExternalPayment] =
     useState<ExternalPaymentFlow | null>(readExternalPayment)
@@ -209,7 +224,14 @@ export function SalesScreen() {
   const [receiptSearch, setReceiptSearch] = useState("")
   const [receiptLoading, setReceiptLoading] = useState(false)
   const [receiptError, setReceiptError] = useState("")
-  const quoteSequence = useRef(0)
+  const basketRevision = useRef(0)
+  const basketSaveBusy = useRef(false)
+  const [basketReady, setBasketReady] = useState(false)
+  const [approvalAction, setApprovalAction] = useState<
+    { lines: BasketItem[] } | { order: HeldOrder } | null
+  >(null)
+  const [approvalPending, setApprovalPending] = useState(false)
+  const [approvalError, setApprovalError] = useState("")
   const checkoutRequest = useRef<string | null>(null)
   const holdRequest = useRef<string | null>(null)
   const heldTransitionRequests = useRef(new Map<string, string>())
@@ -297,12 +319,19 @@ export function SalesScreen() {
       : null
   const selectedPaymentAvailable =
     paymentKind === "cash" || paymentCapabilities[paymentKind]
-  const basketLocked = checkoutBusy || Boolean(externalPayment)
+  const basketLocked =
+    checkoutBusy ||
+    Boolean(externalPayment) ||
+    quoteLoading ||
+    !basketReady ||
+    approvalPending
+  const stockProblem = basket.find(({ product }) => !canAdd(product, 0))
   const canComplete =
     Boolean(shift) &&
     !checkoutBusy &&
     (Boolean(externalPayment) ||
       (basket.length > 0 &&
+        !stockProblem &&
         Boolean(quote) &&
         !quoteLoading &&
         selectedPaymentAvailable &&
@@ -311,53 +340,157 @@ export function SalesScreen() {
         (paymentKind !== "cash" ||
           (cashTenderedMinor !== null && cashTenderedMinor >= totalMinor))))
 
-  function updateBasket(next: BasketItem[]) {
+  function applyBasket(next: BasketItem[], result: BasketQuote | null) {
     setBasket(next)
+    setQuote(result)
+    setQuoteError("")
+    setPaymentAmount(result ? (result.totalMinor / 100).toFixed(2) : "")
     setCheckoutError("")
-    setSuccessMessage("")
-    setExternalPayment(null)
-    setMpesaPhone("")
     checkoutRequest.current = null
     holdRequest.current = null
-    const sequence = ++quoteSequence.current
-    if (!next.length) {
-      setQuote(null)
-      setQuoteError("")
-      setQuoteLoading(false)
-      setPaymentAmount("")
-      return
-    }
+  }
+  async function restoreBasket() {
     setQuoteLoading(true)
-    setQuoteError("")
-    void quoteBasket(
-      next.map(({ product, quantity }) => ({
-        productId: product.id,
-        unit: product.unit,
-        quantity,
-      }))
-    )
-      .then((result) => {
-        if (sequence !== quoteSequence.current) return
-        setQuote(result)
-        setPaymentAmount((result.totalMinor / 100).toFixed(2))
+    try {
+      const saved = await getRegisterBasket()
+      basketRevision.current = saved.revision
+      applyBasket(saved.lines, null)
+      setBasketReady(true)
+      if (saved.lines.length) {
+        try {
+          const result = await quoteBasket(
+            saved.lines.map(({ product, quantity }) => ({
+              productId: product.id,
+              unit: product.unit,
+              quantity,
+            }))
+          )
+          setQuote(result)
+          setPaymentAmount((result.totalMinor / 100).toFixed(2))
+        } catch (failure) {
+          setQuoteError(errorMessage(failure))
+        }
+      }
+    } catch (failure) {
+      setQuoteError(errorMessage(failure))
+      setBasketReady(false)
+    } finally {
+      setQuoteLoading(false)
+    }
+  }
+  useEffect(() => {
+    let current = true
+    void getRegisterBasket()
+      .then(async (saved) => {
+        if (!current) return
+        basketRevision.current = saved.revision
+        setBasket(saved.lines)
+        setBasketReady(true)
+        if (!saved.lines.length) return
+        try {
+          const result = await quoteBasket(
+            saved.lines.map(({ product, quantity }) => ({
+              productId: product.id,
+              unit: product.unit,
+              quantity,
+            }))
+          )
+          if (current) {
+            setQuote(result)
+            setPaymentAmount((result.totalMinor / 100).toFixed(2))
+          }
+        } catch (failure) {
+          if (current) setQuoteError(errorMessage(failure))
+        }
       })
       .catch((failure: unknown) => {
-        if (sequence !== quoteSequence.current) return
-        setQuote(null)
-        setQuoteError(errorMessage(failure))
+        if (current) {
+          setQuoteError(errorMessage(failure))
+          setBasketReady(false)
+        }
       })
       .finally(() => {
-        if (sequence === quoteSequence.current) setQuoteLoading(false)
+        if (current) setQuoteLoading(false)
       })
+    return () => {
+      current = false
+    }
+  }, [])
+  async function persistBasket(next: BasketItem[], approval?: CartApproval) {
+    if (basketSaveBusy.current) return false
+    basketSaveBusy.current = true
+    setQuoteLoading(true)
+    setQuoteError("")
+    try {
+      const result = await saveRegisterBasket(
+        next.map(({ product, quantity }) => ({
+          productId: product.id,
+          unit: product.unit,
+          quantity,
+        })),
+        basketRevision.current,
+        approval
+      )
+      basketRevision.current = result.revision
+      applyBasket(next, next.length ? result.quote : null)
+      setExternalPayment(null)
+      setMpesaPhone("")
+      return true
+    } catch (failure) {
+      const message = errorMessage(failure)
+      setQuoteError(message)
+      setApprovalError(message)
+      return false
+    } finally {
+      basketSaveBusy.current = false
+      setQuoteLoading(false)
+    }
+  }
+  function updateBasket(next: BasketItem[]) {
+    if (basketLocked || basketSaveBusy.current) return
+    const reduction = basket.some(
+      (item) =>
+        !next.some(
+          (candidate) =>
+            candidate.product.id === item.product.id &&
+            candidate.quantity >= item.quantity
+        )
+    )
+    if (reduction && staffRole === "cashier") {
+      setApprovalError("")
+      setApprovalAction({ lines: next })
+      return
+    }
+    void persistBasket(next)
+  }
+
+  function canAdd(product: Product, quantity = increment(product.unit)) {
+    const currentProduct =
+      products.find((candidate) => candidate.id === product.id) ?? product
+    if (currentProduct.availableQuantityMinor === undefined) return false
+    const inBasket =
+      basket.find((item) => item.product.id === product.id)?.quantity ?? 0
+    const scale = product.unit === "each" || product.unit === "pack" ? 1 : 1000
+    return (
+      BigInt(Math.round(inBasket * scale)) +
+        BigInt(Math.round(quantity * scale)) <=
+      BigInt(currentProduct.availableQuantityMinor)
+    )
   }
 
   function addProduct(product: Product) {
+    if (!canAdd(product)) return
     const existing = basket.find((item) => item.product.id === product.id)
     if (existing) {
       updateBasket(
         basket.map((item) =>
           item.product.id === product.id
-            ? { ...item, quantity: item.quantity + increment(product.unit) }
+            ? {
+                ...item,
+                quantity:
+                  Math.round((item.quantity + increment(product.unit)) * 1000) /
+                  1000,
+              }
             : item
         )
       )
@@ -368,8 +501,8 @@ export function SalesScreen() {
 
   function adjustQuantity(productId: string, delta: number) {
     const item = basket.find((candidate) => candidate.product.id === productId)
-    if (!item) return
-    const nextQuantity = item.quantity + delta
+    if (!item || (delta > 0 && !canAdd(item.product, delta))) return
+    const nextQuantity = Math.round((item.quantity + delta) * 1000) / 1000
     if (nextQuantity <= 0) {
       updateBasket(
         basket.filter((candidate) => candidate.product.id !== productId)
@@ -394,7 +527,7 @@ export function SalesScreen() {
     try {
       const held = await createHeldOrder(basketLines, holdNote, operationId)
       setHeldOrders((current) => [held, ...current])
-      updateBasket([])
+      void restoreBasket()
       setHoldNote("")
       setSuccessMessage(
         "Order held on the server. Resume it from any authorized register."
@@ -415,16 +548,12 @@ export function SalesScreen() {
     setHeldAction(order.id)
     setHeldOrdersError("")
     try {
-      const resumed = await resumeHeldOrder(
-        order.id,
-        order.revision,
-        operationId
-      )
+      await resumeHeldOrder(order.id, order.revision, operationId)
       heldTransitionRequests.current.delete(transitionKey)
       setHeldOrders((current) =>
         current.filter((candidate) => candidate.id !== order.id)
       )
-      updateBasket(resumed.lines)
+      void restoreBasket()
       setSuccessMessage("Held order resumed and re-quoted by the server.")
     } catch (failure: unknown) {
       setHeldOrdersError(errorMessage(failure))
@@ -433,7 +562,12 @@ export function SalesScreen() {
     }
   }
 
-  async function cancelBasket(order: HeldOrder) {
+  async function cancelBasket(order: HeldOrder, approval?: CartApproval) {
+    if (staffRole === "cashier" && !approval) {
+      setApprovalError("")
+      setApprovalAction({ order })
+      return
+    }
     if (basketLocked || heldAction) return
     const transitionKey = `cancel:${order.id}`
     const operationId =
@@ -442,7 +576,7 @@ export function SalesScreen() {
     setHeldAction(order.id)
     setHeldOrdersError("")
     try {
-      await cancelHeldOrder(order.id, order.revision, operationId)
+      await cancelHeldOrder(order.id, order.revision, operationId, approval)
       heldTransitionRequests.current.delete(transitionKey)
       setHeldOrders((current) =>
         current.filter((candidate) => candidate.id !== order.id)
@@ -450,6 +584,7 @@ export function SalesScreen() {
       setSuccessMessage("Held order cancelled. Its history remains recorded.")
     } catch (failure: unknown) {
       setHeldOrdersError(errorMessage(failure))
+      if (approval) throw failure
     } finally {
       setHeldAction(null)
     }
@@ -571,7 +706,7 @@ export function SalesScreen() {
       setShift(null)
       setShowCloseShift(false)
       setClosingCash("")
-      updateBasket([])
+      void restoreBasket()
       setSuccessMessage(
         `Shift closed. Expected cash ${money(result.expectedCashMinor)}; variance ${variance(result.varianceMinor)}.`
       )
@@ -583,7 +718,7 @@ export function SalesScreen() {
   }
 
   async function completeSale() {
-    if (!shift) return
+    if (!shift || !canComplete) return
     if (!externalPayment && (!quote || !selectedPaymentAvailable)) return
     if (
       paymentKind === "cash" &&
@@ -602,7 +737,7 @@ export function SalesScreen() {
           cashTenderedMinor,
           checkoutRequest.current ?? (checkoutRequest.current = requestId())
         )
-        updateBasket([])
+        void restoreBasket()
         setSuccessMessage(
           result.payment.changeMinor > 0
             ? `Sale confirmed. Change due ${money(result.payment.changeMinor)}. Sale reference ${result.saleId.slice(0, 8)} is recorded.`
@@ -651,6 +786,7 @@ export function SalesScreen() {
       setCheckoutError(errorMessage(failure))
     } finally {
       setCheckoutBusy(false)
+      void loadProducts(search.trim())
     }
   }
 
@@ -661,7 +797,10 @@ export function SalesScreen() {
     setExternalPayment({ ...flow, attempt })
     if (attempt.status !== "confirmed") return
 
-    updateBasket([])
+    setExternalPayment(null)
+    window.localStorage.removeItem(EXTERNAL_PAYMENT_KEY)
+    void restoreBasket()
+    void loadProducts(search.trim())
     const label = attempt.kind === "mpesa" ? "M-Pesa" : "Card"
     setSuccessMessage(
       `${label} payment confirmed. Sale reference ${attempt.saleId.slice(0, 8)} is recorded.`
@@ -721,7 +860,127 @@ export function SalesScreen() {
           <span>{successMessage}</span>
         </div>
       )}
+      <Dialog
+        open={approvalAction !== null}
+        onOpenChange={(open) => {
+          if (!open && !approvalPending) setApprovalAction(null)
+        }}
+      >
+        <DialogContent showCloseButton={!approvalPending}>
+          <DialogTitle>Supervisor approval</DialogTitle>
+          <DialogDescription>
+            A supervisor or manager must approve reducing quantities, removing
+            products or cancelling a held order. Adding customer items does not
+            need approval.
+          </DialogDescription>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (approvalPending || !approvalAction) return
+              const form = event.currentTarget,
+                data = new FormData(form)
+              const approval = {
+                email: String(data.get("email") ?? ""),
+                password: String(data.get("password") ?? ""),
+                reason: String(data.get("reason") ?? ""),
+              }
+              setApprovalPending(true)
+              setApprovalError("")
+              void (
+                "lines" in approvalAction
+                  ? persistBasket(approvalAction.lines, approval)
+                  : cancelBasket(approvalAction.order, approval).then(
+                      () => true
+                    )
+              )
+                .then((saved) => {
+                  if (saved) setApprovalAction(null)
+                })
+                .catch((failure: unknown) =>
+                  setApprovalError(errorMessage(failure))
+                )
+                .finally(() => {
+                  form.reset()
+                  setApprovalPending(false)
+                })
+            }}
+          >
+            <fieldset disabled={approvalPending} className="space-y-3">
+              <Label htmlFor="approval-email">Supervisor email</Label>
+              <Input
+                id="approval-email"
+                name="email"
+                type="email"
+                autoComplete="off"
+                required
+              />
+              <Label htmlFor="approval-password">Supervisor password</Label>
+              <Input
+                id="approval-password"
+                name="password"
+                type="password"
+                autoComplete="off"
+                required
+                maxLength={128}
+              />
+              <Label htmlFor="approval-reason">Reason for change</Label>
+              <Input
+                id="approval-reason"
+                name="reason"
+                required
+                minLength={3}
+                maxLength={200}
+              />
+              <Button type="submit">
+                {approvalPending ? "Verifying…" : "Approve this change"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setApprovalAction(null)}
+              >
+                Cancel
+              </Button>
+            </fieldset>
+            {approvalError && (
+              <p role="alert" className="text-sm text-destructive">
+                {approvalError}
+              </p>
+            )}
+          </form>
+        </DialogContent>
+      </Dialog>
       {checkoutError && <ErrorNotice message={checkoutError} />}
+      {!basketReady && !quoteLoading && (
+        <div
+          role="alert"
+          className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm"
+        >
+          <p className="font-semibold">Register unavailable</p>
+          <p className="mt-1">
+            {quoteError || "The saved basket could not be loaded."}
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            Products stay disabled until the register is ready, even when stock
+            is available.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {onSelectWorkspace && (
+              <Button variant="outline" size="sm" onClick={onSelectWorkspace}>
+                Choose department & till
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void restoreBasket()}
+            >
+              Reload saved basket
+            </Button>
+          </div>
+        </div>
+      )}
 
       {shiftLoading ? (
         <LoadingNotice label="Checking register status…" />
@@ -894,7 +1153,7 @@ export function SalesScreen() {
                       key={product.id}
                       className="group rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                       onClick={() => addProduct(product)}
-                      disabled={!shift || basketLocked}
+                      disabled={!shift || basketLocked || !canAdd(product)}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -908,13 +1167,37 @@ export function SalesScreen() {
                           aria-hidden="true"
                         />
                       </div>
-                      <p className="mt-4 font-semibold tabular-nums">
+                      <p className="mt-3 text-xs text-muted-foreground">
+                        {product.availableQuantityMinor === undefined
+                          ? "Stock unavailable; refresh products"
+                          : BigInt(product.availableQuantityMinor) <= 0n
+                            ? "Out of stock"
+                            : !canAdd(product)
+                              ? "All available stock in basket"
+                              : `${quantityLabel(Number(product.availableQuantityMinor) / (product.unit === "each" || product.unit === "pack" ? 1 : 1000), product.unit)} ${product.unit} in stock`}
+                      </p>
+                      {!basketReady && !quoteLoading && (
+                        <p className="mt-1 text-xs text-destructive">
+                          Register unavailable; see the message above.
+                        </p>
+                      )}
+                      <p className="mt-2 font-semibold tabular-nums">
                         {displayPrice(product.priceMinor)}
                       </p>
                     </button>
                   ))}
                 </div>
               )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={catalogueLoading}
+                onClick={() => void loadProducts(search.trim())}
+              >
+                <RefreshCw className="size-4" aria-hidden="true" /> Refresh
+                stock
+              </Button>
               {!shift && !shiftLoading && (
                 <p className="text-xs text-muted-foreground">
                   Open a shift above before adding products to the basket.
@@ -1212,7 +1495,7 @@ export function SalesScreen() {
                             size="icon"
                             className="size-8"
                             aria-label={`Increase ${product.name}`}
-                            disabled={basketLocked}
+                            disabled={basketLocked || !canAdd(product)}
                             onClick={() =>
                               adjustQuantity(
                                 product.id,
@@ -1250,7 +1533,18 @@ export function SalesScreen() {
               </div>
             )}
 
-            {quoteError && <ErrorNotice message={quoteError} />}
+            {quoteError && basketReady && (
+              <>
+                <ErrorNotice message={quoteError} />
+                <Button
+                  variant="outline"
+                  disabled={quoteLoading}
+                  onClick={() => void restoreBasket()}
+                >
+                  Reload saved basket
+                </Button>
+              </>
+            )}
             <div className="space-y-2 border-t pt-4 text-sm">
               <div className="flex items-center justify-between text-muted-foreground">
                 <span>Subtotal</span>
@@ -1366,6 +1660,15 @@ export function SalesScreen() {
               </p>
             )}
 
+            {stockProblem && !externalPayment && (
+              <p
+                role="status"
+                className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+              >
+                Check stock for {stockProblem.product.name}. Refresh stock, then
+                reduce the basket quantity if needed.
+              </p>
+            )}
             <Button
               className="w-full gap-2"
               size="lg"

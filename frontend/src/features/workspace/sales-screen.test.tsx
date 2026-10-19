@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   openShift: vi.fn(),
   closeShift: vi.fn(),
   quoteBasket: vi.fn(),
+  getRegisterBasket: vi.fn(),
+  saveRegisterBasket: vi.fn(),
   checkoutCashSale: vi.fn(),
   finalizeSale: vi.fn(),
   getReceipt: vi.fn(),
@@ -53,6 +55,7 @@ const product: Product = {
   categoryName: null,
   unit: "each",
   priceMinor: "1250",
+  availableQuantityMinor: "100",
   lowStockThresholdMinor: null,
   taxCode: null,
   active: true,
@@ -73,6 +76,13 @@ const heldOrder = {
 }
 
 beforeEach(() => {
+  mocks.getRegisterBasket.mockResolvedValue({ revision: 0, lines: [] })
+  mocks.saveRegisterBasket.mockImplementation(async (lines) => ({
+    revision: 1,
+    quote: lines.length
+      ? await mocks.quoteBasket(lines)
+      : { subtotalMinor: 0, totalMinor: 0, lines: [] },
+  }))
   mocks.getCurrentShift.mockResolvedValue({
     shiftId: "shift-1",
     openingCashMinor: 5000,
@@ -192,7 +202,7 @@ it("checks out cash atomically and prints tender and change on the receipt", asy
 it("holds a basket on the server and resumes it for a fresh quote", async () => {
   render(<SalesScreen />)
   fireEvent.click(await screen.findByRole("button", { name: /Rice 10kg/ }))
-  fireEvent.change(screen.getByLabelText("Hold note (optional)"), {
+  fireEvent.change(await screen.findByLabelText("Hold note (optional)"), {
     target: { value: "Customer collecting shortly" },
   })
   fireEvent.click(screen.getByRole("button", { name: "Hold" }))
@@ -203,6 +213,10 @@ it("holds a basket on the server and resumes it for a fresh quote", async () => 
     "Customer collecting shortly",
     expect.any(String)
   )
+  mocks.getRegisterBasket.mockResolvedValue({
+    revision: 3,
+    lines: heldOrder.lines,
+  })
   fireEvent.click(screen.getByRole("button", { name: "Resume" }))
 
   expect(
@@ -218,7 +232,7 @@ it("holds a basket on the server and resumes it for a fresh quote", async () => 
 
 it("cancels a held order through its server transition", async () => {
   mocks.getHeldOrders.mockResolvedValue([heldOrder])
-  render(<SalesScreen />)
+  render(<SalesScreen staffRole="supervisor" />)
 
   fireEvent.click(
     await screen.findByRole("button", { name: "Cancel held order 77777777" })
@@ -228,7 +242,8 @@ it("cancels a held order through its server transition", async () => {
     expect(mocks.cancelHeldOrder).toHaveBeenCalledWith(
       heldOrder.id,
       heldOrder.revision,
-      expect.any(String)
+      expect.any(String),
+      undefined
     )
   )
   expect(
@@ -451,4 +466,180 @@ it("requires an open shift before allowing a product into the basket", async () 
     "disabled",
     true
   )
+})
+
+it("asks for supervisor approval before a cashier removes an item", async () => {
+  render(<SalesScreen staffRole="cashier" />)
+  const productButton = await screen.findByRole("button", { name: /Rice 10kg/ })
+  await waitFor(() =>
+    expect(productButton.hasAttribute("disabled")).toBe(false)
+  )
+  fireEvent.click(productButton)
+  const remove = await screen.findByRole("button", { name: /Remove Rice 10kg/ })
+  await waitFor(() => expect(remove.hasAttribute("disabled")).toBe(false))
+  fireEvent.click(remove)
+  expect(await screen.findByRole("dialog")).toBeTruthy()
+  expect(mocks.saveRegisterBasket).toHaveBeenCalledTimes(1)
+  fireEvent.change(screen.getByLabelText("Supervisor email"), {
+    target: { value: "supervisor@example.test" },
+  })
+  fireEvent.change(screen.getByLabelText("Supervisor password"), {
+    target: { value: "Disposable-approval!" },
+  })
+  fireEvent.change(screen.getByLabelText("Reason for change"), {
+    target: { value: "Customer changed their mind" },
+  })
+  fireEvent.click(screen.getByRole("button", { name: "Approve this change" }))
+  await waitFor(() =>
+    expect(mocks.saveRegisterBasket).toHaveBeenLastCalledWith([], 1, {
+      email: "supervisor@example.test",
+      password: "Disposable-approval!",
+      reason: "Customer changed their mind",
+    })
+  )
+})
+
+it("keeps an archived saved item removable through supervisor approval", async () => {
+  mocks.getRegisterBasket.mockResolvedValue({
+    revision: 2,
+    lines: [{ product: { ...product, active: false }, quantity: 1 }],
+  })
+  mocks.quoteBasket.mockRejectedValue(
+    new Error("Only active products can be sold")
+  )
+  render(<SalesScreen staffRole="cashier" />)
+  const remove = await screen.findByRole("button", { name: /Remove Rice 10kg/ })
+  await waitFor(() => expect(remove.hasAttribute("disabled")).toBe(false))
+  expect(
+    await screen.findByText("Only active products can be sold")
+  ).toBeTruthy()
+  fireEvent.click(remove)
+  expect(await screen.findByRole("dialog")).toBeTruthy()
+  fireEvent.change(screen.getByLabelText("Supervisor email"), {
+    target: { value: "supervisor@example.test" },
+  })
+  fireEvent.change(screen.getByLabelText("Supervisor password"), {
+    target: { value: "Disposable-approval!" },
+  })
+  fireEvent.change(screen.getByLabelText("Reason for change"), {
+    target: { value: "Product archived while basket held" },
+  })
+  fireEvent.click(screen.getByRole("button", { name: "Approve this change" }))
+  await waitFor(() =>
+    expect(mocks.saveRegisterBasket).toHaveBeenLastCalledWith([], 2, {
+      email: "supervisor@example.test",
+      password: "Disposable-approval!",
+      reason: "Product archived while basket held",
+    })
+  )
+  expect(await screen.findByText("Basket is empty")).toBeTruthy()
+})
+
+it("disables sold-out products and stops adding at the available stock", async () => {
+  mocks.getProducts.mockResolvedValue({
+    products: [{ ...product, availableQuantityMinor: "0" }],
+    hasMore: false,
+  })
+  const view = render(<SalesScreen />)
+  const unavailable = await screen.findByRole("button", { name: /Rice 10kg/ })
+  await waitFor(() => expect(unavailable).toHaveProperty("disabled", true))
+  expect(screen.getByText("Out of stock")).toBeTruthy()
+  fireEvent.click(unavailable)
+  expect(mocks.saveRegisterBasket).not.toHaveBeenCalled()
+  view.unmount()
+  mocks.getProducts.mockResolvedValue({
+    products: [{ ...product, availableQuantityMinor: "1" }],
+    hasMore: false,
+  })
+  render(<SalesScreen />)
+  const lastItem = await screen.findByRole("button", { name: /Rice 10kg/ })
+  await waitFor(() => expect(lastItem).toHaveProperty("disabled", false))
+  fireEvent.click(lastItem)
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Increase Rice 10kg" })
+    ).toHaveProperty("disabled", true)
+  )
+  expect(lastItem).toHaveProperty("disabled", true)
+  expect(screen.getByText("All available stock in basket")).toBeTruthy()
+})
+
+it("caps fractional stock in exact minor units and blocks unknown availability", async () => {
+  mocks.getProducts.mockResolvedValue({
+    products: [{ ...product, unit: "kg", availableQuantityMinor: "1" }],
+    hasMore: false,
+  })
+  const view = render(<SalesScreen />)
+  const item = await screen.findByRole("button", { name: /Rice 10kg/ })
+  await waitFor(() => expect(item).toHaveProperty("disabled", false))
+  fireEvent.click(item)
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Increase Rice 10kg" })
+    ).toHaveProperty("disabled", true)
+  )
+  expect(mocks.saveRegisterBasket).toHaveBeenCalledWith(
+    expect.arrayContaining([expect.objectContaining({ quantity: 0.001 })]),
+    expect.any(Number),
+    undefined
+  )
+  view.unmount()
+  mocks.getProducts.mockResolvedValue({
+    products: [{ ...product, availableQuantityMinor: undefined }],
+    hasMore: false,
+  })
+  render(<SalesScreen />)
+  expect(
+    await screen.findByRole("button", { name: /Rice 10kg/ })
+  ).toHaveProperty("disabled", true)
+  expect(
+    await screen.findByText("Stock unavailable; refresh products")
+  ).toBeTruthy()
+})
+
+it("blocks checkout for a restored basket that exceeds refreshed stock", async () => {
+  mocks.getProducts.mockResolvedValue({
+    products: [{ ...product, availableQuantityMinor: "1" }],
+    hasMore: false,
+  })
+  mocks.getRegisterBasket.mockResolvedValue({
+    revision: 1,
+    lines: [{ product, quantity: 2 }],
+  })
+  render(<SalesScreen />)
+  expect(await screen.findByText(/Check stock for Rice 10kg/)).toBeTruthy()
+  expect(screen.getByRole("button", { name: "Complete sale" })).toHaveProperty(
+    "disabled",
+    true
+  )
+  expect(
+    screen.getByRole("button", { name: "Increase Rice 10kg" })
+  ).toHaveProperty("disabled", true)
+  expect(mocks.checkoutCashSale).not.toHaveBeenCalled()
+})
+
+it("explains when stocked products are disabled by workspace setup and enables them after basket recovery", async () => {
+  mocks.getProducts.mockResolvedValue({
+    products: [{ ...product, availableQuantityMinor: "5" }],
+    hasMore: false,
+  })
+  mocks.getRegisterBasket.mockRejectedValueOnce(
+    new Error("Select a department and till before starting this operation.")
+  )
+  const chooseWorkspace = vi.fn()
+  render(<SalesScreen onSelectWorkspace={chooseWorkspace} />)
+  expect(await screen.findByText("Register unavailable")).toBeTruthy()
+  const tile = screen.getByRole("button", { name: /Rice 10kg/ })
+  expect(tile).toHaveProperty("disabled", true)
+  expect(screen.getByText("5 each in stock")).toBeTruthy()
+  expect(screen.queryByText("Out of stock")).toBeNull()
+  fireEvent.click(
+    screen.getByRole("button", { name: "Choose department & till" })
+  )
+  expect(chooseWorkspace).toHaveBeenCalledOnce()
+  fireEvent.click(screen.getByRole("button", { name: "Reload saved basket" }))
+  await waitFor(() => expect(tile).toHaveProperty("disabled", false))
+  expect(screen.queryByText("Register unavailable")).toBeNull()
+  fireEvent.click(tile)
+  await waitFor(() => expect(mocks.saveRegisterBasket).toHaveBeenCalledOnce())
 })

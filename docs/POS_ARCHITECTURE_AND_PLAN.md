@@ -2,13 +2,13 @@
 
 **Status:** Local development active; isolated HostPinnacle/Aiven deployment proof pending
 
-**Version:** 0.11
+**Version:** 0.16
 
-**Last updated:** 13 October 2026
+**Last updated:** 17 October 2026
 
 **Budget objective:** Zero application licence fees and no additional hosting subscription for the first test shop, within the existing HostPinnacle package. Existing hosting/domain renewals still apply.
 
-**Working assumptions:** One shop in Kenya, one cashier computer initially, one manager using a phone. Confirm these during discovery.
+**Current operating model:** One Kenyan business with user-configured branches, each with POP N GO Minimart and POP N GO Liquor departments. Two separate physical tills are user-confirmed. Hosted branch/department/till identities, scoped stock and staff access, supervisor approvals and daily department summaries are implemented locally; moving-average valuation/profit are implemented; physical two-till rehearsal and scoped offline transport remain pending. Earlier one-till references describe the legacy pilot. See [departmental setup and limits](DEPARTMENT_REQUIREMENTS.md).
 
 **Current machine (16 September 2026):** PostgreSQL 18 is installed and running. Development migrations, isolated integration tests and local manager/cashier password login pass. SMTP, full interactive browser verification and HostPinnacle deployment remain separate gates.
 
@@ -37,6 +37,10 @@ Build a modular monolith: one backend with clearly separated business modules an
 - Integrations: simulation first; actual payment and fiscal workflows before live use as applicable.
 
 Quality is measured by correct transactions, quick checkout, clear screens, successful recovery, and understandable reports. More infrastructure is not itself a quality target.
+
+### 2.1 Client departmental scope received 16 October 2026
+
+Target one business with **POP N GO Minimart** and **POP N GO Liquor**, separated inventory, two cashier logins and two physical tills (user-confirmed). Management needs combined and departmental sales, stock valuation, COGS and gross profit. Cashiers normally stay in their home department, with explicit additional access for rare cover; hosted department/till grants are now implemented; see the 16 October operating model update below. Cashiers may create new products but cannot edit/archive/delete existing ones; category maintenance, CSV import and product-photo changes remain manager-only. Product creation retains server-side role/session/MFA checks, audit and idempotency. Peripheral/payment settlement separation and costing policy remain open. This expands the historical one-till pilot; it does not establish implemented multi-till or offline support. Supplier receipts now feed the moving-average cost ledger; legacy opening values and historical sale costs remain explicitly unknown until reviewed, without backfilling historical profit. See [requirements, inspected gaps and proposed sequence](DEPARTMENT_REQUIREMENTS.md) before implementation. The existing stack is retained; no Dukan/iPOS subscription or provider migration was requested.
 
 ## 3. Architecture for the test shop
 
@@ -166,7 +170,7 @@ The following is the product roadmap. Section 12 identifies the first test relea
 | Audit        | User, time, action, reason and relevant before/after values             | Separate tamper-resistant storage and alerting               |
 | Integrations | Test adapters and clear simulated status                                | M-Pesa, eTIMS, accounting and messaging                      |
 
-The user confirmed weight and volume sales on 15 September 2026. The implemented catalogue uses `each`, `pack`, `kg` and `l`; quantity steps are 1 for `each`/`pack` and 0.001 for `kg`/`l`. Checkout and customer-return rounding now follow the explicit worked examples below. Expiry tracking and split-payment requirements remain open.
+The user confirmed weight and volume sales on 15 September 2026. The implemented catalogue uses `each`, `pack`, `kg` and `l`; quantity steps are 1 for `each`/`pack` and 0.001 for `kg`/`l`. Checkout and customer-return rounding now follow the explicit worked examples below. Next-expiry reminders are implemented; batch expiry allocation and split-payment requirements remain open.
 
 ## 7. Data and transaction rules
 
@@ -192,7 +196,7 @@ Include branch and till identifiers in transactions from the start, using one br
 - Assign each confirmed payment to the active cashier shift. Cash payments append a linked `cash_in` movement; card and M-Pesa payments remain shift-associated but do not increase drawer cash. Closing expected cash is opening float plus cash-in movements minus cash-out movements, and variance is counted cash minus expected cash.
 - For asynchronous external payments, use explicit payment attempts and reconciliation; an external provider cannot participate in the application's database transaction.
 - Use unique request IDs and constraints so retries cannot create duplicate sales/payments.
-- Protect stock and returns against concurrent updates. Define whether insufficient stock blocks checkout or allows a recorded supervisor override.
+- Protect stock and returns against concurrent updates. Insufficient stock blocks checkout; there is no stock override. The register uses the scoped lookup balance to disable sold-out products and additions beyond available stock, including restored baskets. These browser checks are advisory; the transaction rechecks stock for concurrent tills.
 - A paid sale cannot be edited or deleted. Corrections create linked returns, refunds, or other approved documents.
 - Print after the database commits. A print failure must not create another sale.
 - Treat product price edits as versioned changes; changing a product must not alter a historical receipt.
@@ -400,7 +404,7 @@ Use persistent PostgreSQL job records and a bounded, locking cron runner if avai
 
 ### 11.1 Essential controls
 
-Better Auth is the selected authentication library. Use the relevant installed Better Auth skills, documentation matching the resolved version, and tests of actual behavior. The official [NestJS integration guide](https://better-auth.com/docs/integrations/nestjs) identifies the NestJS wrapper as community-maintained. Local email/password authentication is implemented with Better Auth 1.7.4 and wrapper 2.8.0: database sessions, explicit SQL migrations, exact-origin checks, database rate limits, server-side manager/cashier roles, controlled local staff provisioning and shadcn login UI. A custom global guard keeps health probes independent of authentication/database availability. See [local auth setup](LOCAL_AUTH_SETUP.md). The login/security follow-up is implemented in source: required email verification, password recovery/change, authenticator MFA with per-session proof, controlled staff administration/suspension, session revocation, sanitized append-only security history and a 15-minute server/browser inactivity policy. Managers must complete MFA before business access. Branch/till permissions remain future business-module work. PostgreSQL, SMTP and connected-browser verification remain pending; this is not live readiness.
+Better Auth is the selected authentication library. Use the relevant installed Better Auth skills, documentation matching the resolved version, and tests of actual behavior. The official [NestJS integration guide](https://better-auth.com/docs/integrations/nestjs) identifies the NestJS wrapper as community-maintained. Local email/password authentication is implemented with Better Auth 1.7.4 and wrapper 2.8.0: database sessions, explicit SQL migrations, exact-origin checks, database rate limits, server-side manager/cashier roles, controlled local staff provisioning and shadcn login UI. A custom global guard keeps health probes independent of authentication/database availability. See [local auth setup](LOCAL_AUTH_SETUP.md). The login/security follow-up is implemented in source: required email verification, password recovery/change, authenticator MFA with per-session proof, controlled staff administration/suspension, session revocation, sanitized append-only security history and a 15-minute server/browser inactivity policy. Managers must complete MFA before business access. Hosted branch/till permissions are implemented in the business module; legacy offline transport remains unscoped. PostgreSQL, SMTP and connected-browser verification remain pending; this is not live readiness.
 
 Staff removal is an audited, reversible archive of the account identity. It disables sign-in, revokes sessions and recovery tokens, clears pending auth mail and hides the account from normal staff lists. Sales/audit references and the email identity remain reserved. Restoration leaves the account suspended until a manager explicitly activates it. Removed-account metadata is central-only. Removal reaches edge authentication when its disabled roster change is applied through the existing configuration transport; this does not provide instant revocation on a disconnected PC.
 
@@ -574,3 +578,22 @@ These questions refine the pilot. Local PostgreSQL authentication, catalogue, in
 | ADR-028 | Optional bounded product photos in PostgreSQL; existing catalogue authorization/replay/revision rules; no-photo fallback | Implemented locally; photo bytes excluded from current manual edge transport | 2026-10-13 |
 
 Provider claims cited above were reviewed on 2 October 2026. Recheck plan terms when creating accounts or enabling live integrations.
+
+
+## 16 October 2026 operating model update
+
+The user approved POP N GO branding (supplied logo; white, black and orange), manager daily summary, supervisor approval of cashier cart reductions/removals, supervisor product creation without general maintenance, configurable branches and expiry warnings. Branch names and alert days are entered in Settings; no defaults are invented. The hosted implementation uses explicit branch → department → till identities, immutable sale attribution, department-owned product/stock identities, home access plus expiring cover, and a versioned server basket consumed by checkout/hold transactions. An authenticated interceptor scopes reads; transaction helpers recheck grants/resources and bind replay fingerprints to department/till. Supervisor passwords approve one requested change without granting a manager session. Supervisor operational access requires MFA; attempts and basket changes are audited/rate limited. See [setup and limitations](DEPARTMENT_REQUIREMENTS.md).
+
+The three additive migrations leave historical data unassigned. Managers explicitly allocate existing product balances; historical sales remain unassigned. SKU/barcode uniqueness is now per department; unassigned legacy codes remain unique. Next-expiry dates are reminders, not lot allocation or expiry-sale enforcement. Moving-average valuation/COGS/profit were added on 17 October; stock transfers remain outstanding. Existing offline signed transport/projections lack these fields/role; bootstrap writes are blocked for branch/supervisor configurations and departmental edge reporting is unavailable. Do not activate offline cutover for this model before transport/authority extensions and verification. No real branch/staff assignment or hosted change has been performed by development.
+
+### 17 October: cash-refund drawer reconciliation
+
+The cash-return operation requires a fully cash-paid sale and the operator's open shift on the selected department/till. Stock restoration, refund and unique linked cash-out movement commit in one transaction. Shift row locking serializes payouts against drawer closure; idempotent retries replay the original payout even after closure. Unpaid/external-payment sales are refused until a provider refund flow is verified. The additive refund-link migration does not invent historical drawer assignments and refuses rollback once links exist. Physical till rehearsal and earlier historical payout reconciliation remain separate checks.
+
+### 17 October: user-selected moving weighted average
+
+An explicit SQL migration adds a per-product quantity/book-value pool and append-only cost entries, updated transactionally by inventory movement triggers under product locks. Receipt totals are explicit cost inputs; each sale movement links its immutable sale line and allocates rounded average cost. Customer-return movements link return lines and restore cumulative original sale cost. Unknown incoming stock keeps costs unknown; manager-only idempotent opening valuation records current total value against an expected quantity. Existing sales and costs are not backfilled. Scoped manager reports withhold incomplete profit, separate known stock value from missing valuations and expose combined/departmental totals. Cost deltas use integer minor units with proportional exact-half-up allocation and full-depletion residual capture. Supplier fractional-cost input policy is unchanged; adjustment and supplier-credit differences are excluded from sales gross profit. Legacy offline cost transport remains unsupported. See the operating setup guide for the workflow.
+
+### 17 October: M-Pesa setup aligned with Sahibu
+
+Read-only inspection of the user's Sahibu Laravel sales integration confirmed the same OAuth/STK/pending/callback flow. The POS now supports separate business-shortcode and receiving-Till fields, defaults callback URL from the HTTPS application URL, and derives a stable domain-separated callback HMAC unless an explicit independent token is supplied. No payment-attempt/schema semantics changed. The user confirmed Buy Goods and will privately enter DARAJA_TILL_NUMBER; that explicit field is required for Buy Goods so the receiving account is not guessed. The user-requested public callback was saved locally for pos.sifulabs.co.ke without changing credentials or enabling payments. The configuration-only mpesa:check command never contacts the provider. Callback reachability, matching deployed configuration and actual STK confirmation remain separate from code/configuration validation.

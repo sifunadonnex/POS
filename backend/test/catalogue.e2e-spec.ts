@@ -129,9 +129,16 @@ describe('catalogue HTTP contracts without PostgreSQL', () => {
       .get(`/api/catalogue/products/${productId}/history`)
       .expect(403);
   });
-  it('denies every cashier write, including CSV preview/import', async () => {
+  it('allows cashier product creation while denying edits, archive, categories and CSV import', async () => {
     getSession.mockResolvedValue(session('cashier'));
-    for (const path of ['products', 'categories', 'imports/preview', 'imports'])
+    await request(app.getHttpServer())
+      .post('/api/catalogue/products')
+      .set('Origin', origin)
+      .send(body)
+      .expect(201);
+    expect(execute).toHaveBeenCalledOnce();
+    execute.mockClear();
+    for (const path of ['categories', 'imports/preview', 'imports'])
       await request(app.getHttpServer())
         .post(`/api/catalogue/${path}`)
         .set('Origin', origin)
@@ -142,6 +149,20 @@ describe('catalogue HTTP contracts without PostgreSQL', () => {
       .set('Origin', origin)
       .send(body)
       .expect(403);
+    await request(app.getHttpServer())
+      .patch(`/api/catalogue/products/${productId}`)
+      .set('Origin', origin)
+      .send({ ...body, active: false, revision: 1 })
+      .expect(403);
+    await request(app.getHttpServer())
+      .patch(`/api/catalogue/categories/${productId}`)
+      .set('Origin', origin)
+      .send({ name: 'Changed', revision: 1 })
+      .expect(403);
+    await request(app.getHttpServer())
+      .delete(`/api/catalogue/products/${productId}`)
+      .set('Origin', origin)
+      .expect(404);
     expect(execute).not.toHaveBeenCalled();
     expect(query).not.toHaveBeenCalled();
   });
@@ -150,6 +171,29 @@ describe('catalogue HTTP contracts without PostgreSQL', () => {
       .post('/api/catalogue/products')
       .send(body)
       .expect(403);
+    await request(app.getHttpServer())
+      .post('/api/catalogue/products')
+      .set('Origin', 'https://untrusted.example')
+      .send(body)
+      .expect(403);
+    expect(execute).not.toHaveBeenCalled();
+  });
+  it('requires a current authenticated session and any configured MFA for cashier creation', async () => {
+    getSession.mockResolvedValueOnce(null);
+    await request(app.getHttpServer())
+      .post('/api/catalogue/products')
+      .set('Origin', origin)
+      .send(body)
+      .expect(401);
+    const challenged = session('cashier', false);
+    challenged.user.twoFactorEnabled = true;
+    getSession.mockResolvedValueOnce(challenged);
+    await request(app.getHttpServer())
+      .post('/api/catalogue/products')
+      .set('Origin', origin)
+      .send(body)
+      .expect(403);
+    getSession.mockResolvedValueOnce(session('cashier'));
     await request(app.getHttpServer())
       .post('/api/catalogue/products')
       .set('Origin', 'https://untrusted.example')
@@ -186,6 +230,7 @@ describe('catalogue HTTP contracts without PostgreSQL', () => {
         input: expect.objectContaining({ sku: 'RICE', priceMinor: '18005' }),
       }),
       expect.any(Function),
+      'product-create',
     );
   });
   it('reports invalid CSV before any catalogue write', async () => {

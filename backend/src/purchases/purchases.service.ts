@@ -1,3 +1,7 @@
+import {
+  departmentPredicate,
+  departmentValue,
+} from '../business/business-scope.js';
 import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
@@ -153,7 +157,7 @@ export class PurchasesService {
             `SELECT p.id, p.unit, p.active, COALESCE(s.quantity_minor, 0) AS quantity_minor
             FROM catalogue_product p
             LEFT JOIN inventory_stock s ON s.product_id = p.id
-            WHERE p.id = $1 FOR UPDATE OF p`,
+            WHERE ${departmentPredicate('p')} AND p.id = $1 FOR UPDATE OF p`,
             [productId],
           );
           const row = product.rows[0];
@@ -185,8 +189,8 @@ export class PurchasesService {
             'Receipt total exceeds the supported amount',
           );
         const receipt = await client.query<{ id: string }>(
-          `INSERT INTO purchase_receipt (id, supplier_id, actor_id, reason, total_minor, status, created_at)
-          VALUES ($1, $2, $3, $4, $5, 'received', now()) RETURNING id`,
+          `INSERT INTO purchase_receipt (id, supplier_id, actor_id, reason, total_minor, status, created_at, department_id)
+          VALUES ($1, $2, $3, $4, $5, 'received', now(), ${departmentValue()}) RETURNING id`,
           [receiptId, supplierId, actor.userId, reason, Number(totalMinor)],
         );
 
@@ -213,8 +217,8 @@ export class PurchasesService {
             [line.productId, line.unit, line.quantityMinor],
           );
           await client.query(
-            `INSERT INTO inventory_movement (id, product_id, kind, delta_minor, quantity_after_minor, actor_id, reason)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            `INSERT INTO inventory_movement (id, product_id, kind, delta_minor, quantity_after_minor, actor_id, reason, cost_input_minor)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
             [
               randomUUID(),
               line.productId,
@@ -223,6 +227,7 @@ export class PurchasesService {
               line.after,
               actor.userId,
               reason,
+              line.lineTotalMinor,
             ],
           );
         }
@@ -389,7 +394,7 @@ export class PurchasesService {
             `SELECT p.id, p.unit, p.active, COALESCE(s.quantity_minor, 0) AS quantity_minor
             FROM catalogue_product p
             LEFT JOIN inventory_stock s ON s.product_id = p.id
-            WHERE p.id = $1 FOR UPDATE OF p`,
+            WHERE ${departmentPredicate('p')} AND p.id = $1 FOR UPDATE OF p`,
             [productId],
           );
           const row = product.rows[0];

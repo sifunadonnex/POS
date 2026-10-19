@@ -1,3 +1,4 @@
+import { RegisterBasketService } from '../src/sales/register-basket.service.js';
 import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -45,6 +46,10 @@ async function application(mode: 'edge' | 'hosted', localAuthority: boolean) {
       InventoryController,
     ],
     providers: [
+      {
+        provide: RegisterBasketService,
+        useValue: { read: vi.fn(), save: vi.fn() },
+      },
       { provide: APP_CONFIG, useValue: config },
       { provide: DatabaseService, useValue: { connectionPool: { query } } },
       StoreAuthorityService,

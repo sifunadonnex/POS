@@ -3,7 +3,6 @@ import {
   Boxes,
   LoaderCircle,
   LockKeyhole,
-  ReceiptText,
   ShieldCheck,
   ShoppingCart,
   WifiOff,
@@ -56,7 +55,7 @@ export function IdentityScreen() {
   if (ready && !access.staff.mfaRequired) {
     return (
       <main
-        className="fixed inset-0 overflow-hidden bg-background"
+        className="fixed inset-0 overflow-clip bg-background"
         aria-label="Staff access"
       >
         <StaffWorkspace
@@ -177,10 +176,14 @@ export function IdentityScreen() {
         <div className="hidden max-w-2xl lg:block">
           <div className="flex items-center gap-3">
             <div className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <ReceiptText className="size-6" aria-hidden="true" />
+              <img
+                src="/pop-n-go-logo.png"
+                alt="POP N GO Mini Mart"
+                className="size-full rounded-lg bg-white object-contain"
+              />
             </div>
             <div>
-              <p className="text-lg font-semibold">Pay &amp; Go</p>
+              <p className="text-lg font-semibold">POP N’ GO</p>
               <p className="text-sm text-muted-foreground">
                 Commerce workspace
               </p>
@@ -207,10 +210,14 @@ export function IdentityScreen() {
         <div className="mx-auto w-full max-w-lg lg:mx-0">
           <div className="mb-5 flex items-center gap-3 lg:hidden">
             <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <ReceiptText className="size-5" aria-hidden="true" />
+              <img
+                src="/pop-n-go-logo.png"
+                alt="POP N GO Mini Mart"
+                className="size-full rounded-lg bg-white object-contain"
+              />
             </div>
             <div>
-              <p className="font-semibold">Pay &amp; Go</p>
+              <p className="font-semibold">POP N’ GO</p>
               <p className="text-xs text-muted-foreground">
                 Your connected workspace
               </p>
@@ -227,7 +234,7 @@ export function IdentityScreen() {
                   <div>
                     <p className="text-sm font-medium">Secure staff access</p>
                     <p className="text-xs text-muted-foreground">
-                      Main shop workspace
+                      Staff workspace
                     </p>
                   </div>
                 </div>

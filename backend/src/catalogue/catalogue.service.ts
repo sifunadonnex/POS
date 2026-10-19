@@ -1,3 +1,7 @@
+import {
+  departmentPredicate,
+  requireDepartment,
+} from '../business/business-scope.js';
 import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
@@ -74,7 +78,7 @@ export class CatalogueService {
     try {
       const result = await this.database.connectionPool.query<Product>(
         `SELECT ${productColumns} FROM ${productFrom}
-        WHERE ($1 = 'all' OR p.active = ($1 = 'active')) AND ($2::uuid IS NULL OR p.category_id = $2)
+        WHERE ${departmentPredicate('p')} AND ($1 = 'all' OR p.active = ($1 = 'active')) AND ($2::uuid IS NULL OR p.category_id = $2)
         AND ($3 = '' OR strpos(lower(p.name || ' ' || p.sku), lower($3)) > 0
           OR EXISTS(SELECT 1 FROM catalogue_barcode b WHERE b.product_id = p.id AND b.code = $3))
         ORDER BY lower(p.name), p.id LIMIT 51 OFFSET $4`,
@@ -92,12 +96,13 @@ export class CatalogueService {
   }
 
   async barcode(value: unknown) {
+    requireDepartment();
     const code = textInput(value, 'barcode', 64);
     let product: Product | undefined;
     try {
       const result = await this.database.connectionPool.query<Product>(
         `SELECT ${productColumns} FROM ${productFrom}
-        WHERE p.active AND EXISTS(SELECT 1 FROM catalogue_barcode b WHERE b.product_id = p.id AND b.code = $1)`,
+        WHERE ${departmentPredicate('p')} AND p.active AND EXISTS(SELECT 1 FROM catalogue_barcode b WHERE b.product_id = p.id AND b.code = $1)`,
         [code],
       );
       product = result.rows[0];
@@ -112,6 +117,7 @@ export class CatalogueService {
   }
 
   createProduct(actor: CatalogueActor, value: unknown) {
+    requireDepartment();
     const input = productInput(value),
       command = commandInput(value);
     return this.writes.execute(
@@ -121,6 +127,7 @@ export class CatalogueService {
       async (client) => ({
         product: await insertProduct(client, actor, command.reason, input),
       }),
+      'product-create',
     );
   }
 
@@ -135,7 +142,7 @@ export class CatalogueService {
       { action: 'product.update', id, revision, input, reason: command.reason },
       async (client) => {
         const existing = await client.query<{ unit: string; revision: number }>(
-          'SELECT unit, revision FROM catalogue_product WHERE id = $1 FOR UPDATE',
+          `SELECT unit, revision FROM catalogue_product WHERE ${departmentPredicate('catalogue_product')} AND id = $1 FOR UPDATE`,
           [id],
         );
         const previous = existing.rows[0];
@@ -150,7 +157,7 @@ export class CatalogueService {
           );
         await client.query(
           `UPDATE catalogue_product SET sku = $1, name = $2, category_id = $3, price_minor = $4,
-        low_stock_threshold_minor = $5, tax_code = $6, active = $7,
+        low_stock_threshold_minor = $5, tax_code = $6, active = $7, expiry_date = $9,
         revision = revision + 1, updated_at = now() WHERE id = $8`,
           [
             input.sku,
@@ -161,6 +168,7 @@ export class CatalogueService {
             input.taxCode,
             input.active,
             id,
+            input.expiryDate ?? null,
           ],
         );
         await replaceBarcodes(client, id, input.barcodes);
@@ -229,7 +237,7 @@ export class CatalogueService {
       const result = await this.database.connectionPool.query(
         `SELECT h.id::text, h.revision, h.reason, h.snapshot,
         h.created_at AS "createdAt", u.name AS "actorName" FROM catalogue_history h JOIN "user" u ON u.id = h.actor_id
-        WHERE h.entity_type = 'product' AND h.entity_id = $1 ORDER BY h.revision DESC LIMIT 51 OFFSET $2`,
+        WHERE EXISTS (SELECT 1 FROM catalogue_product p WHERE p.id = h.entity_id AND ${departmentPredicate('p')}) AND h.entity_type = 'product' AND h.entity_id = $1 ORDER BY h.revision DESC LIMIT 51 OFFSET $2`,
         [id, page * 50],
       );
       return {

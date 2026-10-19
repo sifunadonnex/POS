@@ -1,3 +1,4 @@
+import { departmentPredicate } from '../business/business-scope.js';
 import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
@@ -94,7 +95,7 @@ export class StocktakeService {
           `SELECT p.id, p.unit, p.active, COALESCE(s.quantity_minor, 0) AS quantity_minor
           FROM catalogue_product p
           LEFT JOIN inventory_stock s ON s.product_id = p.id
-          WHERE p.id = $1 FOR UPDATE OF p`,
+          WHERE ${departmentPredicate('p')} AND p.id = $1 FOR UPDATE OF p`,
           [productId],
         );
         const row = product.rows[0];

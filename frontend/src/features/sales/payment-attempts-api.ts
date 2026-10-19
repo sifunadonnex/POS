@@ -1,3 +1,4 @@
+import { businessHeaders } from "../business/business-api"
 export type ExternalPaymentKind = "card" | "mpesa"
 export type PaymentAttemptStatus =
   "pending" | "confirmed" | "failed" | "unknown"
@@ -46,12 +47,16 @@ async function paymentRequest(
     const response = await fetch(`/api/payment-attempts${path}`, {
       method,
       credentials: "same-origin",
+      headers: businessHeaders(),
       cache: "no-store",
       signal: controller.signal,
       ...(body === undefined
         ? {}
         : {
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              ...businessHeaders(),
+              "Content-Type": "application/json",
+            },
             body: JSON.stringify(body),
           }),
     })

@@ -37,6 +37,15 @@ describe('server security policy', () => {
     value.user.twoFactorEnabled = true;
     expect(needsMfa(value)).toBe(true);
   });
+  it('requires supervisor MFA without granting manager permissions', () => {
+    const value = session();
+    value.user.role = 'supervisor';
+    expect(needsMfa(value)).toBe(false);
+    value.session.mfaVerified = false;
+    expect(needsMfa(value)).toBe(true);
+    value.user.twoFactorEnabled = false;
+    expect(needsMfa(value)).toBe(true);
+  });
   it('expires at the idle boundary and rejects missing or invalid activity timestamps', () => {
     const value = session();
     value.session.lastActivityAt = new Date(now - 899_999);

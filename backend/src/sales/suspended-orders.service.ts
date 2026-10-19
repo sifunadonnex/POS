@@ -1,3 +1,11 @@
+import { lockBasket, consumeBasket, setBasket } from './register-basket.js';
+import { CartApprovalService } from './cart-approval.service.js';
+import {
+  departmentPredicate,
+  departmentValue,
+  requireDepartment,
+  businessScope,
+} from '../business/business-scope.js';
 import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
@@ -5,6 +13,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import type { Pool, PoolClient } from 'pg';
@@ -13,7 +22,9 @@ import { DatabaseService } from '../database/database.service.js';
 import { type SaleActor, SalesWrites } from './sales-writes.js';
 
 type SaleUnit = 'each' | 'pack' | 'kg' | 'l';
-type SuspendedOrderActor = SaleActor & { role: 'manager' | 'cashier' };
+type SuspendedOrderActor = SaleActor & {
+  role: 'manager' | 'supervisor' | 'cashier';
+};
 type Queryable = Pool | PoolClient;
 
 type RequestedLine = {
@@ -139,6 +150,9 @@ export class SuspendedOrdersService {
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(SalesWrites) private readonly writes: SalesWrites,
+    @Optional()
+    @Inject(CartApprovalService)
+    private readonly cartApproval?: CartApprovalService,
   ) {}
 
   async list(actor: SuspendedOrderActor) {
@@ -173,11 +187,22 @@ export class SuspendedOrdersService {
       requestId,
       { action: 'create', note, lines },
       async (client) => {
+        requireDepartment();
+        await consumeBasket(
+          client,
+          actor.userId,
+          lines.map((l) => ({
+            productId: l.productId,
+            unit: l.unit,
+            quantity:
+              l.quantityMinor / (l.unit === 'kg' || l.unit === 'l' ? 1000 : 1),
+          })),
+        );
         await this.assertCurrentProducts(client, lines);
         const id = randomUUID();
         await client.query(
-          `INSERT INTO suspended_order (id, owner_id, note)
-          VALUES ($1, $2, $3)`,
+          `INSERT INTO suspended_order (id, owner_id, note, department_id)
+          VALUES ($1, $2, $3, ${departmentValue()})`,
           [id, actor.userId, note],
         );
         for (const line of lines) {
@@ -221,6 +246,10 @@ export class SuspendedOrdersService {
         : {};
     const requestId = uuidInput(body.requestId, 'Request ID');
     const revision = revisionInput(body.revision);
+    const approval =
+      status === 'cancelled' && this.cartApproval
+        ? await this.cartApproval.prepare(actor.userId, body.approval)
+        : null;
     return this.writes.executeSuspendedOrder(
       actor,
       requestId,
@@ -232,7 +261,7 @@ export class SuspendedOrdersService {
           revision: number;
         }>(
           `SELECT owner_id AS "ownerId", status, revision
-          FROM suspended_order WHERE id = $1 FOR UPDATE`,
+          FROM suspended_order WHERE ${departmentPredicate('suspended_order')} AND id = $1 FOR UPDATE`,
           [id],
         );
         const order = current.rows[0];
@@ -248,6 +277,18 @@ export class SuspendedOrdersService {
         if (order.revision !== revision) {
           throw new ConflictException('Held order changed. Reload and retry.');
         }
+        if (
+          status === 'cancelled' &&
+          businessScope.getStore() &&
+          actor.role === 'cashier'
+        ) {
+          if (!this.cartApproval)
+            throw new ConflictException('Approval service unavailable');
+          await this.cartApproval.verify(client, actor.userId, approval, {
+            kind: 'held-order',
+            id,
+          });
+        }
         if (status === 'resumed') {
           const lineRows = await client.query<{
             productId: string;
@@ -260,6 +301,23 @@ export class SuspendedOrdersService {
             ORDER BY position`,
             [id],
           );
+          const basket = await lockBasket(client, actor.userId);
+          if (basket?.lines.length)
+            throw new ConflictException(
+              'Finish or hold the current basket before resuming another',
+            );
+          if (basket)
+            await setBasket(
+              client,
+              actor.userId,
+              lineRows.rows.map((l) => ({
+                productId: l.productId,
+                unit: l.unit,
+                quantity:
+                  Number(l.quantityMinor) /
+                  (l.unit === 'kg' || l.unit === 'l' ? 1000 : 1),
+              })),
+            );
           await this.assertCurrentProducts(
             client,
             lineRows.rows.map((line, position) => ({
@@ -293,7 +351,7 @@ export class SuspendedOrdersService {
       active: boolean;
     }>(
       `SELECT id, unit, active FROM catalogue_product
-      WHERE id = ANY($1::uuid[]) FOR SHARE`,
+      WHERE ${departmentPredicate('catalogue_product')} AND id = ANY($1::uuid[]) FOR SHARE`,
       [lines.map((line) => line.productId)],
     );
     const products = new Map(
@@ -344,7 +402,7 @@ export class SuspendedOrdersService {
         so.note, so.status, so.revision, so.created_at AS "createdAt",
         so.updated_at AS "updatedAt"
       FROM suspended_order so JOIN "user" staff ON staff.id = so.owner_id
-      WHERE ($1::uuid IS NULL OR so.id = $1)
+      WHERE ${departmentPredicate('so')} AND ($1::uuid IS NULL OR so.id = $1)
         AND ($2::boolean = false OR so.status = 'held')
         AND ($3::boolean OR so.owner_id = $4)
       ORDER BY so.created_at DESC LIMIT 20`,

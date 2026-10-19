@@ -1,3 +1,11 @@
+import {
+  departmentPredicate,
+  departmentValue,
+  tillValue,
+  requireDepartment,
+  businessScope,
+} from '../business/business-scope.js';
+import { consumeBasket } from './register-basket.js';
 import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
@@ -205,7 +213,7 @@ export class SalesService {
       price_minor: string;
       active: boolean;
     }>(
-      'SELECT id, unit, price_minor::text, active FROM catalogue_product WHERE id = ANY($1::uuid[])',
+      `SELECT id, unit, price_minor::text, active FROM catalogue_product WHERE ${departmentPredicate('catalogue_product')} AND id = ANY($1::uuid[])`,
       [requested.map((line) => line.productId)],
     );
     const products = new Map(result.rows.map((row) => [row.id, row]));
@@ -237,6 +245,9 @@ export class SalesService {
   }
 
   async finalize(actor: SaleActor, value: unknown) {
+    requireDepartment();
+    if (businessScope.getStore() && !businessScope.getStore()?.tillId)
+      throw new ConflictException('Select a till before completing a sale');
     const body =
       value && typeof value === 'object' ? (value as RequestBody) : {};
     const requestId =
@@ -266,6 +277,16 @@ export class SalesService {
       requestId,
       { reason, lines: body.lines },
       async (client) => {
+        if (businessScope.getStore()) {
+          const shift = await client.query(
+            `SELECT id FROM cash_shift WHERE cashier_id = $1 AND status = 'open' AND ${departmentPredicate('cash_shift')} AND till_id = ${tillValue()} FOR SHARE`,
+            [actor.userId],
+          );
+          if (!shift.rowCount)
+            throw new ConflictException(
+              'Open a shift on the selected till before finalizing a sale',
+            );
+        }
         const {
           occurredAt: _occurredAt,
           syncLines: _syncLines,
@@ -277,6 +298,9 @@ export class SalesService {
   }
 
   async checkout(actor: SaleActor, value: unknown): Promise<CheckoutResult> {
+    requireDepartment();
+    if (businessScope.getStore() && !businessScope.getStore()?.tillId)
+      throw new ConflictException('Select a till before completing a sale');
     const body =
       value && typeof value === 'object' ? (value as CheckoutBody) : {};
     const requestId =
@@ -315,7 +339,7 @@ export class SalesService {
         }>(
           `SELECT s.id, u.name AS cashier_name
           FROM cash_shift s JOIN "user" u ON u.id = s.cashier_id
-          WHERE s.cashier_id = $1 AND s.status = 'open'
+          WHERE ${departmentPredicate('s')} AND (${tillValue()} IS NULL OR s.till_id = ${tillValue()}) AND s.cashier_id = $1 AND s.status = 'open'
           ORDER BY s.opened_at DESC LIMIT 1 FOR UPDATE OF s`,
           [actor.userId],
         );
@@ -444,7 +468,7 @@ export class SalesService {
         `SELECT p.id, p.unit, p.price_minor::text, p.active, p.name, p.sku,
           COALESCE(s.quantity_minor, 0)::text AS quantity_minor
             FROM catalogue_product p LEFT JOIN inventory_stock s ON s.product_id = p.id
-            WHERE p.id = $1 FOR UPDATE OF p`,
+            WHERE ${departmentPredicate('p')} AND p.id = $1 FOR UPDATE OF p`,
         [line.productId],
       );
       const row = product.rows[0];
@@ -504,13 +528,14 @@ export class SalesService {
       );
     }
 
+    await consumeBasket(client, actor.userId, requested);
     const saleId = randomUUID();
     const saleResult = await client.query<{
       id: string;
       created_at: string;
     }>(
-      `INSERT INTO sale (id, actor_id, total_minor, status, reason, created_at)
-          VALUES ($1, $2, $3, 'completed', $4, now())
+      `INSERT INTO sale (id, actor_id, total_minor, status, reason, created_at, department_id, till_id)
+          VALUES ($1, $2, $3, 'completed', $4, now(), ${departmentValue()}, ${tillValue()})
           RETURNING id, created_at::text AS created_at`,
       [saleId, actor.userId, totalMinor, reason],
     );
@@ -521,11 +546,12 @@ export class SalesService {
       const after =
         Number(product.quantity_minor) -
         this.toMinor(line.quantity, product.unit);
+      const saleLineId = randomUUID();
       await client.query(
         `INSERT INTO sale_line (id, sale_id, product_id, quantity_minor, unit_price_minor, line_total_minor)
             VALUES ($1, $2, $3, $4, $5, $6)`,
         [
-          randomUUID(),
+          saleLineId,
           saleResult.rows[0].id,
           line.productId,
           this.toMinor(line.quantity, product.unit),
@@ -535,8 +561,8 @@ export class SalesService {
       );
 
       await client.query(
-        `INSERT INTO inventory_movement (id, product_id, kind, delta_minor, quantity_after_minor, actor_id, reason)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        `INSERT INTO inventory_movement (id, product_id, kind, delta_minor, quantity_after_minor, actor_id, reason, sale_line_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           randomUUID(),
           line.productId,
@@ -545,6 +571,7 @@ export class SalesService {
           after,
           actor.userId,
           reason,
+          saleLineId,
         ],
       );
     }
@@ -632,7 +659,7 @@ export class SalesService {
 
         const shift = await client.query<{ id: string }>(
           `SELECT id FROM cash_shift
-          WHERE cashier_id = $1 AND status = 'open'
+          WHERE ${departmentPredicate('cash_shift')} AND (${tillValue()} IS NULL OR till_id = ${tillValue()}) AND cashier_id = $1 AND status = 'open'
           ORDER BY opened_at DESC LIMIT 1 FOR UPDATE`,
           [actor.userId],
         );

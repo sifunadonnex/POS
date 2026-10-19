@@ -1,3 +1,4 @@
+import { businessHeaders } from "../business/business-api"
 export type CurrentShift = {
   shiftId: string
   openingCashMinor: number
@@ -33,12 +34,16 @@ async function shiftRequest(
     const response = await fetch(`/api/shifts${path}`, {
       method,
       credentials: "same-origin",
+      headers: businessHeaders(),
       cache: "no-store",
       signal: controller.signal,
       ...(body === undefined
         ? {}
         : {
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              ...businessHeaders(),
+              "Content-Type": "application/json",
+            },
             body: JSON.stringify(body),
           }),
     })

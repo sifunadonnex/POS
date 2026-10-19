@@ -1,4 +1,8 @@
 import {
+  departmentPredicate,
+  selectedDepartment,
+} from '../business/business-scope.js';
+import {
   BadRequestException,
   Inject,
   Injectable,
@@ -203,7 +207,7 @@ export class ReportsService {
       }>(
         `SELECT COUNT(*)::int AS sale_count, COALESCE(SUM(total_minor), 0)::bigint AS sales_total_minor
         FROM sale
-        WHERE created_at >= $1::date AND created_at < ($1::date + interval '1 day')`,
+        WHERE ${departmentPredicate('sale')} AND status = 'completed' AND (created_at AT TIME ZONE 'Africa/Nairobi')::date = $1::date`,
         [iso],
       );
 
@@ -219,7 +223,7 @@ export class ReportsService {
           COALESCE(SUM(CASE WHEN kind = 'mpesa' THEN amount_minor ELSE 0 END), 0)::bigint AS mpesa_minor,
           COUNT(*)::int AS payment_count
         FROM sale_payment
-        WHERE created_at >= $1::date AND created_at < ($1::date + interval '1 day')`,
+        WHERE status = 'paid' AND EXISTS (SELECT 1 FROM sale scoped WHERE scoped.id = sale_payment.sale_id AND ${departmentPredicate('scoped')}) AND (created_at AT TIME ZONE 'Africa/Nairobi')::date = $1::date`,
         [iso],
       );
 
@@ -229,7 +233,7 @@ export class ReportsService {
       }>(
         `SELECT COALESCE(SUM(amount_minor), 0)::bigint AS refund_minor, COUNT(*)::int AS refund_count
         FROM sale_refund
-        WHERE created_at >= $1::date AND created_at < ($1::date + interval '1 day')`,
+        WHERE status = 'paid' AND EXISTS (SELECT 1 FROM sale scoped WHERE scoped.id = sale_refund.sale_id AND ${departmentPredicate('scoped')}) AND (created_at AT TIME ZONE 'Africa/Nairobi')::date = $1::date`,
         [iso],
       );
 
@@ -239,7 +243,7 @@ export class ReportsService {
       }>(
         `SELECT COUNT(*)::int AS closed_shift_count, COALESCE(SUM(variance_minor), 0)::bigint AS variance_minor
         FROM cash_shift
-        WHERE closed_at >= $1::date AND closed_at < ($1::date + interval '1 day')`,
+        WHERE ${departmentPredicate('cash_shift')} AND (closed_at AT TIME ZONE 'Africa/Nairobi')::date = $1::date`,
         [iso],
       );
 
@@ -250,7 +254,7 @@ export class ReportsService {
           COUNT(*) OVER()::int AS low_stock_count
           FROM catalogue_product p
           LEFT JOIN inventory_stock stock ON stock.product_id = p.id
-          WHERE p.active AND p.low_stock_threshold_minor IS NOT NULL
+          WHERE ${departmentPredicate('p')} AND p.active AND p.low_stock_threshold_minor IS NOT NULL
             AND COALESCE(stock.quantity_minor, 0) <= p.low_stock_threshold_minor
           ORDER BY (COALESCE(stock.quantity_minor, 0) = 0) DESC,
             (p.low_stock_threshold_minor - COALESCE(stock.quantity_minor, 0)) DESC,
@@ -282,16 +286,16 @@ export class ReportsService {
 
       return {
         day: iso,
-        saleCount: Number(sale.sale_count ?? 0),
-        salesTotalMinor: Number(sale.sales_total_minor ?? 0),
-        paymentCount: Number(payment.payment_count ?? 0),
-        cashMinor: Number(payment.cash_minor ?? 0),
-        cardMinor: Number(payment.card_minor ?? 0),
-        mpesaMinor: Number(payment.mpesa_minor ?? 0),
-        refundCount: Number(refund.refund_count ?? 0),
-        refundMinor: Number(refund.refund_minor ?? 0),
-        closedShiftCount: Number(shift.closed_shift_count ?? 0),
-        varianceMinor: Number(shift.variance_minor ?? 0),
+        saleCount: safeInteger(sale.sale_count ?? 0),
+        salesTotalMinor: safeInteger(sale.sales_total_minor ?? 0),
+        paymentCount: safeInteger(payment.payment_count ?? 0),
+        cashMinor: safeInteger(payment.cash_minor ?? 0),
+        cardMinor: safeInteger(payment.card_minor ?? 0),
+        mpesaMinor: safeInteger(payment.mpesa_minor ?? 0),
+        refundCount: safeInteger(refund.refund_count ?? 0),
+        refundMinor: safeInteger(refund.refund_minor ?? 0),
+        closedShiftCount: safeInteger(shift.closed_shift_count ?? 0),
+        varianceMinor: safeInteger(shift.variance_minor ?? 0),
         lowStockCount,
         lowStockItems: stockResult.rows.map((row) => ({
           productId: row.product_id,
@@ -321,24 +325,24 @@ export class ReportsService {
           SELECT COUNT(*)::int AS receipt_count,
             COALESCE(SUM(total_minor), 0)::bigint AS received_total_minor
           FROM purchase_receipt
-          WHERE status = 'received'
+          WHERE ${departmentPredicate('purchase_receipt')} AND status = 'received'
             AND created_at >= $1::date AND created_at < ($2::date + interval '1 day')
         ), return_totals AS (
           SELECT COUNT(*)::int AS return_count,
             COALESCE(SUM(total_minor), 0)::bigint AS returned_total_minor
           FROM purchase_return
-          WHERE status = 'returned'
+          WHERE EXISTS (SELECT 1 FROM purchase_receipt scoped WHERE scoped.id = purchase_return.receipt_id AND ${departmentPredicate('scoped')}) AND status = 'returned'
             AND created_at >= $1::date AND created_at < ($2::date + interval '1 day')
         ), supplier_activity AS (
           SELECT supplier_id
           FROM purchase_receipt
-          WHERE status = 'received'
+          WHERE ${departmentPredicate('purchase_receipt')} AND status = 'received'
             AND created_at >= $1::date AND created_at < ($2::date + interval '1 day')
           UNION
           SELECT receipt.supplier_id
           FROM purchase_return pr
           JOIN purchase_receipt receipt ON receipt.id = pr.receipt_id
-          WHERE pr.status = 'returned'
+          WHERE ${departmentPredicate('receipt')} AND pr.status = 'returned'
             AND pr.created_at >= $1::date AND pr.created_at < ($2::date + interval '1 day')
         )
         SELECT receipt_count, received_total_minor, return_count,
@@ -355,7 +359,7 @@ export class ReportsService {
             COALESCE(SUM(total_minor), 0)::bigint AS received_total_minor,
             MAX(created_at) AS last_receipt_at
           FROM purchase_receipt
-          WHERE status = 'received'
+          WHERE ${departmentPredicate('purchase_receipt')} AND status = 'received'
             AND created_at >= $1::date AND created_at < ($2::date + interval '1 day')
           GROUP BY supplier_id
         ), return_totals AS (
@@ -363,7 +367,7 @@ export class ReportsService {
             COALESCE(SUM(pr.total_minor), 0)::bigint AS returned_total_minor
           FROM purchase_return pr
           JOIN purchase_receipt receipt ON receipt.id = pr.receipt_id
-          WHERE pr.status = 'returned'
+          WHERE ${departmentPredicate('receipt')} AND pr.status = 'returned'
             AND pr.created_at >= $1::date AND pr.created_at < ($2::date + interval '1 day')
           GROUP BY receipt.supplier_id
         )
@@ -394,10 +398,10 @@ export class ReportsService {
         LEFT JOIN (
           SELECT receipt_id, SUM(total_minor)::bigint AS returned_total_minor
           FROM purchase_return
-          WHERE status = 'returned'
+          WHERE EXISTS (SELECT 1 FROM purchase_receipt scoped WHERE scoped.id = purchase_return.receipt_id AND ${departmentPredicate('scoped')}) AND status = 'returned'
           GROUP BY receipt_id
         ) returns ON returns.receipt_id = receipt.id
-        WHERE receipt.status = 'received'
+        WHERE ${departmentPredicate('receipt')} AND receipt.status = 'received'
           AND receipt.created_at >= $1::date AND receipt.created_at < ($2::date + interval '1 day')
         GROUP BY receipt.id, supplier.name, returns.returned_total_minor
         ORDER BY receipt.created_at DESC, receipt.id DESC`,
@@ -415,7 +419,7 @@ export class ReportsService {
       const returnedTotalMinor = safeInteger(summary.returned_total_minor);
 
       const edgeStoreId =
-        this.config.runtime.mode === 'hosted'
+        !selectedDepartment() && this.config.runtime.mode === 'hosted'
           ? this.config.sync?.storeId
           : undefined;
       const edgeDocuments = edgeStoreId
@@ -545,10 +549,12 @@ export class ReportsService {
       );
       const allReceived = safeInteger(receivedTotalMinor + edgeReceived);
       const allReturned = safeInteger(returnedTotalMinor + edgeReturned);
-      const supplierCount = new Set([
-        ...supplierResult.rows.map((row) => row.supplier_id),
-        ...edgeSuppliers.keys(),
-      ]).size;
+      const supplierCount = edgeStoreId
+        ? new Set([
+            ...supplierResult.rows.map((row) => row.supplier_id),
+            ...edgeSuppliers.keys(),
+          ]).size
+        : safeInteger(summary.supplier_count);
 
       return {
         from,
@@ -645,7 +651,9 @@ export class ReportsService {
           : 'Hosted operations',
     };
     const edgeStore =
-      this.config.runtime.mode === 'hosted' && this.config.sync
+      !selectedDepartment() &&
+      this.config.runtime.mode === 'hosted' &&
+      this.config.sync
         ? ({
             source: 'edge',
             storeId: this.config.sync.storeId,
@@ -704,12 +712,12 @@ export class ReportsService {
               COALESCE(SUM(total_minor), 0)::bigint AS gross_sales_minor,
               COUNT(DISTINCT actor_id)::int AS active_cashier_count
             FROM sale
-            WHERE status = 'completed' AND ${period()}
+            WHERE ${departmentPredicate('sale')} AND status = 'completed' AND ${period()}
           ), refunds AS (
             SELECT COUNT(*)::int AS refund_count,
               COALESCE(SUM(amount_minor), 0)::bigint AS refund_minor
             FROM sale_refund
-            WHERE status = 'paid' AND ${period()}
+            WHERE EXISTS (SELECT 1 FROM sale scoped WHERE scoped.id = sale_refund.sale_id AND ${departmentPredicate('scoped')}) AND status = 'paid' AND ${period()}
           )
           SELECT sale_count, gross_sales_minor, active_cashier_count,
             refund_count, refund_minor
@@ -724,13 +732,13 @@ export class ReportsService {
               COUNT(*)::int AS sale_count,
               COALESCE(SUM(total_minor), 0)::bigint AS gross_sales_minor
             FROM sale
-            WHERE status = 'completed' AND ${period()}
+            WHERE ${departmentPredicate('sale')} AND status = 'completed' AND ${period()}
             GROUP BY 1
           ), refunds AS (
             SELECT (created_at AT TIME ZONE 'Africa/Nairobi')::date AS day,
               COALESCE(SUM(amount_minor), 0)::bigint AS refund_minor
             FROM sale_refund
-            WHERE status = 'paid' AND ${period()}
+            WHERE EXISTS (SELECT 1 FROM sale scoped WHERE scoped.id = sale_refund.sale_id AND ${departmentPredicate('scoped')}) AND status = 'paid' AND ${period()}
             GROUP BY 1
           )
           SELECT calendar.day::text AS day,
@@ -748,14 +756,14 @@ export class ReportsService {
             SELECT actor_id, COUNT(*)::int AS sale_count,
               COALESCE(SUM(total_minor), 0)::bigint AS gross_sales_minor
             FROM sale
-            WHERE status = 'completed' AND ${period()}
+            WHERE ${departmentPredicate('sale')} AND status = 'completed' AND ${period()}
             GROUP BY actor_id
           ), refunds_by_actor AS (
             SELECT sale.actor_id,
               COALESCE(SUM(refund.amount_minor), 0)::bigint AS refund_minor
             FROM sale_refund refund
             JOIN sale ON sale.id = refund.sale_id
-            WHERE refund.status = 'paid' AND ${period('refund')}
+            WHERE ${departmentPredicate('sale')} AND refund.status = 'paid' AND ${period('refund')}
             GROUP BY sale.actor_id
           ), activity AS (
             SELECT actor_id FROM sales_by_actor
@@ -778,7 +786,7 @@ export class ReportsService {
         `SELECT kind, COUNT(*)::int AS payment_count,
             COALESCE(SUM(amount_minor), 0)::bigint AS amount_minor
           FROM sale_payment
-          WHERE status = 'paid' AND ${period()}
+          WHERE EXISTS (SELECT 1 FROM sale scoped WHERE scoped.id = sale_payment.sale_id AND ${departmentPredicate('scoped')}) AND status = 'paid' AND ${period()}
           GROUP BY kind
           ORDER BY CASE kind WHEN 'cash' THEN 1 WHEN 'card' THEN 2 ELSE 3 END`,
         params,
@@ -791,7 +799,7 @@ export class ReportsService {
           FROM sale_line line
           JOIN sale ON sale.id = line.sale_id
           JOIN catalogue_product product ON product.id = line.product_id
-          WHERE sale.status = 'completed' AND ${period('sale')}
+          WHERE ${departmentPredicate('sale')} AND sale.status = 'completed' AND ${period('sale')}
           GROUP BY product.id, product.name, product.unit
           ORDER BY gross_sales_minor DESC, lower(product.name), product.id
           LIMIT 8`,
@@ -1217,6 +1225,10 @@ export class ReportsService {
       this.config.runtime.mode === 'hosted' &&
       state.rows[0]?.runtime_mode === 'hosted' &&
       state.rows[0]?.checkout_authority === 'local';
+    if (edgeSource && selectedDepartment())
+      throw new ServiceUnavailableException(
+        'Department reporting is unavailable for the legacy offline projection.',
+      );
     if (
       edgeSource &&
       (!this.config.sync || state.rows[0].store_id !== this.config.sync.storeId)
@@ -1257,6 +1269,7 @@ export class ReportsService {
             0::text AS movement_count
           FROM catalogue_product p
           LEFT JOIN inventory_stock s ON s.product_id = p.id
+          WHERE ${departmentPredicate('p')}
           ORDER BY lower(p.name), p.id`,
         );
     return {
@@ -1279,6 +1292,10 @@ export class ReportsService {
     toValue: string,
     pageValue?: string,
   ) {
+    if (selectedDepartment())
+      throw new BadRequestException(
+        'Legacy synchronized documents have no department attribution. Select the combined overview.',
+      );
     const { from, to } = this.validateRange(fromValue, toValue, 366);
     const page = pageValue === undefined ? 1 : Number(pageValue);
     if (!Number.isSafeInteger(page) || page < 1 || page > 1000)
@@ -1382,6 +1399,77 @@ export class ReportsService {
         deltaMinor:
           row.delta_minor === null ? null : safeInteger(row.delta_minor),
         lines: row.lines,
+      })),
+    };
+  }
+  async expiryAlerts() {
+    const settings = await this.database.connectionPool.query<{
+      days: number | null;
+    }>('SELECT expiry_warning_days AS days FROM business_setting WHERE id');
+    const days = settings.rows[0]?.days ?? null;
+    const result = await this.database.connectionPool.query<{
+      productId: string;
+      name: string;
+      sku: string;
+      expiryDate: string;
+      departmentLabel: string;
+      daysRemaining: number;
+      total: number;
+    }>(
+      `SELECT p.id AS "productId", p.name, p.sku, COALESCE(branch.name || ' · ' || department.name, 'Unassigned stock') AS "departmentLabel", p.expiry_date::text AS "expiryDate",
+       (p.expiry_date - (now() AT TIME ZONE 'Africa/Nairobi')::date)::int AS "daysRemaining", COUNT(*) OVER()::int AS total
+       FROM catalogue_product p JOIN inventory_stock stock ON stock.product_id = p.id
+       LEFT JOIN business_department department ON department.id = p.department_id
+       LEFT JOIN business_branch branch ON branch.id = department.branch_id
+       WHERE ${departmentPredicate('p')} AND p.active AND stock.quantity_minor > 0 AND p.expiry_date IS NOT NULL
+       AND (p.expiry_date < (now() AT TIME ZONE 'Africa/Nairobi')::date OR ($1::int IS NOT NULL AND p.expiry_date <= (now() AT TIME ZONE 'Africa/Nairobi')::date + $1::int))
+       ORDER BY p.expiry_date, lower(p.name), p.id LIMIT 20`,
+      [days],
+    );
+    return {
+      warningDays: days,
+      count: result.rows[0]?.total ?? 0,
+      items: result.rows.map(({ total: _total, ...item }) => item),
+    };
+  }
+
+  async departmentSales(day: string) {
+    const date = this.validateDate(day);
+    const result = await this.database.connectionPool.query<{
+      name: string;
+      branch: string;
+      count: number;
+      sales: string;
+      refunds: string;
+    }>(
+      `WITH sales AS (
+        SELECT department_id, COUNT(*)::int AS count, SUM(total_minor)::text AS sales
+        FROM sale WHERE status = 'completed' AND ${departmentPredicate('sale')}
+        AND (created_at AT TIME ZONE 'Africa/Nairobi')::date = $1::date GROUP BY department_id
+      ), refunds AS (
+        SELECT s.department_id, SUM(r.amount_minor)::text AS refunds FROM sale_refund r JOIN sale s ON s.id = r.sale_id
+        WHERE r.status = 'paid' AND ${departmentPredicate('s')}
+        AND (r.created_at AT TIME ZONE 'Africa/Nairobi')::date = $1::date GROUP BY s.department_id
+      )
+      SELECT d.name, b.name AS branch, COALESCE(s.count, 0)::int AS count, COALESCE(s.sales, '0') AS sales, COALESCE(r.refunds, '0') AS refunds
+      FROM business_department d JOIN business_branch b ON b.id = d.branch_id
+      LEFT JOIN sales s ON s.department_id = d.id LEFT JOIN refunds r ON r.department_id = d.id
+      WHERE ${selectedDepartment() ? `d.id = '${selectedDepartment()}'::uuid` : 'TRUE'}
+      UNION ALL SELECT 'Unassigned history', 'Before department assignment',
+        COALESCE((SELECT count FROM sales WHERE department_id IS NULL), 0)::int,
+        COALESCE((SELECT sales FROM sales WHERE department_id IS NULL), '0'),
+        COALESCE((SELECT refunds FROM refunds WHERE department_id IS NULL), '0')
+      WHERE EXISTS (SELECT 1 FROM sales WHERE department_id IS NULL) OR EXISTS (SELECT 1 FROM refunds WHERE department_id IS NULL)
+      ORDER BY branch, name`,
+      [date],
+    );
+    return {
+      departments: result.rows.map((row) => ({
+        name: row.name,
+        branch: row.branch,
+        count: row.count,
+        salesMinor: safeInteger(row.sales),
+        refundsMinor: safeInteger(row.refunds),
       })),
     };
   }

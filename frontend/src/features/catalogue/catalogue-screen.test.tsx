@@ -51,7 +51,6 @@ it("lets cashiers search barcodes without exposing manager controls", async () =
   expect(await screen.findByText("Loose rice")).toBeTruthy()
   expect(screen.getByText("KES 180.05", { exact: false })).toBeTruthy()
   for (const name of [
-    "New product",
     "Import CSV",
     "Categories",
     "Edit Loose rice",
@@ -70,6 +69,23 @@ it("lets cashiers search barcodes without exposing manager controls", async () =
       page: 0,
     })
   )
+})
+
+it("lets cashiers create a product and then shows it without edit or archive controls", async () => {
+  mocks.catalogueRequest.mockResolvedValue({ product })
+  render(<CatalogueScreen manager={false} />)
+  fireEvent.click(await screen.findByRole("button", { name: "New product" }))
+  await screen.findByLabelText("SKU / product code")
+  fillNewProduct()
+  fireEvent.click(screen.getByRole("button", { name: "Create product" }))
+  expect(await screen.findByText("Loose rice saved.")).toBeTruthy()
+  expect(mocks.catalogueRequest).toHaveBeenCalledWith(
+    "products",
+    expect.objectContaining({ active: true, requestId: expect.any(String) }),
+    "POST"
+  )
+  expect(screen.queryByRole("button", { name: "Edit Loose rice" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "Archived" })).toBeNull()
 })
 
 it("shows catalogue failure and retry without inventing product rows", async () => {
@@ -135,6 +151,38 @@ it("preserves exact price text and barcodes and waits for a confirmed create", a
     resolve?.({ product })
   })
   expect(saved).toHaveBeenCalledWith(product)
+})
+
+it("saves the selected category and expiry date from the grouped product form", async () => {
+  mocks.catalogueRequest.mockResolvedValue({ product })
+  render(
+    <ProductEditor
+      product={null}
+      categories={[{ id: "dairy", name: "Dairy", revision: 1 }]}
+      onSaved={vi.fn()}
+    />
+  )
+  fillNewProduct()
+  fireEvent.click(screen.getByRole("combobox", { name: "Category (optional)" }))
+  const dairy = await screen.findByRole("option", { name: "Dairy" })
+  fireEvent.pointerDown(dairy, { pointerType: "mouse", button: 0 })
+  fireEvent.click(dairy)
+  fireEvent.change(screen.getByLabelText("Next expiry date (optional)"), {
+    target: { value: "2026-12-31" },
+  })
+  fireEvent.click(screen.getByRole("button", { name: "Create product" }))
+  await waitFor(() =>
+    expect(mocks.catalogueRequest).toHaveBeenCalledWith(
+      "products",
+      expect.objectContaining({
+        categoryId: "dairy",
+        expiryDate: "2026-12-31",
+        price: "180.05",
+        barcodes: ["0012345"],
+      }),
+      "POST"
+    )
+  )
 })
 
 it("does not let a late response reset a different form after navigation", async () => {

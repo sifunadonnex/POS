@@ -1,60 +1,58 @@
-# Safaricom Daraja M-Pesa Express setup
+# M-Pesa setup
 
-The M-Pesa Express integration is implemented but disabled. Keep it disabled until the sandbox credentials and callback path below are verified. Never paste live credentials into chat, tracked files, browser variables or screenshots; put them only in the ignored `backend/.env` file or the host's private server environment.
+The POS uses the same OAuth → STK prompt → confirmation flow inspected in the user's Sahibu Laravel app. The cashier chooses M-Pesa, enters the customer's phone and sends the prompt; the existing payment-attempt flow handles waiting, confirmation and retries.
 
-## Values to obtain
+## Server settings
 
-From the Safaricom Daraja portal and the shop's M-Pesa arrangement, obtain:
-
-- the app Consumer Key and Consumer Secret;
-- the business shortcode (PayBill or Till);
-- the Lipa na M-Pesa Online passkey for that shortcode;
-- whether the shortcode uses `CustomerPayBillOnline` or `CustomerBuyGoodsOnline`; and
-- sandbox test credentials first, with production credentials treated as a separate go-live step.
-
-The backend also needs a public HTTPS base URL. Its callback must resolve to:
-
-`https://YOUR_API_HOST/api/payment-attempts/mpesa/callback`
-
-The reverse proxy must preserve the query string. The application adds its secret callback token as a query parameter when it sends the STK Push request.
-
-## Private backend configuration
-
-Copy the Daraja names from `backend/env.example` into the ignored `backend/.env` file and set:
+Keep credentials in the private backend environment. The required account values are:
 
 ```dotenv
 DARAJA_ENABLED=false
-DARAJA_ENVIRONMENT=sandbox
+DARAJA_ENVIRONMENT=production
 DARAJA_CONSUMER_KEY=...
 DARAJA_CONSUMER_SECRET=...
 DARAJA_SHORTCODE=...
 DARAJA_PASSKEY=...
-DARAJA_TRANSACTION_TYPE=CustomerPayBillOnline
-DARAJA_CALLBACK_URL=https://YOUR_API_HOST/api/payment-attempts/mpesa/callback
-DARAJA_CALLBACK_TOKEN=...
+# Buy Goods: the receiving Till, separate from the API business shortcode.
+DARAJA_TILL_NUMBER=...
 ```
 
-Generate a unique unpredictable callback token with at least 32 characters. Do not reuse the consumer secret or passkey. Keep `DARAJA_ENABLED=false` while assembling the values; startup validates the complete configuration when it is changed to `true`.
+The user confirmed **Buy Goods Till** on 17 October 2026 and will enter `DARAJA_TILL_NUMBER` privately. Supplying that field selects `CustomerBuyGoodsOnline` automatically. An explicit `DARAJA_TRANSACTION_TYPE=CustomerBuyGoodsOnline` is also supported. For PayBill, omit the Till field or make it match the business shortcode and use `CustomerPayBillOnline`. Buy Goods requires an explicit receiving Till; the application does not guess it.
 
-Use `CustomerPayBillOnline` for a PayBill and `CustomerBuyGoodsOnline` for a Till only when that matches the credentials issued by Safaricom. No Daraja secret belongs in a `VITE_*` frontend variable.
+`BusinessShortCode` and the STK password use `DARAJA_SHORTCODE`. `PartyB` uses the receiving Till. These can differ, as they do in Sahibu's integration.
 
-## Sandbox verification gate
+## Automatic callback setup
 
-After the public callback is reachable and the sandbox values are installed, enable the adapter and verify all of these with test data:
+On a hosted deployment, the callback defaults to the public HTTPS `BETTER_AUTH_URL` plus:
 
-1. The register reports M-Pesa available while Card remains unavailable.
-2. A valid `07...`, `01...` or `254...` number receives an STK prompt for the exact whole-KES sale total.
-3. A successful callback contains the expected checkout reference, receipt and exact amount; only then does the receipt become available.
-4. Customer cancellation and provider failure leave no paid sale record and allow the documented retry flow.
-5. Timeout, delayed callback and status-query uncertainty remain pending/unknown and do not permit a second charge.
-6. Duplicate callbacks do not create a duplicate provider event or sale payment.
-7. Wrong amount, wrong reference, missing receipt, malformed payload and wrong callback token never confirm payment.
-8. The callback remains reachable through the actual reverse proxy and its logs do not expose credentials, customer phone numbers or the full tokenized callback URL.
+`/api/payment-attempts/mpesa/callback`
 
-The current status query is intentionally conservative: a provider result code of success without an exact returned amount does not prove that this sale received the correct value. It stays unknown rather than manufacturing confirmation.
+For POP N GO the public base callback is:
 
-## Production gate
+`https://pos.sifulabs.co.ke/api/payment-attempts/mpesa/callback`
 
-Production is a separate decision. Before changing `DARAJA_ENVIRONMENT=production`, issue production credentials, rotate the callback token, confirm the correct shortcode/transaction type, repeat the sandbox cases against the approved production test procedure, document provider fees and support/reversal operations, and complete hosted TLS, backup and monitoring checks. Enabling the adapter authorizes real STK requests, so do not use production customer numbers for ordinary development.
+The user requested this setup, and that URL is now saved as `DARAJA_CALLBACK_URL` in the private local environment. This prepares the hosted callback address; a callback must reach the API/database that initiated the payment. A local-only API cannot receive callbacks sent to an unrelated hosted database.
 
-Official references: [Daraja APIs](https://developer.safaricom.co.ke/apis), [Authorization API](https://developer.safaricom.co.ke/apis/Authorization), [Transaction Status API](https://developer.safaricom.co.ke/apis/TransactionStatus), and Safaricom's [M-Pesa Node library examples](https://github.com/safaricom/mpesa-node-library).
+No manual callback token is required. The backend derives a stable, domain-separated HMAC-SHA256 token from the consumer secret and business shortcode, then adds it to the callback request URL. Existing explicit `DARAJA_CALLBACK_TOKEN` values remain supported for independent rotation. Changing the consumer secret/shortcode also changes the automatic callback token; settle pending requests before rotating, or retain a separately configured token during the rotation. Reverse proxies must preserve the callback query string and redact tokenized URLs from logs.
+
+An explicit `DARAJA_CALLBACK_URL` remains available when the public API origin differs from the application origin. It must be HTTPS without embedded credentials, query parameters or fragments.
+
+## Configuration check
+
+After compiling the backend, run:
+
+```powershell
+pnpm run mpesa:check
+```
+
+This validates account settings even while M-Pesa is switched off, without printing credentials, connecting to PostgreSQL, contacting Safaricom or sending an STK request. It reports the environment, PayBill/Buy Goods mode, callback source and automatic/explicit token status. It does not prove provider acceptance or public callback reachability.
+
+`DARAJA_ENABLED=true` activates the configured provider. The existing sandbox/authorized live-test verification still applies before actual customer use; the inspection/setup task does not enable production payments or charge a number. The local flag remains false.
+
+## Payment behavior retained
+
+STK acceptance is pending, not paid. The payment commits only after matching the expected checkout reference, exact amount and receipt. Duplicate callbacks/retries cannot add another payment. Customer cancellation/failure permits the documented retry; interrupted/uncertain outcomes remain pending/unknown until reconciled. A status-query success without an exact returned amount does not manufacture a payment confirmation.
+
+Verify the callback, cancellation, timeout, duplicate and wrong-amount cases against the deployed API before live use. Card remains separate and unavailable until integrated. This comparison added no provider SDK, paid service or database migration.
+
+Inspected references: `C:/Users/sifun/Desktop/projects/Sahibu/app/Services/Daraja.php`, `MpesaPayments.php`, `MpesaConnections.php` and the sales STK form. The Sahibu project was read only; no credentials were copied between apps. Official request reference: [Safaricom's SDK](https://github.com/safaricom/mpesa-java-sdk/blob/master/src/main/java/Mpesa.java).
